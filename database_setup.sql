@@ -37,7 +37,7 @@ CREATE TABLE games (
     game_number INTEGER NOT NULL,
     game_name VARCHAR(100),
     status VARCHAR(20) NOT NULL DEFAULT 'signup', -- signup, active, ended
-    day_phase VARCHAR(10) NOT NULL DEFAULT 'day', -- day, night
+    day_phase VARCHAR(10) NOT NULL DEFAULT 'night', -- day, night
     day_number INTEGER NOT NULL DEFAULT 1,
     signup_channel_id VARCHAR(20),
     town_square_channel_id VARCHAR(20),

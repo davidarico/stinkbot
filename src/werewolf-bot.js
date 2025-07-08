@@ -1,4 +1,5 @@
 const { PermissionFlagsBits, ChannelType, EmbedBuilder } = require('discord.js');
+const fs = require('fs');
 
 class WerewolfBot {
     constructor(client, db) {
@@ -68,6 +69,9 @@ class WerewolfBot {
                     break;
                 case 'alive':
                     await this.handleAlive(message);
+                    break;
+                case 'issues':
+                    await this.handleIssues(message);
                     break;
                 default:
                     await message.reply('❓ Unknown command bozo.');
@@ -143,7 +147,7 @@ class WerewolfBot {
             }
 
             // Game channels: Alive can see and type, Dead can see but not type (except dead chat), Spectators cannot see
-            const gameChannels = [townSquare, wolfChat, memos, votingBooth, breakdown];
+            const gameChannels = [townSquare, memos, votingBooth];
             for (const channel of gameChannels) {
                 if (aliveRole && deadRole && spectatorRole) {
                     await channel.permissionOverwrites.edit(guild.roles.everyone.id, {
@@ -179,11 +183,52 @@ class WerewolfBot {
                     SendMessages: false
                 });
                 await results.permissionOverwrites.edit(spectatorRole.id, {
-                    ViewChannel: false
+                    ViewChannel: true,
+                    SendMessages: false
                 });
                 await results.permissionOverwrites.edit(modRole.id, {
                     ViewChannel: true,
                     SendMessages: true
+                });
+            }
+
+            // Breakdown channel: Mod can see and type, everyone else can see but not type
+            if (breakdown && modRole && aliveRole && deadRole && spectatorRole) {
+                await breakdown.permissionOverwrites.edit(guild.roles.everyone.id, {
+                    ViewChannel: false,
+                    SendMessages: false
+                });
+                await breakdown.permissionOverwrites.edit(aliveRole.id, {
+                    ViewChannel: true,
+                    SendMessages: false
+                });
+                await breakdown.permissionOverwrites.edit(deadRole.id, {
+                    ViewChannel: true,
+                    SendMessages: false
+                });
+                await breakdown.permissionOverwrites.edit(spectatorRole.id, {
+                    ViewChannel: true,
+                    SendMessages: false
+                });
+                await breakdown.permissionOverwrites.edit(modRole.id, {
+                    ViewChannel: true,
+                    SendMessages: true
+                });
+            }
+
+            // Wolf Chat: Mods can see and type, everyone else cannot see. Mod will manually set this channels permissions
+            if (wolfChat && modRole) {
+                await wolfChat.permissionOverwrites.edit(guild.roles.everyone.id, {
+                    ViewChannel: false,
+                    SendMessages: false
+                });
+                await wolfChat.permissionOverwrites.edit(modRole.id, {
+                    ViewChannel: true,
+                    SendMessages: true
+                });
+                await breakdown.permissionOverwrites.edit(spectatorRole.id, {
+                    ViewChannel: true,
+                    SendMessages: false
                 });
             }
 
@@ -1222,6 +1267,15 @@ class WerewolfBot {
 
         await message.reply({ embeds: [embed] });
     }
+
+    async handleIssues(message) {
+        const embed = new EmbedBuilder()
+            .setTitle('🐛 Issues and Bugs')
+            .setDescription(fs.readFileSync('./ISSUE_TRACKING.md', 'utf-8'))
+
+        await message.reply({ embeds: [embed] });
+    }
+
 }
 
 module.exports = WerewolfBot;
