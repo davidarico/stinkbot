@@ -64,9 +64,6 @@ class WerewolfBot {
                 case 'roles':
                     await this.handleRoles(message);
                     break;
-                case 'kill':
-                    await this.handleKill(message, args);
-                    break;
                 case 'alive':
                     await this.handleAlive(message);
                     break;
@@ -716,13 +713,20 @@ class WerewolfBot {
             return message.reply(`❌ Please vote in ${votingChannel} instead.`);
         }
 
-        // Check if voter is in the game
+        // Check if voter is in the game and has Alive role
         const voterCheck = await this.db.query(
-            'SELECT * FROM players WHERE game_id = $1 AND user_id = $2 AND status = $3',
-            [game.id, voterId, 'alive']
+            'SELECT * FROM players WHERE game_id = $1 AND user_id = $2',
+            [game.id, voterId]
         );
 
         if (!voterCheck.rows.length) {
+            return message.reply('❌ You are not in this game.');
+        }
+
+        // Check if voter has Alive role
+        const voterMember = message.member;
+        const aliveRole = message.guild.roles.cache.find(r => r.name === 'Alive');
+        if (!aliveRole || !voterMember.roles.cache.has(aliveRole.id)) {
             return message.reply('❌ You are not an alive player in this game.');
         }
 
@@ -737,13 +741,23 @@ class WerewolfBot {
             return message.reply('❌ You cannot vote for yourself.');
         }
 
-        // Check if target is in the game
+        // Check if target is in the game and has Alive role
         const targetCheck = await this.db.query(
-            'SELECT * FROM players WHERE game_id = $1 AND user_id = $2 AND status = $3',
-            [game.id, target.id, 'alive']
+            'SELECT * FROM players WHERE game_id = $1 AND user_id = $2',
+            [game.id, target.id]
         );
 
         if (!targetCheck.rows.length) {
+            return message.reply('❌ That player is not in this game.');
+        }
+
+        // Check if target has Alive role
+        const targetMember = await message.guild.members.fetch(target.id).catch(() => null);
+        if (!targetMember) {
+            return message.reply('❌ Could not find that user in this server.');
+        }
+
+        if (!aliveRole || !targetMember.roles.cache.has(aliveRole.id)) {
             return message.reply('❌ That player is not an alive player in this game.');
         }
 
@@ -1228,7 +1242,7 @@ class WerewolfBot {
                 { name: 'Wolf.start', value: 'Start the game and create all game channels', inline: false },
                 { name: 'Wolf.next', value: 'Move to the next phase (day/night)', inline: false },
                 { name: 'Wolf.end', value: 'End the current game (requires confirmation)', inline: false },
-                { name: 'Wolf.kill @user', value: 'Kill a player (set to Dead role and update database)', inline: false },
+
                 { name: 'Wolf.add_channel <name>', value: 'Create an additional channel in the game category', inline: false },
                 { name: 'Wolf.day <message>', value: 'Set custom day transition message', inline: false },
                 { name: 'Wolf.night <message>', value: 'Set custom night transition message', inline: false },
@@ -1239,79 +1253,6 @@ class WerewolfBot {
         }
 
         await message.reply({ embeds: [embed] });
-    }
-
-    async handleKill(message, args) {
-        const serverId = message.guild.id;
-
-        // Get active game
-        const gameResult = await this.db.query(
-            'SELECT * FROM games WHERE server_id = $1 AND status = $2',
-            [serverId, 'active']
-        );
-
-        if (!gameResult.rows.length) {
-            return message.reply('❌ No active game found.');
-        }
-
-        // Check if a user is mentioned
-        if (!args.length || !message.mentions.users.size) {
-            return message.reply('❌ Please mention a user to kill. Usage: `Wolf.kill @user`');
-        }
-
-        const targetUser = message.mentions.users.first();
-        const targetMember = await message.guild.members.fetch(targetUser.id).catch(() => null);
-
-        if (!targetMember) {
-            return message.reply('❌ Could not find that user in this server.');
-        }
-
-        const game = gameResult.rows[0];
-
-        // Check if the target is in the game
-        const playerResult = await this.db.query(
-            'SELECT * FROM players WHERE game_id = $1 AND user_id = $2',
-            [game.id, targetUser.id]
-        );
-
-        if (!playerResult.rows.length) {
-            return message.reply(`❌ ${targetMember.displayName} is not in the current game.`);
-        }
-
-        const player = playerResult.rows[0];
-
-        // Check if player is already dead
-        if (player.status === 'dead') {
-            return message.reply(`❌ ${targetMember.displayName} is already dead.`);
-        }
-
-        try {
-            // Update player status in database
-            await this.db.query(
-                'UPDATE players SET status = $1 WHERE game_id = $2 AND user_id = $3',
-                ['dead', game.id, targetUser.id]
-            );
-
-            // Update Discord roles
-            await this.removeRole(targetMember, 'Alive');
-            await this.assignRole(targetMember, 'Dead');
-
-            const embed = new EmbedBuilder()
-                .setTitle('💀 Player Killed')
-                .setDescription(`${targetMember.displayName} has been killed and is now dead.`)
-                .addFields(
-                    { name: 'Player', value: targetMember.displayName, inline: true },
-                    { name: 'Status', value: 'Dead', inline: true }
-                )
-                .setColor(0x8B0000);
-
-            await message.reply({ embeds: [embed] });
-            await message.react('⚰️');
-
-        } catch (error) {
-            console.error('Error killing player:', error);
-            await message.reply('❌ An error occurred while killing the player.');
-        }
     }
 
     async handleAlive(message) {
@@ -1329,23 +1270,46 @@ class WerewolfBot {
 
         const game = gameResult.rows[0];
 
-        // Get all alive players
-        const alivePlayers = await this.db.query(
-            'SELECT username FROM players WHERE game_id = $1 AND status = $2 ORDER BY username',
-            [game.id, 'alive']
+        // Get all players in the game
+        const allPlayers = await this.db.query(
+            'SELECT user_id, username FROM players WHERE game_id = $1 ORDER BY username',
+            [game.id]
         );
 
-        if (alivePlayers.rows.length === 0) {
+        if (allPlayers.rows.length === 0) {
+            return message.reply('❌ No players found in the current game.');
+        }
+
+        // Filter alive players by checking Discord roles
+        const aliveRole = message.guild.roles.cache.find(r => r.name === 'Alive');
+        if (!aliveRole) {
+            return message.reply('❌ Alive role not found. Please use `Wolf.roles` to set up roles.');
+        }
+
+        const alivePlayers = [];
+        for (const player of allPlayers.rows) {
+            try {
+                const member = await message.guild.members.fetch(player.user_id);
+                if (member.roles.cache.has(aliveRole.id)) {
+                    alivePlayers.push(player.username);
+                }
+            } catch (error) {
+                // Player might have left the server, skip them
+                console.log(`Could not fetch member ${player.user_id}, skipping`);
+            }
+        }
+
+        if (alivePlayers.length === 0) {
             return message.reply('💀 No players are currently alive in the game.');
         }
 
-        const playerList = alivePlayers.rows.map((player, index) => `${index + 1}. ${player.username}`).join('\n');
+        const playerList = alivePlayers.map((player, index) => `${index + 1}. ${player}`).join('\n');
         
         const embed = new EmbedBuilder()
             .setTitle('💚 Alive Players')
             .setDescription(`Here are all the players currently alive in the game:`)
             .addFields({ 
-                name: `Players (${alivePlayers.rows.length})`, 
+                name: `Players (${alivePlayers.length})`, 
                 value: playerList 
             })
             .setColor(0x00FF00);
