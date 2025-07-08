@@ -60,8 +60,11 @@ class WerewolfBot {
                 case 'refresh':
                     await this.handleRefresh(message);
                     break;
+                case 'roles':
+                    await this.handleRoles(message);
+                    break;
                 default:
-                    await message.reply('❓ Unknown command. Use `Wolf.help` for available commands.');
+                    await message.reply('❓ Unknown command bozo.');
             }
         } catch (error) {
             console.error('Error handling command:', error);
@@ -72,6 +75,94 @@ class WerewolfBot {
     hasModeratorPermissions(member) {
         return member.permissions.has(PermissionFlagsBits.ManageChannels) || 
                member.permissions.has(PermissionFlagsBits.Administrator);
+    }
+
+    async assignRole(member, roleName) {
+        try {
+            const role = member.guild.roles.cache.find(r => r.name === roleName);
+            if (role && !member.roles.cache.has(role.id)) {
+                await member.roles.add(role);
+                console.log(`Assigned role "${roleName}" to ${member.displayName}`);
+            }
+        } catch (error) {
+            console.error(`Error assigning role "${roleName}":`, error);
+        }
+    }
+
+    async removeRole(member, roleName) {
+        try {
+            const role = member.guild.roles.cache.find(r => r.name === roleName);
+            if (role && member.roles.cache.has(role.id)) {
+                await member.roles.remove(role);
+                console.log(`Removed role "${roleName}" from ${member.displayName}`);
+            }
+        } catch (error) {
+            console.error(`Error removing role "${roleName}":`, error);
+        }
+    }
+
+    async assignSpectatorRole(member) {
+        // Remove all game roles and assign spectator
+        await this.removeRole(member, 'Signed Up');
+        await this.removeRole(member, 'Alive');
+        await this.removeRole(member, 'Dead');
+        await this.assignRole(member, 'Spectator');
+    }
+
+    async setupChannelPermissions(game, deadChat, townSquare, wolfChat, memos, results, votingBooth, breakdown, modChat) {
+        const guild = deadChat.guild;
+        const aliveRole = guild.roles.cache.find(r => r.name === 'Alive');
+        const deadRole = guild.roles.cache.find(r => r.name === 'Dead');
+        const spectatorRole = guild.roles.cache.find(r => r.name === 'Spectator');
+        const modRole = guild.roles.cache.find(r => r.name === 'Mod');
+
+        try {
+            // Dead Chat permissions: Dead can see and type, Alive cannot see, Spectators can see and type
+            if (deadRole && aliveRole && spectatorRole) {
+                await deadChat.permissionOverwrites.edit(guild.roles.everyone.id, {
+                    ViewChannel: false,
+                    SendMessages: false
+                });
+                await deadChat.permissionOverwrites.edit(deadRole.id, {
+                    ViewChannel: true,
+                    SendMessages: true
+                });
+                await deadChat.permissionOverwrites.edit(aliveRole.id, {
+                    ViewChannel: false
+                });
+                await deadChat.permissionOverwrites.edit(spectatorRole.id, {
+                    ViewChannel: true,
+                    SendMessages: true
+                });
+            }
+
+            // Game channels: Alive can see and type, Dead can see but not type (except dead chat), Spectators cannot see
+            const gameChannels = [townSquare, wolfChat, memos, results, votingBooth, breakdown];
+            for (const channel of gameChannels) {
+                if (aliveRole && deadRole && spectatorRole) {
+                    await channel.permissionOverwrites.edit(guild.roles.everyone.id, {
+                        ViewChannel: false,
+                        SendMessages: false
+                    });
+                    await channel.permissionOverwrites.edit(aliveRole.id, {
+                        ViewChannel: true,
+                        SendMessages: true
+                    });
+                    await channel.permissionOverwrites.edit(deadRole.id, {
+                        ViewChannel: true,
+                        SendMessages: false
+                    });
+                    await channel.permissionOverwrites.edit(spectatorRole.id, {
+                        ViewChannel: false
+                    });
+                }
+            }
+
+            // Mod chat is already set up in channel creation
+            console.log('Channel permissions set up successfully');
+        } catch (error) {
+            console.error('Error setting up channel permissions:', error);
+        }
     }
 
     async handleSetup(message, args) {
@@ -257,6 +348,10 @@ class WerewolfBot {
             [game.id, user.id, displayName]
         );
 
+        // Assign "Signed Up" role
+        await this.assignRole(message.member, 'Signed Up');
+        await this.removeRole(message.member, 'Spectator');
+
         // React with checkmark for success
         await message.react('✅');
         
@@ -289,6 +384,9 @@ class WerewolfBot {
         if (deleteResult.rowCount === 0) {
             return message.reply('❌ You are not signed up for this game.');
         }
+
+        // Remove "Signed Up" role
+        await this.removeRole(message.member, 'Signed Up');
 
         // React with checkmark for success
         await message.react('✅');
@@ -399,6 +497,43 @@ class WerewolfBot {
             parent: category.id,
         });
 
+        // Create mod-chat channel with restricted permissions
+        const modRole = message.guild.roles.cache.find(r => r.name === 'Mod');
+        const modChat = await message.guild.channels.create({
+            name: `${config.game_prefix}${game.game_number}-mod-chat`,
+            type: ChannelType.GuildText,
+            parent: category.id,
+            permissionOverwrites: [
+                {
+                    id: message.guild.roles.everyone.id,
+                    deny: [PermissionFlagsBits.ViewChannel],
+                },
+                ...(modRole ? [{
+                    id: modRole.id,
+                    allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
+                }] : [])
+            ],
+        });
+
+        // Update all signed up players to Alive role
+        const signedUpPlayers = await this.db.query(
+            'SELECT user_id FROM players WHERE game_id = $1',
+            [game.id]
+        );
+
+        for (const player of signedUpPlayers.rows) {
+            try {
+                const member = await message.guild.members.fetch(player.user_id);
+                await this.removeRole(member, 'Signed Up');
+                await this.assignRole(member, 'Alive');
+            } catch (error) {
+                console.error(`Error updating role for player ${player.user_id}:`, error);
+            }
+        }
+
+        // Set up channel permissions for game roles
+        await this.setupChannelPermissions(game, signupChannel, townSquare, wolfChat, memos, results, votingBooth, breakdown, modChat);
+
         // Update game in database
         await this.db.query(
             `UPDATE games SET 
@@ -430,7 +565,8 @@ class WerewolfBot {
                 { name: 'Results', value: `<#${results.id}>`, inline: true },
                 { name: 'Voting Booth', value: `<#${votingBooth.id}>`, inline: true },
                 { name: 'Breakdown', value: `<#${breakdown.id}>`, inline: true },
-                { name: 'Dead Chat', value: `<#${signupChannel.id}>`, inline: true }
+                { name: 'Dead Chat', value: `<#${signupChannel.id}>`, inline: true },
+                { name: 'Mod Chat', value: `<#${modChat.id}>`, inline: true }
             )
             .setColor(0x2C3E50);
 
@@ -731,7 +867,7 @@ class WerewolfBot {
         // Confirmation
         const embed = new EmbedBuilder()
             .setTitle('⚠️ Confirm Server Refresh')
-            .setDescription('Are you sure you want to refresh this server? This will:\n\n• Delete ALL text channels except #general\n• Delete ALL categories\n• Reset game counter to 1\n• End any active games\n\nThis action cannot be undone!')
+            .setDescription('Are you sure you want to refresh this server? This will:\n\n• Delete ALL text channels except #general\n• Delete ALL categories\n• Reset game counter to 1\n• End any active games\n• Reset all members to Spectator role\n\nThis action cannot be undone!')
             .setColor(0xE74C3C);
 
         await message.reply({ embeds: [embed] });
@@ -780,9 +916,41 @@ class WerewolfBot {
                 [serverId]
             );
 
+            // Reset all members to Spectator role
+            let resetMembersCount = 0;
+            try {
+                const spectatorRole = message.guild.roles.cache.find(r => r.name === 'Spectator');
+                if (spectatorRole) {
+                    // Fetch all members in the guild
+                    const members = await message.guild.members.fetch();
+                    
+                    for (const [memberId, member] of members) {
+                        // Skip bots
+                        if (member.user.bot) continue;
+                        
+                        try {
+                            // Remove all game-related roles
+                            await this.removeRole(member, 'Signed Up');
+                            await this.removeRole(member, 'Alive');
+                            await this.removeRole(member, 'Dead');
+                            
+                            // Assign Spectator role
+                            await this.assignRole(member, 'Spectator');
+                            resetMembersCount++;
+                        } catch (error) {
+                            console.error(`Error resetting roles for member ${member.displayName}:`, error);
+                        }
+                    }
+                } else {
+                    console.log('Spectator role not found - skipping member role reset');
+                }
+            } catch (error) {
+                console.error('Error during member role reset:', error);
+            }
+
             const successEmbed = new EmbedBuilder()
                 .setTitle('✅ Server Refreshed')
-                .setDescription(`Server has been successfully refreshed!\n\n• ${deletedChannelsCount} text channels deleted (kept #general)\n• ${deletedCategoriesCount} categories deleted\n• Game counter reset to 1\n• Database cleaned\n\nYou can now create a new game with \`Wolf.create\`.`)
+                .setDescription(`Server has been successfully refreshed!\n\n• ${deletedChannelsCount} text channels deleted (kept #general)\n• ${deletedCategoriesCount} categories deleted\n• Game counter reset to 1\n• Database cleaned\n• ${resetMembersCount} members reset to Spectator role\n\nYou can now create a new game with \`Wolf.create\`.`)
                 .setColor(0x00AE86);
 
             await message.reply({ embeds: [successEmbed] });
@@ -790,6 +958,89 @@ class WerewolfBot {
         } catch (error) {
             console.error('Error during server refresh:', error);
             await message.reply('❌ An error occurred during the refresh. Some channels may need to be manually deleted.');
+        }
+    }
+
+    async handleRoles(message) {
+        const guild = message.guild;
+
+        try {
+            // Define the roles we need to create
+            const rolesToCreate = [
+                {
+                    name: 'Mod',
+                    color: '#FF0000', // Red
+                    permissions: [PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageMessages],
+                    description: 'Moderator role with admin permissions'
+                },
+                {
+                    name: 'Spectator',
+                    color: '#808080', // Gray
+                    permissions: [],
+                    description: 'Default role for new members'
+                },
+                {
+                    name: 'Signed Up',
+                    color: '#FFFF00', // Yellow
+                    permissions: [],
+                    description: 'Players who have signed up for the game'
+                },
+                {
+                    name: 'Alive',
+                    color: '#00FF00', // Green
+                    permissions: [],
+                    description: 'Players who are alive in the game'
+                },
+                {
+                    name: 'Dead',
+                    color: '#000000', // Black
+                    permissions: [],
+                    description: 'Players who are dead in the game'
+                }
+            ];
+
+            let createdRoles = 0;
+            let existingRoles = 0;
+            const roleResults = [];
+
+            // Create or verify each role exists
+            for (const roleData of rolesToCreate) {
+                let role = guild.roles.cache.find(r => r.name === roleData.name);
+                
+                if (!role) {
+                    try {
+                        role = await guild.roles.create({
+                            name: roleData.name,
+                            color: roleData.color,
+                            permissions: roleData.permissions,
+                            reason: 'Werewolf bot role setup'
+                        });
+                        createdRoles++;
+                        roleResults.push(`✅ Created: **${roleData.name}**`);
+                    } catch (error) {
+                        roleResults.push(`❌ Failed to create: **${roleData.name}** - ${error.message}`);
+                    }
+                } else {
+                    existingRoles++;
+                    roleResults.push(`🔍 Already exists: **${roleData.name}**`);
+                }
+            }
+
+            // Create summary embed
+            const embed = new EmbedBuilder()
+                .setTitle('🎭 Role Setup Complete')
+                .setDescription(`Role setup has been completed for this server.\n\n${roleResults.join('\n')}`)
+                .addFields(
+                    { name: 'Summary', value: `• ${createdRoles} roles created\n• ${existingRoles} roles already existed`, inline: false },
+                    { name: 'Role Functions', value: '• **Mod**: Admin permissions for game management\n• **Spectator**: Default role for new members\n• **Signed Up**: Players who joined the game\n• **Alive**: Players currently alive in-game\n• **Dead**: Players who have been eliminated', inline: false }
+                )
+                .setColor(0x00AE86);
+
+            await message.reply({ embeds: [embed] });
+
+        } catch (error) {
+            console.error('Error creating roles:', error);
+            await message.reply('❌ An error occurred while setting up roles. Please check bot permissions.');
         }
     }
 
@@ -816,6 +1067,7 @@ class WerewolfBot {
             embed.addFields(
                 { name: 'Moderator Commands', value: 'Commands only moderators can use:', inline: false },
                 { name: 'Wolf.setup', value: 'Initial server setup - configure game prefix, starting number, and game name', inline: false },
+                { name: 'Wolf.roles', value: '🎭 Create all game roles (Mod, Spectator, Signed Up, Alive, Dead)', inline: false },
                 { name: 'Wolf.create', value: 'Create a new game with signup channel', inline: false },
                 { name: 'Wolf.start', value: 'Start the game and create all game channels', inline: false },
                 { name: 'Wolf.next', value: 'Move to the next phase (day/night)', inline: false },

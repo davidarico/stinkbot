@@ -113,13 +113,14 @@ Commands are divided into two categories: **Player Commands** (available to ever
 | Command | Description | Usage |
 |---------|-------------|-------|
 | `Wolf.setup` | Configure server settings | `Wolf.setup` |
+| `Wolf.roles` | 🎭 Create all game roles | `Wolf.roles` |
 | `Wolf.create` | Create a new game | `Wolf.create` |
 | `Wolf.start` | Start the game and create channels | `Wolf.start` |
 | `Wolf.next` | Move to next phase (day/night) | `Wolf.next` |
 | `Wolf.end` | End the current game | `Wolf.end` |
-| `Wolf.refresh` | 🔄 **Reset server** (delete all channels except #general) | `Wolf.refresh` |
+| `Wolf.refresh` | 🔄 **Reset server** (delete channels, reset roles to Spectator) | `Wolf.refresh` |
 
-> ⚠️ **Warning**: The `refresh` command will delete ALL text channels except #general and reset the server to game 1. Use only for testing!
+> ⚠️ **Warning**: The `refresh` command will delete ALL text channels except #general, reset all members to Spectator role, and reset the server to game 1. Use only for testing!
 
 ## 🎯 Typical Game Flow
 
@@ -127,6 +128,9 @@ Commands are divided into two categories: **Player Commands** (available to ever
    ```
    Wolf.setup
    # Follow prompts to set prefix, starting number, and game name
+   
+   Wolf.roles
+   # Creates all necessary game roles
    ```
 
 2. **Create Game**:
@@ -160,6 +164,34 @@ Commands are divided into two categories: **Player Commands** (available to ever
    # Requires confirmation
    ```
 
+## 🎭 Role System
+
+The bot uses a comprehensive role system to manage permissions and access:
+
+### Roles
+
+| Role | Color | Purpose | Permissions |
+|------|-------|---------|-------------|
+| **Mod** | 🔴 Red | Moderators/Admins | Can see mod-chat, manage channels |
+| **Spectator** | ⚪ Gray | Default for new members | Can see and chat in dead-chat only |
+| **Signed Up** | 🟡 Yellow | Players who joined the game | Temporary role during signup phase |
+| **Alive** | 🟢 Green | Living players | Can see all game channels, cannot see dead-chat |
+| **Dead** | ⚫ Black | Eliminated players | Can see all channels, can only chat in dead-chat |
+
+### Role Flow
+
+1. **Setup**: Run `Wolf.roles` to create all roles
+2. **Signup**: Players who use `Wolf.in` get **Signed Up** role
+3. **Game Start**: All **Signed Up** players become **Alive**
+4. **Elimination**: Players manually change from **Alive** to **Dead** (by moderators)
+5. **Spectators**: Non-players get **Spectator** role for watching
+
+### Channel Permissions
+
+- **Dead Chat**: Dead + Spectators can see/chat, Alive cannot see
+- **Game Channels**: Alive can see/chat, Dead can see but not chat, Spectators cannot see
+- **Mod Chat**: Only Mod role can see and chat
+
 ## 📁 Channel Structure
 
 When a game is created, the bot generates:
@@ -175,6 +207,7 @@ When a game is created, the bot generates:
 - `{prefix}{number}-results` - Game results and announcements
 - `{prefix}{number}-voting-booth` - Voting channel
 - `{prefix}{number}-breakdown` - Post-game analysis
+- `{prefix}{number}-mod-chat` - Private moderator communication
 
 Example with prefix "g" and game number 1:
 - `g1-signups` → `g1-dead-chat`
@@ -265,6 +298,13 @@ The bot uses 4 main tables:
 
 ## ✨ New Features & Improvements
 
+### Role-Based Permission System
+- **`Wolf.roles` command** creates comprehensive role system for game management
+- **Automatic role assignment**: Players get appropriate roles during signup and game phases
+- **Channel permissions**: Each role has specific access to game channels
+- **Roles include**: Mod (admin), Spectator (observers), Signed Up, Alive, Dead
+- **Mod-chat channel**: Private communication for moderators in each game
+
 ### Display Names
 - **Player lists and voting** now show Discord display names instead of usernames for better readability
 - Display names are used in signup lists, voting sheets, and player rosters
@@ -281,6 +321,7 @@ The bot uses 4 main tables:
 ### Server Refresh for Testing
 - **`Wolf.refresh` command** resets a server for quick iteration
 - Deletes all text channels except #general, removes all categories, and cleans database
+- **Resets all members to Spectator role** (except bots)
 - Requires confirmation to prevent accidental use
 - Perfect for testing and development environments
 
