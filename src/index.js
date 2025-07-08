@@ -28,6 +28,22 @@ client.on('messageCreate', async (message) => {
     await werewolfBot.handleMessage(message);
 });
 
+client.on('guildMemberAdd', async (member) => {
+    try {
+        // Find the Spectator role
+        const spectatorRole = member.guild.roles.cache.find(role => role.name === 'Spectator');
+        
+        if (spectatorRole) {
+            await member.roles.add(spectatorRole);
+            console.log(`✅ Assigned Spectator role to ${member.user.tag} (${member.id})`);
+        } else {
+            console.log(`⚠️ Spectator role not found in guild ${member.guild.name} (${member.guild.id})`);
+        }
+    } catch (error) {
+        console.error(`❌ Failed to assign Spectator role to ${member.user.tag}:`, error);
+    }
+});
+
 client.on('error', (error) => {
     console.error('Discord client error:', error);
 });

@@ -227,7 +227,7 @@ class WerewolfBot {
             }
 
             // Wolf Chat: Mods can see and type, everyone else cannot see. Mod will manually set this channels permissions
-            if (wolfChat && modRole && spectatorRole) {
+            if (wolfChat && modRole && spectatorRole && aliveRole) {
                 await wolfChat.permissionOverwrites.edit(guild.roles.everyone.id, {
                     ViewChannel: false,
                     SendMessages: false
@@ -239,6 +239,10 @@ class WerewolfBot {
                 await wolfChat.permissionOverwrites.edit(spectatorRole.id, {
                     ViewChannel: true,
                     SendMessages: false
+                });
+                await wolfChat.permissionOverwrites.edit(aliveRole.id, {
+                    ViewChannel: false,
+                    SendMessages: true
                 });
             }
 
@@ -499,6 +503,7 @@ class WerewolfBot {
 
         // Remove "Signed Up" role
         await this.removeRole(message.member, 'Signed Up');
+        await this.assignRole(message.member, 'Spectator');
 
         // React with checkmark for success
         await message.react('✅');
