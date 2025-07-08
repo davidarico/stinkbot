@@ -7,7 +7,7 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "test": "node test/test-bot.js",
-    "db:refresh": "psql -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PG_DATABASE -f database_setup.sql"
+    "db:refresh": "node -e \"require('dotenv').config(); const { execSync } = require('child_process'); execSync('psql -h ' + process.env.PG_HOST + ' -p ' + process.env.PG_PORT + ' -U ' + process.env.PG_USER + ' -d ' + process.env.PG_DATABASE + ' -f database_setup.sql', { stdio: 'inherit' });\""
   },
   "keywords": ["discord", "bot", "werewolf", "game", "management"],
   "author": "",

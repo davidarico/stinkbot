@@ -39,6 +39,8 @@ CREATE TABLE games (
     status VARCHAR(20) NOT NULL DEFAULT 'signup', -- signup, active, ended
     day_phase VARCHAR(10) NOT NULL DEFAULT 'night', -- day, night
     day_number INTEGER NOT NULL DEFAULT 1,
+    day_message TEXT DEFAULT 'WAKE UP! Time to bully your fellow villagers and vote them out.',
+    night_message TEXT DEFAULT 'Night falls. Someone is snoring really loudly.',
     signup_channel_id VARCHAR(20),
     town_square_channel_id VARCHAR(20),
     wolf_chat_channel_id VARCHAR(20),
@@ -73,10 +75,21 @@ CREATE TABLE votes (
     UNIQUE(game_id, voter_user_id, day_number)
 );
 
+-- Table to store additional game channels
+CREATE TABLE game_channels (
+    id SERIAL PRIMARY KEY,
+    game_id INTEGER REFERENCES games(id) ON DELETE CASCADE,
+    channel_id VARCHAR(20) NOT NULL,
+    channel_name VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(game_id, channel_id)
+);
+
 -- Indexes for better performance
 CREATE INDEX idx_games_server_status ON games(server_id, status);
 CREATE INDEX idx_players_game_status ON players(game_id, status);
 CREATE INDEX idx_votes_game_day ON votes(game_id, day_number);
+CREATE INDEX idx_game_channels_game ON game_channels(game_id);
 
 -- Function to update the updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()

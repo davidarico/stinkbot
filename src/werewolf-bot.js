@@ -70,6 +70,15 @@ class WerewolfBot {
                 case 'alive':
                     await this.handleAlive(message);
                     break;
+                case 'add_channel':
+                    await this.handleAddChannel(message, args);
+                    break;
+                case 'day':
+                    await this.handleDayMessage(message, args);
+                    break;
+                case 'night':
+                    await this.handleNightMessage(message, args);
+                    break;
                 case 'issues':
                     await this.handleIssues(message);
                     break;
@@ -163,7 +172,8 @@ class WerewolfBot {
                         SendMessages: false
                     });
                     await channel.permissionOverwrites.edit(spectatorRole.id, {
-                        ViewChannel: false
+                        ViewChannel: true,
+                        SendMessages: false
                     });
                 }
             }
@@ -217,7 +227,7 @@ class WerewolfBot {
             }
 
             // Wolf Chat: Mods can see and type, everyone else cannot see. Mod will manually set this channels permissions
-            if (wolfChat && modRole) {
+            if (wolfChat && modRole && spectatorRole) {
                 await wolfChat.permissionOverwrites.edit(guild.roles.everyone.id, {
                     ViewChannel: false,
                     SendMessages: false
@@ -226,7 +236,7 @@ class WerewolfBot {
                     ViewChannel: true,
                     SendMessages: true
                 });
-                await breakdown.permissionOverwrites.edit(spectatorRole.id, {
+                await wolfChat.permissionOverwrites.edit(spectatorRole.id, {
                     ViewChannel: true,
                     SendMessages: false
                 });
@@ -881,11 +891,50 @@ class WerewolfBot {
             await this.createVotingMessage(game.id, votingChannel);
         }
 
+        // Use custom messages or defaults
+        const phaseMessage = newPhase === 'day' ? game.day_message : game.night_message;
+        
+        const title = newPhase === 'day' ? '🌞 Day Time!' : '🌙 Night Time!';
+
         const embed = new EmbedBuilder()
-            .setTitle('🌅 Phase Change')
-            .setDescription(`It is now **${newPhase}** of day ${newDay}.`)
+            .setTitle(title)
+            .setDescription(`It is now **${newPhase} ${newDay}**.\n\n${phaseMessage}`)
             .setColor(newPhase === 'day' ? 0xF1C40F : 0x2C3E50);
 
+        // Post phase change message to all game channels
+        const gameChannelIds = [
+            game.voting_booth_channel_id,
+            game.wolf_chat_channel_id,
+            game.town_square_channel_id
+        ].filter(id => id); // Filter out any null/undefined channel IDs
+
+        // Get additional channels created with add_channel command
+        const additionalChannels = await this.db.query(
+            'SELECT channel_id FROM game_channels WHERE game_id = $1',
+            [game.id]
+        );
+
+        // Add additional channel IDs to the list
+        additionalChannels.rows.forEach(row => {
+            gameChannelIds.push(row.channel_id);
+        });
+
+        // Send the phase change message to all game channels
+        const channelPromises = gameChannelIds.map(async (channelId) => {
+            try {
+                const channel = await this.client.channels.fetch(channelId);
+                if (channel) {
+                    await channel.send({ embeds: [embed] });
+                }
+            } catch (error) {
+                console.error(`Error sending phase message to channel ${channelId}:`, error);
+            }
+        });
+
+        // Wait for all channel messages to be sent
+        await Promise.all(channelPromises);
+
+        // Also reply to the command user
         await message.reply({ embeds: [embed] });
     }
 
@@ -926,9 +975,41 @@ class WerewolfBot {
             ['ended', game.id]
         );
 
+                    // Reset all members to Spectator role
+            let resetMembersCount = 0;
+            try {
+                const spectatorRole = message.guild.roles.cache.find(r => r.name === 'Spectator');
+                if (spectatorRole) {
+                    // Fetch all members in the guild
+                    const members = await message.guild.members.fetch();
+                    
+                    for (const [memberId, member] of members) {
+                        // Skip bots
+                        if (member.user.bot) continue;
+                        
+                        try {
+                            // Remove all game-related roles
+                            await this.removeRole(member, 'Signed Up');
+                            await this.removeRole(member, 'Alive');
+                            await this.removeRole(member, 'Dead');
+                            
+                            // Assign Spectator role
+                            await this.assignRole(member, 'Spectator');
+                            resetMembersCount++;
+                        } catch (error) {
+                            console.error(`Error resetting roles for member ${member.displayName}:`, error);
+                        }
+                    }
+                } else {
+                    console.log('Spectator role not found - skipping member role reset');
+                }
+            } catch (error) {
+                console.error('Error during member role reset:', error);
+            }
+
         const successEmbed = new EmbedBuilder()
             .setTitle('🏁 Game Ended')
-            .setDescription('The game has been officially ended. All data has been preserved.')
+            .setDescription('The game has been officially ended.')
             .setColor(0x95A5A6);
 
         await message.reply({ embeds: [successEmbed] });
@@ -980,6 +1061,7 @@ class WerewolfBot {
 
             // Clear database data for this server
             await this.db.query('DELETE FROM votes WHERE game_id IN (SELECT id FROM games WHERE server_id = $1)', [serverId]);
+            await this.db.query('DELETE FROM game_channels WHERE game_id IN (SELECT id FROM games WHERE server_id = $1)', [serverId]);
             await this.db.query('DELETE FROM players WHERE game_id IN (SELECT id FROM games WHERE server_id = $1)', [serverId]);
             await this.db.query('DELETE FROM games WHERE server_id = $1', [serverId]);
             
@@ -1147,6 +1229,9 @@ class WerewolfBot {
                 { name: 'Wolf.next', value: 'Move to the next phase (day/night)', inline: false },
                 { name: 'Wolf.end', value: 'End the current game (requires confirmation)', inline: false },
                 { name: 'Wolf.kill @user', value: 'Kill a player (set to Dead role and update database)', inline: false },
+                { name: 'Wolf.add_channel <name>', value: 'Create an additional channel in the game category', inline: false },
+                { name: 'Wolf.day <message>', value: 'Set custom day transition message', inline: false },
+                { name: 'Wolf.night <message>', value: 'Set custom night transition message', inline: false },
                 { name: 'Wolf.refresh', value: '🔄 Reset server (delete all channels except #general, reset to game 1) - for testing only!', inline: false }
             );
         } else {
@@ -1266,6 +1351,184 @@ class WerewolfBot {
             .setColor(0x00FF00);
 
         await message.reply({ embeds: [embed] });
+    }
+
+    async handleAddChannel(message, args) {
+        const serverId = message.guild.id;
+
+        // Get active game
+        const gameResult = await this.db.query(
+            'SELECT * FROM games WHERE server_id = $1 AND status IN ($2, $3)',
+            [serverId, 'signup', 'active']
+        );
+
+        if (!gameResult.rows.length) {
+            return message.reply('❌ No active game found.');
+        }
+
+        // Check if channel name is provided
+        if (!args.length) {
+            return message.reply('❌ Please provide a channel name. Usage: `Wolf.add_channel <channel-name>`');
+        }
+
+        const game = gameResult.rows[0];
+        const channelName = args.join('-').toLowerCase();
+
+        // Get server config for prefix
+        const configResult = await this.db.query(
+            'SELECT * FROM server_configs WHERE server_id = $1',
+            [serverId]
+        );
+        const config = configResult.rows[0];
+
+        // Create the full channel name with prefix
+        const fullChannelName = `${config.game_prefix}${game.game_number}-${channelName}`;
+
+        try {
+            // Create the channel in the game category
+            const category = await this.client.channels.fetch(game.category_id);
+            const newChannel = await message.guild.channels.create({
+                name: fullChannelName,
+                type: ChannelType.GuildText,
+                parent: category.id,
+            });
+
+            // Set up permissions for the new channel (same as other game channels)
+            const guild = message.guild;
+            const aliveRole = guild.roles.cache.find(r => r.name === 'Alive');
+            const deadRole = guild.roles.cache.find(r => r.name === 'Dead');
+            const spectatorRole = guild.roles.cache.find(r => r.name === 'Spectator');
+
+            if (aliveRole && deadRole && spectatorRole) {
+                await newChannel.permissionOverwrites.edit(guild.roles.everyone.id, {
+                    ViewChannel: false,
+                    SendMessages: false
+                });
+                await newChannel.permissionOverwrites.edit(aliveRole.id, {
+                    ViewChannel: false,
+                    SendMessages: false
+                });
+                await newChannel.permissionOverwrites.edit(deadRole.id, {
+                    ViewChannel: true,
+                    SendMessages: false
+                });
+                await newChannel.permissionOverwrites.edit(spectatorRole.id, {
+                    ViewChannel: true,
+                    SendMessages: false
+                });
+            }
+
+            // Save channel to database
+            await this.db.query(
+                'INSERT INTO game_channels (game_id, channel_id, channel_name) VALUES ($1, $2, $3)',
+                [game.id, newChannel.id, fullChannelName]
+            );
+
+            const embed = new EmbedBuilder()
+                .setTitle('📁 Channel Created')
+                .setDescription(`Successfully created new game channel!`)
+                .addFields(
+                    { name: 'Channel', value: `<#${newChannel.id}>`, inline: true },
+                    { name: 'Name', value: fullChannelName, inline: true }
+                )
+                .setColor(0x00AE86);
+
+            await message.reply({ embeds: [embed] });
+
+        } catch (error) {
+            console.error('Error creating channel:', error);
+            await message.reply('❌ An error occurred while creating the channel.');
+        }
+    }
+
+    async handleDayMessage(message, args) {
+        const serverId = message.guild.id;
+
+        // Get active game
+        const gameResult = await this.db.query(
+            'SELECT * FROM games WHERE server_id = $1 AND status IN ($2, $3)',
+            [serverId, 'signup', 'active']
+        );
+
+        if (!gameResult.rows.length) {
+            return message.reply('❌ No active game found.');
+        }
+
+        const game = gameResult.rows[0];
+
+        // Check if message is provided
+        if (!args.length) {
+            return message.reply(`❌ Please provide a day message. Usage: \`Wolf.day <message>\`\n\nCurrent day message: "${game.day_message}"`);
+        }
+
+        const newMessage = args.join(' ');
+
+        try {
+            // Update the day message
+            await this.db.query(
+                'UPDATE games SET day_message = $1 WHERE id = $2',
+                [newMessage, game.id]
+            );
+
+            const embed = new EmbedBuilder()
+                .setTitle('🌅 Day Message Updated')
+                .setDescription('Successfully updated the day transition message!')
+                .addFields(
+                    { name: 'New Day Message', value: newMessage, inline: false }
+                )
+                .setColor(0xF1C40F);
+
+            await message.reply({ embeds: [embed] });
+
+        } catch (error) {
+            console.error('Error updating day message:', error);
+            await message.reply('❌ An error occurred while updating the day message.');
+        }
+    }
+
+    async handleNightMessage(message, args) {
+        const serverId = message.guild.id;
+
+        // Get active game
+        const gameResult = await this.db.query(
+            'SELECT * FROM games WHERE server_id = $1 AND status IN ($2, $3)',
+            [serverId, 'signup', 'active']
+        );
+
+        if (!gameResult.rows.length) {
+            return message.reply('❌ No active game found.');
+        }
+
+        const game = gameResult.rows[0];
+
+        // Check if message is provided
+        if (!args.length) {
+            return message.reply(`❌ Please provide a night message. Usage: \`Wolf.night <message>\`\n\nCurrent night message: "${game.night_message}"`);
+        }
+
+        const newMessage = args.join(' ');
+
+        try {
+            // Update the night message
+            await this.db.query(
+                'UPDATE games SET night_message = $1 WHERE id = $2',
+                [newMessage, game.id]
+            );
+
+            const embed = new EmbedBuilder()
+                .setTitle('🌙 Night Message Updated')
+                .setDescription('Successfully updated the night transition message!')
+                .addFields(
+                    { name: 'New Night Message', value: newMessage, inline: false }
+                )
+                .setColor(0x2C3E50);
+
+            await message.reply({ embeds: [embed] });
+
+        } catch (error) {
+            console.error('Error updating night message:', error);
+            await message.reply('❌ An error occurred while updating the night message.');
+        }
     }
 
     async handleIssues(message) {
