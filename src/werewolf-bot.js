@@ -22,7 +22,7 @@ class WerewolfBot {
         
         // Check permissions for admin-only commands
         if (!playerCommands.includes(command) && !this.hasModeratorPermissions(message.member)) {
-            return message.reply('❌ You need moderator permissions to use this command.');
+            return message.reply('❓ Unknown command bozo.');
         }
 
         try {
@@ -62,6 +62,9 @@ class WerewolfBot {
                     break;
                 case 'roles':
                     await this.handleRoles(message);
+                    break;
+                case 'kill':
+                    await this.handleKill(message, args);
                     break;
                 default:
                     await message.reply('❓ Unknown command bozo.');
@@ -137,7 +140,7 @@ class WerewolfBot {
             }
 
             // Game channels: Alive can see and type, Dead can see but not type (except dead chat), Spectators cannot see
-            const gameChannels = [townSquare, wolfChat, memos, results, votingBooth, breakdown];
+            const gameChannels = [townSquare, wolfChat, memos, votingBooth, breakdown];
             for (const channel of gameChannels) {
                 if (aliveRole && deadRole && spectatorRole) {
                     await channel.permissionOverwrites.edit(guild.roles.everyone.id, {
@@ -156,6 +159,29 @@ class WerewolfBot {
                         ViewChannel: false
                     });
                 }
+            }
+
+            // Results channel: Only Mod can type, everyone else can see but not type
+            if (results && modRole && aliveRole && deadRole && spectatorRole) {
+                await results.permissionOverwrites.edit(guild.roles.everyone.id, {
+                    ViewChannel: false,
+                    SendMessages: false
+                });
+                await results.permissionOverwrites.edit(aliveRole.id, {
+                    ViewChannel: true,
+                    SendMessages: false
+                });
+                await results.permissionOverwrites.edit(deadRole.id, {
+                    ViewChannel: true,
+                    SendMessages: false
+                });
+                await results.permissionOverwrites.edit(spectatorRole.id, {
+                    ViewChannel: false
+                });
+                await results.permissionOverwrites.edit(modRole.id, {
+                    ViewChannel: true,
+                    SendMessages: true
+                });
             }
 
             // Mod chat is already set up in channel creation
@@ -549,9 +575,6 @@ class WerewolfBot {
             [townSquare.id, wolfChat.id, memos.id, results.id, votingBooth.id, game.id]
         );
 
-        // Send initial voting message
-        await this.createVotingMessage(game.id, votingBooth);
-
         // Send player list to dead chat
         await this.sendPlayerListToDeadChat(game.id, signupChannel);
 
@@ -579,7 +602,7 @@ class WerewolfBot {
         const dayNumber = gameResult.rows[0]?.day_number || 1;
         
         const embed = new EmbedBuilder()
-            .setTitle(`🗳️ Day ${dayNumber + 1} Voting`)
+            .setTitle(`🗳️ Day ${dayNumber} Voting`)
             .setDescription('Use `Wolf.vote @user` to vote for someone.\nUse `Wolf.retract` to retract your vote.')
             .addFields({ name: 'Current Votes', value: 'No votes yet.' })
             .setColor(0xE74C3C);
@@ -788,11 +811,13 @@ class WerewolfBot {
         } else {
             newPhase = 'day';
             newDay = game.day_number + 1;
-            
-            // Clear votes for new day
+        }
+
+        // Clear all votes for the game at the end of each day
+        if (game.day_phase === 'day') {
             await this.db.query(
-                'DELETE FROM votes WHERE game_id = $1 AND day_number = $2',
-                [game.id, game.day_number]
+                'DELETE FROM votes WHERE game_id = $1',
+                [game.id]
             );
         }
 
@@ -802,8 +827,8 @@ class WerewolfBot {
             [newPhase, newDay, game.id]
         );
 
-        // If it's a new day, create new voting message
-        if (newPhase === 'day') {
+        // If it's a new day (day 2 or later), create new voting message
+        if (newPhase === 'day' && newDay >= 2) {
             const votingChannel = await this.client.channels.fetch(game.voting_booth_channel_id);
             await this.createVotingMessage(game.id, votingChannel);
         }
@@ -1072,6 +1097,7 @@ class WerewolfBot {
                 { name: 'Wolf.start', value: 'Start the game and create all game channels', inline: false },
                 { name: 'Wolf.next', value: 'Move to the next phase (day/night)', inline: false },
                 { name: 'Wolf.end', value: 'End the current game (requires confirmation)', inline: false },
+                { name: 'Wolf.kill @user', value: 'Kill a player (set to Dead role and update database)', inline: false },
                 { name: 'Wolf.refresh', value: '🔄 Reset server (delete all channels except #general, reset to game 1) - for testing only!', inline: false }
             );
         } else {
@@ -1079,6 +1105,79 @@ class WerewolfBot {
         }
 
         await message.reply({ embeds: [embed] });
+    }
+
+    async handleKill(message, args) {
+        const serverId = message.guild.id;
+
+        // Get active game
+        const gameResult = await this.db.query(
+            'SELECT * FROM games WHERE server_id = $1 AND status = $2',
+            [serverId, 'active']
+        );
+
+        if (!gameResult.rows.length) {
+            return message.reply('❌ No active game found.');
+        }
+
+        // Check if a user is mentioned
+        if (!args.length || !message.mentions.users.size) {
+            return message.reply('❌ Please mention a user to kill. Usage: `Wolf.kill @user`');
+        }
+
+        const targetUser = message.mentions.users.first();
+        const targetMember = await message.guild.members.fetch(targetUser.id).catch(() => null);
+
+        if (!targetMember) {
+            return message.reply('❌ Could not find that user in this server.');
+        }
+
+        const game = gameResult.rows[0];
+
+        // Check if the target is in the game
+        const playerResult = await this.db.query(
+            'SELECT * FROM players WHERE game_id = $1 AND user_id = $2',
+            [game.id, targetUser.id]
+        );
+
+        if (!playerResult.rows.length) {
+            return message.reply(`❌ ${targetMember.displayName} is not in the current game.`);
+        }
+
+        const player = playerResult.rows[0];
+
+        // Check if player is already dead
+        if (player.status === 'dead') {
+            return message.reply(`❌ ${targetMember.displayName} is already dead.`);
+        }
+
+        try {
+            // Update player status in database
+            await this.db.query(
+                'UPDATE players SET status = $1 WHERE game_id = $2 AND user_id = $3',
+                ['dead', game.id, targetUser.id]
+            );
+
+            // Update Discord roles
+            await this.removeRole(targetMember, 'Alive');
+            await this.assignRole(targetMember, 'Dead');
+
+            const embed = new EmbedBuilder()
+                .setTitle('💀 Player Killed')
+                .setDescription(`${targetMember.displayName} has been killed and is now dead.`)
+                .addFields(
+                    { name: 'Player', value: targetMember.displayName, inline: true },
+                    { name: 'Status', value: 'Dead', inline: true }
+                )
+                .setColor(0x8B0000);
+
+            await message.reply({ embeds: [embed] });
+            await message.react('⚰️');
+
+        } catch (error) {
+            console.error('Error killing player:', error);
+            await message.reply('❌ An error occurred while killing the player.');
+        }
     }
 }
 
