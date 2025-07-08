@@ -1,0 +1,23 @@
+{
+  "name": "werewolf-discord-bot",
+  "version": "1.0.0",
+  "description": "Discord bot for managing Werewolf games across multiple servers",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "test": "node test/test-bot.js",
+    "db:refresh": "psql -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PG_DATABASE -f database_setup.sql"
+  },
+  "keywords": ["discord", "bot", "werewolf", "game", "management"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "pg": "^8.11.3",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
