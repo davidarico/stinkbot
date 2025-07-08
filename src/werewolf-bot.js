@@ -18,7 +18,7 @@ class WerewolfBot {
         const command = args.shift().toLowerCase();
 
         // Commands that anyone can use
-        const playerCommands = ['in', 'out', 'vote', 'retract', 'help'];
+        const playerCommands = ['in', 'out', 'vote', 'retract', 'help', 'alive'];
         
         // Check permissions for admin-only commands
         if (!playerCommands.includes(command) && !this.hasModeratorPermissions(message.member)) {
@@ -65,6 +65,9 @@ class WerewolfBot {
                     break;
                 case 'kill':
                     await this.handleKill(message, args);
+                    break;
+                case 'alive':
+                    await this.handleAlive(message);
                     break;
                 default:
                     await message.reply('❓ Unknown command bozo.');
@@ -1084,6 +1087,7 @@ class WerewolfBot {
             { name: 'Wolf.out', value: 'Remove yourself from the current game', inline: false },
             { name: 'Wolf.vote @user', value: 'Vote for a player (only in voting booth during day)', inline: false },
             { name: 'Wolf.retract', value: 'Retract your current vote', inline: false },
+            { name: 'Wolf.alive', value: 'Show all players currently alive in the game', inline: false },
             { name: 'Wolf.help', value: 'Show this help message', inline: false }
         );
 
@@ -1178,6 +1182,45 @@ class WerewolfBot {
             console.error('Error killing player:', error);
             await message.reply('❌ An error occurred while killing the player.');
         }
+    }
+
+    async handleAlive(message) {
+        const serverId = message.guild.id;
+
+        // Get active game
+        const gameResult = await this.db.query(
+            'SELECT * FROM games WHERE server_id = $1 AND status = $2',
+            [serverId, 'active']
+        );
+
+        if (!gameResult.rows.length) {
+            return message.reply('❌ No active game found.');
+        }
+
+        const game = gameResult.rows[0];
+
+        // Get all alive players
+        const alivePlayers = await this.db.query(
+            'SELECT username FROM players WHERE game_id = $1 AND status = $2 ORDER BY username',
+            [game.id, 'alive']
+        );
+
+        if (alivePlayers.rows.length === 0) {
+            return message.reply('💀 No players are currently alive in the game.');
+        }
+
+        const playerList = alivePlayers.rows.map((player, index) => `${index + 1}. ${player.username}`).join('\n');
+        
+        const embed = new EmbedBuilder()
+            .setTitle('💚 Alive Players')
+            .setDescription(`Here are all the players currently alive in the game:`)
+            .addFields({ 
+                name: `Players (${alivePlayers.rows.length})`, 
+                value: playerList 
+            })
+            .setColor(0x00FF00);
+
+        await message.reply({ embeds: [embed] });
     }
 }
 
