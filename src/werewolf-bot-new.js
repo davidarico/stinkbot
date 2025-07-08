@@ -731,7 +731,7 @@ class WerewolfBot {
         // Confirmation
         const embed = new EmbedBuilder()
             .setTitle('⚠️ Confirm Server Refresh')
-            .setDescription('Are you sure you want to refresh this server? This will:\n\n• Delete ALL text channels except #general\n• Delete ALL categories\n• Reset game counter to 1\n• End any active games\n\nThis action cannot be undone!')
+            .setDescription('Are you sure you want to refresh this server? This will:\n\n• Delete ALL game channels and categories\n• Reset game counter to 1\n• End any active games\n\nThis action cannot be undone!')
             .setColor(0xE74C3C);
 
         await message.reply({ embeds: [embed] });
@@ -745,27 +745,24 @@ class WerewolfBot {
         }
 
         try {
-            // Delete all text channels except 'general'
-            const allChannels = await message.guild.channels.fetch();
-            let deletedChannelsCount = 0;
-            let deletedCategoriesCount = 0;
+            // Get all games for this server
+            const gamesResult = await this.db.query(
+                'SELECT * FROM games WHERE server_id = $1',
+                [serverId]
+            );
 
-            for (const [channelId, channel] of allChannels) {
-                try {
-                    // Delete all categories
-                    if (channel.type === ChannelType.GuildCategory) {
-                        await channel.delete();
-                        deletedCategoriesCount++;
-                        console.log(`Deleted category: ${channel.name}`);
+            // Delete all game channels and categories
+            for (const game of gamesResult.rows) {
+                // Delete category (this will delete all channels in it)
+                if (game.category_id) {
+                    try {
+                        const category = await this.client.channels.fetch(game.category_id);
+                        if (category) {
+                            await category.delete();
+                        }
+                    } catch (error) {
+                        console.log(`Category ${game.category_id} not found or already deleted`);
                     }
-                    // Delete all text channels except 'general'
-                    else if (channel.type === ChannelType.GuildText && channel.name !== 'general') {
-                        await channel.delete();
-                        deletedChannelsCount++;
-                        console.log(`Deleted text channel: ${channel.name}`);
-                    }
-                } catch (error) {
-                    console.log(`Failed to delete channel ${channel.name}: ${error.message}`);
                 }
             }
 
@@ -782,7 +779,7 @@ class WerewolfBot {
 
             const successEmbed = new EmbedBuilder()
                 .setTitle('✅ Server Refreshed')
-                .setDescription(`Server has been successfully refreshed!\n\n• ${deletedChannelsCount} text channels deleted (kept #general)\n• ${deletedCategoriesCount} categories deleted\n• Game counter reset to 1\n• Database cleaned\n\nYou can now create a new game with \`Wolf.create\`.`)
+                .setDescription('Server has been successfully refreshed!\n\n• All game channels deleted\n• Game counter reset to 1\n• Database cleaned\n\nYou can now create a new game with `Wolf.create`.')
                 .setColor(0x00AE86);
 
             await message.reply({ embeds: [successEmbed] });
@@ -820,7 +817,7 @@ class WerewolfBot {
                 { name: 'Wolf.start', value: 'Start the game and create all game channels', inline: false },
                 { name: 'Wolf.next', value: 'Move to the next phase (day/night)', inline: false },
                 { name: 'Wolf.end', value: 'End the current game (requires confirmation)', inline: false },
-                { name: 'Wolf.refresh', value: '🔄 Reset server (delete all channels except #general, reset to game 1) - for testing only!', inline: false }
+                { name: 'Wolf.refresh', value: '🔄 Reset entire server (delete all channels, reset to game 1) - for testing only!', inline: false }
             );
         } else {
             embed.setFooter({ text: 'Note: Some commands are only available to moderators.' });

@@ -117,9 +117,9 @@ Commands are divided into two categories: **Player Commands** (available to ever
 | `Wolf.start` | Start the game and create channels | `Wolf.start` |
 | `Wolf.next` | Move to next phase (day/night) | `Wolf.next` |
 | `Wolf.end` | End the current game | `Wolf.end` |
-| `Wolf.refresh` | 🔄 **Reset entire server** (testing only!) | `Wolf.refresh` |
+| `Wolf.refresh` | 🔄 **Reset server** (delete all channels except #general) | `Wolf.refresh` |
 
-> ⚠️ **Warning**: The `refresh` command will delete ALL game channels and reset the server to game 1. Use only for testing!
+> ⚠️ **Warning**: The `refresh` command will delete ALL text channels except #general and reset the server to game 1. Use only for testing!
 
 ## 🎯 Typical Game Flow
 
@@ -279,8 +279,8 @@ The bot uses 4 main tables:
 - Provides a reference for all participants at the beginning of the game
 
 ### Server Refresh for Testing
-- **`Wolf.refresh` command** completely resets a server for quick iteration
-- Deletes all game channels, resets game counter to 1, and cleans database
+- **`Wolf.refresh` command** resets a server for quick iteration
+- Deletes all text channels except #general, removes all categories, and cleans database
 - Requires confirmation to prevent accidental use
 - Perfect for testing and development environments
 
