@@ -1,9 +1,10 @@
 ## Known Issues
 
 ## WIP
-- Automatically assign spector role when a user joins (Maybe fixed waiting on another join)
+- Allow user to rename their own journal (This allows it so mods dont need to change it all the time)
 
 ## Solved Issues
+- Automatically assign spector role when a user joins
 - Modify Voting Booth to Only Start on D2
 - Spectator Cannot See Results
 - Channel permissions are not fully sorted out allow users to message in places they should not be able to
