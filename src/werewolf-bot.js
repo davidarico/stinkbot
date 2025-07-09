@@ -131,7 +131,7 @@ class WerewolfBot {
         await this.assignRole(member, 'Spectator');
     }
 
-    async setupChannelPermissions(game, deadChat, townSquare, wolfChat, memos, results, votingBooth, breakdown, modChat) {
+    async setupChannelPermissions(game, deadChat, townSquare, wolfChat, memos, results, votingBooth) {
         const guild = deadChat.guild;
         const aliveRole = guild.roles.cache.find(r => r.name === 'Alive');
         const deadRole = guild.roles.cache.find(r => r.name === 'Dead');
@@ -200,30 +200,6 @@ class WerewolfBot {
                     SendMessages: false
                 });
                 await results.permissionOverwrites.edit(modRole.id, {
-                    ViewChannel: true,
-                    SendMessages: true
-                });
-            }
-
-            // Breakdown channel: Mod can see and type, everyone else can see but not type
-            if (breakdown && modRole && aliveRole && deadRole && spectatorRole) {
-                await breakdown.permissionOverwrites.edit(guild.roles.everyone.id, {
-                    ViewChannel: false,
-                    SendMessages: false
-                });
-                await breakdown.permissionOverwrites.edit(aliveRole.id, {
-                    ViewChannel: true,
-                    SendMessages: false
-                });
-                await breakdown.permissionOverwrites.edit(deadRole.id, {
-                    ViewChannel: true,
-                    SendMessages: false
-                });
-                await breakdown.permissionOverwrites.edit(spectatorRole.id, {
-                    ViewChannel: true,
-                    SendMessages: false
-                });
-                await breakdown.permissionOverwrites.edit(modRole.id, {
                     ViewChannel: true,
                     SendMessages: true
                 });
@@ -398,6 +374,40 @@ class WerewolfBot {
             name: signupChannelName,
             type: ChannelType.GuildText,
             parent: category.id,
+        });
+
+        const modRole = guild.roles.cache.find(r => r.name === 'Mod');
+
+        const breakdownName = `${config.game_prefix}${config.game_counter}-breakdown`;
+        const breakdown = await message.guild.channels.create({
+            name: breakdownName,
+            type: ChannelType.GuildText,
+            parent: category.id,
+        });
+
+        await breakdown.permissionOverwrites.edit(guild.roles.everyone.id, {
+            ViewChannel: true,
+            SendMessages: false
+        });
+        await breakdown.permissionOverwrites.edit(modRole.id, {
+            ViewChannel: true,
+            SendMessages: true
+        });
+
+        const modChatName = `${config.game_prefix}${config.game_counter}-mod-chat`;
+        const modChat = await message.guild.channels.create({
+            name: modChatName,
+            type: ChannelType.GuildText,
+            parent: category.id,
+        });
+
+        await modChat.permissionOverwrites.edit(guild.roles.everyone.id, {
+            ViewChannel: false,
+            SendMessages: false
+        });
+        await modChat.permissionOverwrites.edit(modRole.id, {
+            ViewChannel: true,
+            SendMessages: true
         });
 
         // Save game to database
@@ -611,30 +621,6 @@ class WerewolfBot {
             parent: category.id,
         });
 
-        const breakdown = await message.guild.channels.create({
-            name: `${config.game_prefix}${game.game_number}-breakdown`,
-            type: ChannelType.GuildText,
-            parent: category.id,
-        });
-
-        // Create mod-chat channel with restricted permissions
-        const modRole = message.guild.roles.cache.find(r => r.name === 'Mod');
-        const modChat = await message.guild.channels.create({
-            name: `${config.game_prefix}${game.game_number}-mod-chat`,
-            type: ChannelType.GuildText,
-            parent: category.id,
-            permissionOverwrites: [
-                {
-                    id: message.guild.roles.everyone.id,
-                    deny: [PermissionFlagsBits.ViewChannel],
-                },
-                ...(modRole ? [{
-                    id: modRole.id,
-                    allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
-                }] : [])
-            ],
-        });
-
         // Update all signed up players to Alive role
         const signedUpPlayers = await this.db.query(
             'SELECT user_id FROM players WHERE game_id = $1',
@@ -652,7 +638,7 @@ class WerewolfBot {
         }
 
         // Set up channel permissions for game roles
-        await this.setupChannelPermissions(game, signupChannel, townSquare, wolfChat, memos, results, votingBooth, breakdown, modChat);
+        await this.setupChannelPermissions(game, signupChannel, townSquare, wolfChat, memos, results, votingBooth);
 
         // Update game in database
         await this.db.query(
@@ -2062,6 +2048,7 @@ class WerewolfBot {
             // Get roles for permissions
             const modRole = message.guild.roles.cache.find(r => r.name === 'Mod');
             const spectatorRole = message.guild.roles.cache.find(r => r.name === 'Spectator');
+            const deadRole = message.guild.roles.cache.find(r => r.name === 'Dead');
 
             // Create the journal channel with proper permissions
             const journalChannel = await message.guild.channels.create({
@@ -2083,6 +2070,11 @@ class WerewolfBot {
                     }] : []),
                     ...(spectatorRole ? [{
                         id: spectatorRole.id,
+                        allow: [PermissionFlagsBits.ViewChannel],
+                        deny: [PermissionFlagsBits.SendMessages],
+                    }] : []),
+                    ...(deadRole ? [{
+                        id: deadRole.id,
                         allow: [PermissionFlagsBits.ViewChannel],
                         deny: [PermissionFlagsBits.SendMessages],
                     }] : [])
