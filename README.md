@@ -1,4 +1,4 @@
-# 🐺 Werewolf Discord Bot
+# 🐺 Stinkbot - A Werewolf Discord Bot
 
 A Discord bot designed to manage Werewolf games across multiple servers. This bot helps organize games without enforcing rules, allowing moderators to manage signups, voting, and game phases.
 
@@ -106,12 +106,12 @@ Commands are divided into two categories: **Player Commands** (available to ever
 | `Wolf.out` | Remove yourself from the current game | `Wolf.out` |
 | `Wolf.vote @user` | Vote for a player (day phase only) | `Wolf.vote @PlayerName` |
 | `Wolf.retract` | Retract your current vote | `Wolf.retract` |
-| `Wolf.help` | Show all available commands | `Wolf.help` |
 
 ### Moderator Commands (Moderators Only)
 
 | Command | Description | Usage |
 |---------|-------------|-------|
+| `Wolf.help` | Show all available commands | `Wolf.help` |
 | `Wolf.setup` | Configure server settings | `Wolf.setup` |
 | `Wolf.roles` | 🎭 Create all game roles | `Wolf.roles` |
 | `Wolf.create` | Create a new game | `Wolf.create` |
@@ -201,12 +201,12 @@ When a game is created, the bot generates:
 
 ### During Active Game
 - `{prefix}{number}-dead-chat` - Chat for eliminated players (displays **initial player list** when game starts)
-- `{prefix}{number}-town-square` - Main game discussion
+- `{prefix}{number}-townsquare` - Main game discussion
 - `{prefix}{number}-wolf-chat` - Private wolf communication
 - `{prefix}{number}-memos` - Game notes and information
 - `{prefix}{number}-results` - Game results and announcements
 - `{prefix}{number}-voting-booth` - Voting channel
-- `{prefix}{number}-breakdown` - Post-game analysis
+- `{prefix}{number}-breakdown` - Roles available in the game
 - `{prefix}{number}-mod-chat` - Private moderator communication
 
 Example with prefix "g" and game number 1:
