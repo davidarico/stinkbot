@@ -1094,6 +1094,41 @@ class WerewolfBot {
                 console.error('Error during member role reset:', error);
             }
 
+        // Remove Alive role's typing permissions from all channels in the game category
+        try {
+            const aliveRole = message.guild.roles.cache.find(r => r.name === 'Alive');
+            if (aliveRole && game.category_id) {
+                const category = await message.guild.channels.fetch(game.category_id);
+                if (category) {
+                    // Get all channels in the game category
+                    const categoryChannels = category.children.cache.filter(
+                        channel => channel.type === ChannelType.GuildText
+                    );
+                    
+                    let updatedChannelsCount = 0;
+                    for (const [channelId, channel] of categoryChannels) {
+                        try {
+                            // Remove SendMessages permission for Alive role while keeping ViewChannel if it exists
+                            await channel.permissionOverwrites.edit(aliveRole.id, {
+                                SendMessages: false
+                            });
+                            updatedChannelsCount++;
+                            console.log(`Removed typing permissions for Alive role in channel: ${channel.name}`);
+                        } catch (error) {
+                            console.error(`Error updating permissions for channel ${channel.name}:`, error);
+                        }
+                    }
+                    console.log(`Updated permissions for ${updatedChannelsCount} channels in game category`);
+                } else {
+                    console.log('Game category not found - skipping channel permission updates');
+                }
+            } else {
+                console.log('Alive role or category not found - skipping channel permission updates');
+            }
+        } catch (error) {
+            console.error('Error updating channel permissions:', error);
+        }
+
         const successEmbed = new EmbedBuilder()
             .setTitle('🏁 Game Ended')
             .setDescription('The game has been officially ended.')
