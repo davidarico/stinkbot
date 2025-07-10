@@ -1,18 +1,25 @@
 ## Known Issues
 
 ## WIP
+- Add specific ordering of channels
+- After game ends make all chats unable to be typed in other than deadchat
+- Make it so spectators and dead roles cannot react in non-dead chat
+- Make a wolf.speed command
+- Alphabetize journals
+
+## Nice to Haves
 - Allow user to rename their own journal (This allows it so mods dont need to change it all the time)
 
-## Solved Issues
-- Automatically assign spector role when a user joins
-- Modify Voting Booth to Only Start on D2
-- Spectator Cannot See Results
-- Channel permissions are not fully sorted out allow users to message in places they should not be able to
-- Add ability to add extra channels like "Couples Chat"
-- Allow mod to set day -> night message and night -> day message
-- Post in all game relevant channels that the night or day has ended
-- Change player status tracking from database to getting all players roles
-- Create recovery mode to pick up on already running games and deal with issues
-- Voting booth messages should be Day change message THEN the voting message
-- When creating a new game, the new category appears at the bottom
-- Wolves can see wolf chat but not type in it
+From Mike
+Townsquare is one word. 
+
+Our channels also have a specific order. I don’t know if you can make the order the same with the bot but:
+
+Breakdown
+Results
+Player-memos
+Townsquare
+Voting-Booth
+Couple-Chat
+Wolf-Chat
+Dead-Chat

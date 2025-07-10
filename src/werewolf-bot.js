@@ -1,3 +1,4 @@
+const { sign } = require('crypto');
 const { PermissionFlagsBits, ChannelType, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
 
@@ -18,12 +19,12 @@ class WerewolfBot {
         const args = message.content.slice(prefix.length).trim().split(/ +/);
         const command = args.shift().toLowerCase();
 
-        // Commands that anyone can use
-        const playerCommands = ['in', 'out', 'vote', 'retract', 'help', 'alive'];
+        // Commands that anyone can use, they will not be able to use help since it shows admin commands
+        const playerCommands = ['in', 'out', 'vote', 'retract', 'alive'];
         
         // Check permissions for admin-only commands
         if (!playerCommands.includes(command) && !this.hasModeratorPermissions(message.member)) {
-            return message.reply('❓ Unknown command bozo.');
+            return;
         }
 
         try {
@@ -67,6 +68,9 @@ class WerewolfBot {
                 case 'alive':
                     await this.handleAlive(message);
                     break;
+                case 'inlist':
+                    await this.handleInList(message);
+                    break;
                 case 'add_channel':
                     await this.handleAddChannel(message, args);
                     break;
@@ -84,6 +88,9 @@ class WerewolfBot {
                     break;
                 case 'journal':
                     await this.handleJournal(message, args);
+                    break;
+                case 'peed':
+                    await message.reply('💦 IM PISSING REALLY HARD AND ITS REALLY COOL 💦');
                     break;
                 default:
                     await message.reply('❓ Unknown command bozo.');
@@ -369,30 +376,7 @@ class WerewolfBot {
             // Continue even if positioning fails - category is still created
         }
 
-        const signupChannelName = `${config.game_prefix}${config.game_counter}-signups`;
-        const signupChannel = await message.guild.channels.create({
-            name: signupChannelName,
-            type: ChannelType.GuildText,
-            parent: category.id,
-        });
-
-        const modRole = guild.roles.cache.find(r => r.name === 'Mod');
-
-        const breakdownName = `${config.game_prefix}${config.game_counter}-breakdown`;
-        const breakdown = await message.guild.channels.create({
-            name: breakdownName,
-            type: ChannelType.GuildText,
-            parent: category.id,
-        });
-
-        await breakdown.permissionOverwrites.edit(guild.roles.everyone.id, {
-            ViewChannel: true,
-            SendMessages: false
-        });
-        await breakdown.permissionOverwrites.edit(modRole.id, {
-            ViewChannel: true,
-            SendMessages: true
-        });
+        const modRole = message.guild.roles.cache.find(r => r.name === 'Mod');
 
         const modChatName = `${config.game_prefix}${config.game_counter}-mod-chat`;
         const modChat = await message.guild.channels.create({
@@ -401,13 +385,36 @@ class WerewolfBot {
             parent: category.id,
         });
 
-        await modChat.permissionOverwrites.edit(guild.roles.everyone.id, {
+        await modChat.permissionOverwrites.edit(message.guild.roles.everyone.id, {
             ViewChannel: false,
             SendMessages: false
         });
         await modChat.permissionOverwrites.edit(modRole.id, {
             ViewChannel: true,
             SendMessages: true
+        });
+
+        const breakdownName = `${config.game_prefix}${config.game_counter}-breakdown`;
+        const breakdown = await message.guild.channels.create({
+            name: breakdownName,
+            type: ChannelType.GuildText,
+            parent: category.id,
+        });
+
+        await breakdown.permissionOverwrites.edit(message.guild.roles.everyone.id, {
+            ViewChannel: true,
+            SendMessages: false
+        });
+        await breakdown.permissionOverwrites.edit(modRole.id, {
+            ViewChannel: true,
+            SendMessages: true
+        });
+
+        const signupChannelName = `${config.game_prefix}${config.game_counter}-signups`;
+        const signupChannel = await message.guild.channels.create({
+            name: signupChannelName,
+            type: ChannelType.GuildText,
+            parent: category.id,
         });
 
         // Save game to database
@@ -584,42 +591,70 @@ class WerewolfBot {
         );
         const config = configResult.rows[0];
 
-        // Rename signup channel to dead-chat
-        const signupChannel = await this.client.channels.fetch(game.signup_channel_id);
-        await signupChannel.setName(`${config.game_prefix}${game.game_number}-dead-chat`);
-
-        // Create game channels
+        // Create game channels in the specified order
         const category = await this.client.channels.fetch(game.category_id);
         
-        const townSquare = await message.guild.channels.create({
-            name: `${config.game_prefix}${game.game_number}-town-square`,
-            type: ChannelType.GuildText,
-            parent: category.id,
-        });
+        // 1. Breakdown is already created on Wolf.create and will be at the top of the category
 
-        const wolfChat = await message.guild.channels.create({
-            name: `${config.game_prefix}${game.game_number}-wolf-chat`,
-            type: ChannelType.GuildText,
-            parent: category.id,
-        });
-
-        const memos = await message.guild.channels.create({
-            name: `${config.game_prefix}${game.game_number}-memos`,
-            type: ChannelType.GuildText,
-            parent: category.id,
-        });
-
+        // 2. Results
         const results = await message.guild.channels.create({
             name: `${config.game_prefix}${game.game_number}-results`,
             type: ChannelType.GuildText,
             parent: category.id,
         });
 
+        // 3. Player-memos
+        const memos = await message.guild.channels.create({
+            name: `${config.game_prefix}${game.game_number}-player-memos`,
+            type: ChannelType.GuildText,
+            parent: category.id,
+        });
+
+        // 4. Townsquare
+        const townSquare = await message.guild.channels.create({
+            name: `${config.game_prefix}${game.game_number}-townsquare`,
+            type: ChannelType.GuildText,
+            parent: category.id,
+        });
+
+        // 5. Voting-Booth
         const votingBooth = await message.guild.channels.create({
             name: `${config.game_prefix}${game.game_number}-voting-booth`,
             type: ChannelType.GuildText,
             parent: category.id,
         });
+
+        // 6. <added channels> will be positioned here when created with Wolf.add_channel
+
+        // 7. Wolf-Chat
+        const wolfChat = await message.guild.channels.create({
+            name: `${config.game_prefix}${game.game_number}-wolf-chat`,
+            type: ChannelType.GuildText,
+            parent: category.id,
+        });
+
+        // Rename signup channel to dead-chat
+        const signupChannel = await this.client.channels.fetch(game.signup_channel_id);
+        await signupChannel.setName(`${config.game_prefix}${game.game_number}-dead-chat`);
+        
+        // 8. Dead-Chat (already renamed above from signup channel)
+        // Position the channel at the very bottom of the category
+        try {
+            // Get all channels in the category to find the last position
+            const categoryChannels = category.children.cache
+                .filter(channel => channel.type === ChannelType.GuildText)
+                .sort((a, b) => a.position - b.position);
+            
+            if (categoryChannels.size > 0) {
+                // Position dead chat at the very end
+                const lastChannel = categoryChannels.last();
+                await signupChannel.setPosition(lastChannel.position + 1);
+                console.log(`Positioned dead chat at the end of category after ${lastChannel.name}`);
+            }
+        } catch (positionError) {
+            console.error('Error positioning dead chat channel:', positionError);
+            // Continue even if positioning fails - channel is still created
+        }
 
         // Update all signed up players to Alive role
         const signedUpPlayers = await this.db.query(
@@ -662,14 +697,12 @@ class WerewolfBot {
             .setTitle('🎮 Game Started!')
             .setDescription('All game channels have been created. The game has officially begun!\n\n🌙 **Night 1** - Wolves, make your moves!')
             .addFields(
-                { name: 'Town Square', value: `<#${townSquare.id}>`, inline: true },
-                { name: 'Wolf Chat', value: `<#${wolfChat.id}>`, inline: true },
-                { name: 'Memos', value: `<#${memos.id}>`, inline: true },
                 { name: 'Results', value: `<#${results.id}>`, inline: true },
+                { name: 'Player Memos', value: `<#${memos.id}>`, inline: true },
+                { name: 'Town Square', value: `<#${townSquare.id}>`, inline: true },
                 { name: 'Voting Booth', value: `<#${votingBooth.id}>`, inline: true },
-                { name: 'Breakdown', value: `<#${breakdown.id}>`, inline: true },
-                { name: 'Dead Chat', value: `<#${signupChannel.id}>`, inline: true },
-                { name: 'Mod Chat', value: `<#${modChat.id}>`, inline: true }
+                { name: 'Wolf Chat', value: `<#${wolfChat.id}>`, inline: true },
+                { name: 'Dead Chat', value: `<#${signupChannel.id}>`, inline: true }
             )
             .setColor(0x2C3E50);
 
@@ -967,10 +1000,25 @@ class WerewolfBot {
         // Wait for all channel messages to be sent
         await Promise.all(channelPromises);
 
+
+        const aliveRole = message.guild.roles.cache.find(r => r.name === 'Alive');
         // If it's a new day (day 2 or later), create new voting message
+        const votingChannel = await this.client.channels.fetch(game.voting_booth_channel_id);
         if (newPhase === 'day' && newDay >= 2) {
-            const votingChannel = await this.client.channels.fetch(game.voting_booth_channel_id);
             await this.createVotingMessage(game.id, votingChannel);
+
+            // Reopen voting booth channel
+            await votingChannel.permissionOverwrites.edit(aliveRole.id, {
+                ViewChannel: true,
+                SendMessages: true
+            });
+        }
+        else {
+            // Close voting booth channel for the night phase
+            await votingChannel.permissionOverwrites.edit(aliveRole.id, {
+                ViewChannel: true,
+                SendMessages: false
+            });
         }
 
         // Also reply to the command user
@@ -1087,8 +1135,8 @@ class WerewolfBot {
                         deletedCategoriesCount++;
                         console.log(`Deleted category: ${channel.name}`);
                     }
-                    // Delete all text channels except 'general'
-                    else if (channel.type === ChannelType.GuildText && channel.name !== 'general') {
+                    // Delete all text channels except 'general' and the private channel 'mod'
+                    else if (channel.type === ChannelType.GuildText && channel.name !== 'general' && channel.name !== 'mod') {
                         await channel.delete();
                         deletedChannelsCount++;
                         console.log(`Deleted text channel: ${channel.name}`);
@@ -1254,6 +1302,7 @@ class WerewolfBot {
             { name: 'Wolf.vote @user', value: 'Vote for a player (only in voting booth during day)', inline: false },
             { name: 'Wolf.retract', value: 'Retract your current vote', inline: false },
             { name: 'Wolf.alive', value: 'Show all players currently alive in the game', inline: false },
+            { name: 'Wolf.inlist', value: 'Show all players signed up for the current game (mobile-friendly format)', inline: false },
             { name: 'Wolf.help', value: 'Show this help message', inline: false }
         );
 
@@ -1344,6 +1393,41 @@ class WerewolfBot {
         await message.reply({ embeds: [embed] });
     }
 
+    async handleInList(message) {
+        const serverId = message.guild.id;
+
+        // Get active game in signup phase
+        const gameResult = await this.db.query(
+            'SELECT * FROM games WHERE server_id = $1 AND status = $2',
+            [serverId, 'signup']
+        );
+
+        if (!gameResult.rows.length) {
+            return message.reply('❌ No active game available for signups.');
+        }
+
+        const game = gameResult.rows[0];
+
+        // Get all signed up players
+        const playersResult = await this.db.query(
+            'SELECT username FROM players WHERE game_id = $1 ORDER BY signed_up_at',
+            [game.id]
+        );
+
+        if (playersResult.rows.length === 0) {
+            return message.reply('📝 No players have signed up yet.');
+        }
+
+        // Create a simple, mobile-friendly format
+        const playerNames = playersResult.rows.map(p => p.username);
+        const playerList = playerNames.join('\n');
+        
+        // Send as a code block for easy copying
+        const response = `**📝 Signed Up Players (${playersResult.rows.length})**\n\`\`\`\n${playerList}\n\`\`\``;
+
+        await message.reply(response);
+    }
+
     async handleAddChannel(message, args) {
         const serverId = message.guild.id;
 
@@ -1383,6 +1467,23 @@ class WerewolfBot {
                 type: ChannelType.GuildText,
                 parent: category.id,
             });
+
+            // Position the channel between voting booth and wolf chat
+            try {
+                // Find the wolf chat channel to position our new channel before it
+                const wolfChatChannel = category.children.cache.find(channel => 
+                    channel.name.includes('-wolf-chat')
+                );
+                
+                if (wolfChatChannel) {
+                    // Position the new channel just before wolf chat
+                    await newChannel.setPosition(wolfChatChannel.position);
+                    console.log(`Positioned new channel "${fullChannelName}" before wolf chat`);
+                }
+            } catch (positionError) {
+                console.error('Error positioning new channel:', positionError);
+                // Continue even if positioning fails - channel is still created
+            }
 
             // Set up permissions for the new channel (same as other game channels)
             const guild = message.guild;
