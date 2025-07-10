@@ -75,7 +75,8 @@ PG_USER=your_db_user
 PG_PASSWORD=your_db_password
 
 # Bot Configuration (optional)
-BOT_PREFIX=Wolf.
+# This will change the prefix for commands listed below
+BOT_PREFIX=Wolf. 
 ```
 
 ### Discord Bot Setup
@@ -100,25 +101,26 @@ Commands are divided into two categories: **Player Commands** (available to ever
 
 ### Player Commands (Everyone Can Use)
 
-| Command | Description | Usage |
-|---------|-------------|-------|
-| `Wolf.in` | Sign up for the current game | `Wolf.in` |
-| `Wolf.out` | Remove yourself from the current game | `Wolf.out` |
-| `Wolf.vote @user` | Vote for a player (day phase only) | `Wolf.vote @PlayerName` |
-| `Wolf.retract` | Retract your current vote | `Wolf.retract` |
+| Command | Description |
+|---------|-------------|
+| `Wolf.in` | Sign up for the current game |
+| `Wolf.out` | Remove yourself from the current game |
+| `Wolf.vote @user` | Vote for a player (day phase only) |
+| `Wolf.retract` | Retract your current vote |
 
 ### Moderator Commands (Moderators Only)
 
-| Command | Description | Usage |
-|---------|-------------|-------|
-| `Wolf.help` | Show all available commands | `Wolf.help` |
-| `Wolf.setup` | Configure server settings | `Wolf.setup` |
-| `Wolf.roles` | 🎭 Create all game roles | `Wolf.roles` |
-| `Wolf.create` | Create a new game | `Wolf.create` |
-| `Wolf.start` | Start the game and create channels | `Wolf.start` |
-| `Wolf.next` | Move to next phase (day/night) | `Wolf.next` |
-| `Wolf.end` | End the current game | `Wolf.end` |
-| `Wolf.refresh` | 🔄 **Reset server** (delete channels, reset roles to Spectator) | `Wolf.refresh` |
+| Command | Description |
+|---------|-------------|
+| `Wolf.help` | Show all available commands |
+| `Wolf.setup` | Configure server settings |
+| `Wolf.roles` | 🎭 Create all game roles |
+| `Wolf.create` | Create a new game |
+| `Wolf.start` | Start the game and create channels |
+| `Wolf.next` | Move to next phase (day/night) |
+| `Wolf.inlist` | Gets a list of signed up users |
+| `Wolf.end` | End the current game |
+| `Wolf.refresh` | 🔄 **Reset server** (delete channels, reset roles to Spectator) |
 
 > ⚠️ **Warning**: The `refresh` command will delete ALL text channels except #general, reset all members to Spectator role, and reset the server to game 1. Use only for testing!
 
