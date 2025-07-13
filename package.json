@@ -9,13 +9,20 @@
     "test": "node test/test-bot.js",
     "db:refresh": "node -e \"require('dotenv').config(); const { execSync } = require('child_process'); execSync('psql -h ' + process.env.PG_HOST + ' -p ' + process.env.PG_PORT + ' -U ' + process.env.PG_USER + ' -d ' + process.env.PG_DATABASE + ' -f database_setup.sql', { stdio: 'inherit' });\""
   },
-  "keywords": ["discord", "bot", "werewolf", "game", "management"],
+  "keywords": [
+    "discord",
+    "bot",
+    "werewolf",
+    "game",
+    "management"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
     "discord.js": "^14.14.1",
-    "pg": "^8.11.3",
-    "dotenv": "^16.3.1"
+    "dotenv": "^16.3.1",
+    "moment-timezone": "^0.6.0",
+    "pg": "^8.11.3"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"

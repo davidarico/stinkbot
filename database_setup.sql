@@ -47,7 +47,9 @@ CREATE TABLE games (
     memos_channel_id VARCHAR(20),
     results_channel_id VARCHAR(20),
     voting_booth_channel_id VARCHAR(20),
+    mod_chat_channel_id VARCHAR(20),
     category_id VARCHAR(20),
+    phase_change_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(server_id, game_number)
@@ -85,11 +87,24 @@ CREATE TABLE game_channels (
     UNIQUE(game_id, channel_id)
 );
 
+-- Table to store speed vote information
+CREATE TABLE game_speed (
+    id SERIAL PRIMARY KEY,
+    game_id INTEGER REFERENCES games(id) ON DELETE CASCADE,
+    message_id VARCHAR(20) NOT NULL,
+    channel_id VARCHAR(20) NOT NULL,
+    target_reactions INTEGER NOT NULL,
+    current_reactions INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(game_id)
+);
+
 -- Indexes for better performance
 CREATE INDEX idx_games_server_status ON games(server_id, status);
 CREATE INDEX idx_players_game_status ON players(game_id, status);
 CREATE INDEX idx_votes_game_day ON votes(game_id, day_number);
 CREATE INDEX idx_game_channels_game ON game_channels(game_id);
+CREATE INDEX idx_game_speed_game ON game_speed(game_id);
 
 -- Function to update the updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()

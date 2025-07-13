@@ -8,7 +8,8 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildMessageReactions
     ]
 });
 
@@ -26,6 +27,12 @@ client.on('messageCreate', async (message) => {
     if (!message.content.toLowerCase().startsWith(prefix.toLowerCase())) return;
 
     await werewolfBot.handleMessage(message);
+});
+
+client.on('messageReactionAdd', async (reaction, user) => {
+    if (user.bot) return;
+    
+    await werewolfBot.handleReaction(reaction, user);
 });
 
 client.on('guildMemberAdd', async (member) => {

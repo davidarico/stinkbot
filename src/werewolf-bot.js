@@ -1,6 +1,6 @@
-const { sign } = require('crypto');
 const { PermissionFlagsBits, ChannelType, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
+const moment = require('moment-timezone');
 
 class WerewolfBot {
     constructor(client, db) {
@@ -88,6 +88,12 @@ class WerewolfBot {
                     break;
                 case 'journal':
                     await this.handleJournal(message, args);
+                    break;
+                case 'ia':
+                    await this.handleIA(message, args);
+                    break;
+                case 'speed':
+                    await this.handleSpeed(message, args);
                     break;
                 case 'peed':
                     await message.reply('💦 IM PISSING REALLY HARD AND ITS REALLY COOL 💦');
@@ -419,9 +425,9 @@ class WerewolfBot {
 
         // Save game to database
         await this.db.query(
-            `INSERT INTO games (server_id, game_number, game_name, signup_channel_id, category_id)
-             VALUES ($1, $2, $3, $4, $5)`,
-            [serverId, config.game_counter, config.game_name, signupChannel.id, category.id]
+            `INSERT INTO games (server_id, game_number, game_name, signup_channel_id, category_id, mod_chat_channel_id)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [serverId, config.game_counter, config.game_name, signupChannel.id, category.id, modChat.id]
         );
 
         // Update server config counter
@@ -593,7 +599,10 @@ class WerewolfBot {
 
         // Create game channels in the specified order
         const category = await this.client.channels.fetch(game.category_id);
-        
+
+        // Get signup channel to rename it later
+        const signupChannel = await this.client.channels.fetch(game.signup_channel_id);
+
         // 1. Breakdown is already created on Wolf.create and will be at the top of the category
 
         // 2. Results
@@ -602,6 +611,7 @@ class WerewolfBot {
             type: ChannelType.GuildText,
             parent: category.id,
         });
+        await results.setPosition(signupChannel.position); // Position results above the signup channel
 
         // 3. Player-memos
         const memos = await message.guild.channels.create({
@@ -609,6 +619,7 @@ class WerewolfBot {
             type: ChannelType.GuildText,
             parent: category.id,
         });
+        await memos.setPosition(results.position + 1); // Position memos below results
 
         // 4. Townsquare
         const townSquare = await message.guild.channels.create({
@@ -616,6 +627,7 @@ class WerewolfBot {
             type: ChannelType.GuildText,
             parent: category.id,
         });
+        await townSquare.setPosition(memos.position + 1); // Position town square below memos
 
         // 5. Voting-Booth
         const votingBooth = await message.guild.channels.create({
@@ -623,6 +635,7 @@ class WerewolfBot {
             type: ChannelType.GuildText,
             parent: category.id,
         });
+        await votingBooth.setPosition(townSquare.position + 1); // Position voting booth below town square
 
         // 6. <added channels> will be positioned here when created with Wolf.add_channel
 
@@ -632,29 +645,13 @@ class WerewolfBot {
             type: ChannelType.GuildText,
             parent: category.id,
         });
+        await wolfChat.setPosition(votingBooth.position + 1); // Position wolf chat below voting booth
 
         // Rename signup channel to dead-chat
-        const signupChannel = await this.client.channels.fetch(game.signup_channel_id);
         await signupChannel.setName(`${config.game_prefix}${game.game_number}-dead-chat`);
         
         // 8. Dead-Chat (already renamed above from signup channel)
-        // Position the channel at the very bottom of the category
-        try {
-            // Get all channels in the category to find the last position
-            const categoryChannels = category.children.cache
-                .filter(channel => channel.type === ChannelType.GuildText)
-                .sort((a, b) => a.position - b.position);
-            
-            if (categoryChannels.size > 0) {
-                // Position dead chat at the very end
-                const lastChannel = categoryChannels.last();
-                await signupChannel.setPosition(lastChannel.position + 1);
-                console.log(`Positioned dead chat at the end of category after ${lastChannel.name}`);
-            }
-        } catch (positionError) {
-            console.error('Error positioning dead chat channel:', positionError);
-            // Continue even if positioning fails - channel is still created
-        }
+        // All channels were positioned above it, there was no success trying to reposition it at this point
 
         // Update all signed up players to Alive role
         const signedUpPlayers = await this.db.query(
@@ -1356,6 +1353,8 @@ class WerewolfBot {
                 { name: 'Wolf.day <message>', value: 'Set custom day transition message', inline: false },
                 { name: 'Wolf.night <message>', value: 'Set custom night transition message', inline: false },
                 { name: 'Wolf.journal @user', value: '📔 Create a personal journal for a player', inline: false },
+                { name: 'Wolf.ia <YYYY-MM-DD HH:MM>', value: '📊 Get message count per player in town square since specified date/time (EST)', inline: false },
+                { name: 'Wolf.speed <number>', value: '⚡ Start a speed vote with target number of reactions (use "abort" to cancel)', inline: false },
                 { name: 'Wolf.recovery', value: '🔄 Recovery mode - migrate from manual game management to bot control', inline: false },
                 { name: 'Wolf.refresh', value: '🔄 Reset server (delete all channels except #general, reset to game 1) - for testing only!', inline: false }
             );
@@ -2244,6 +2243,439 @@ class WerewolfBot {
         } catch (error) {
             console.error('Error creating journal:', error);
             await message.reply('❌ An error occurred while creating the journal.');
+        }
+    }
+
+    async handleIA(message, args) {
+        const serverId = message.guild.id;
+
+        // Get active game
+        const gameResult = await this.db.query(
+            'SELECT * FROM games WHERE server_id = $1 AND status = $2',
+            [serverId, 'active']
+        );
+
+        if (!gameResult.rows.length) {
+            return message.reply('❌ No active game found.');
+        }
+
+        const game = gameResult.rows[0];
+
+        // Check if date/time argument is provided
+        let argumentsArray = args
+        if (!argumentsArray.length) {
+            argumentsArray = [new Date().toISOString().split('T')[0], '09:30'];
+        }
+
+        // Parse the date/time argument
+        const dateTimeStr = argumentsArray.join(' ');
+        let utcDate;
+        
+        try {
+            // Parse the input date assuming it's in EST/EDT
+            // We need to explicitly specify the timezone to ensure proper conversion
+            utcDate = moment.tz(dateTimeStr, "YYYY-MM-DD HH:mm", "America/New_York")
+               .utc()
+               .toDate();
+
+            // Check if the date is valid
+            if (isNaN(utcDate.getTime())) {
+                throw new Error('Invalid date');
+            }
+        } catch (error) {
+            return message.reply('❌ Invalid date format. Please use: `Wolf.ia YYYY-MM-DD HH:MM` (24-hour format, EST timezone)\nExample: `Wolf.ia 2024-12-01 14:30`');
+        }
+
+        try {
+            // Get the town square channel
+            const townSquareChannel = await this.client.channels.fetch(game.town_square_channel_id);
+            if (!townSquareChannel) {
+                return message.reply('❌ Town square channel not found.');
+            }
+
+            // Get all players in the game
+            const playersResult = await this.db.query(
+                'SELECT user_id, username FROM players WHERE game_id = $1',
+                [game.id]
+            );
+
+            if (playersResult.rows.length === 0) {
+                return message.reply('❌ No players found in the current game.');
+            }
+
+            // Initialize message count object
+            const messageCounts = {};
+            playersResult.rows.forEach(player => {
+                messageCounts[player.user_id] = {
+                    username: player.username,
+                    count: 0
+                };
+            });
+
+            // Fetch messages from the town square since the specified date
+            let allMessages = [];
+            let lastMessageId = null;
+            
+            // Discord API limits us to 100 messages per request, so we need to paginate
+            while (true) {
+                const options = { limit: 100 };
+                if (lastMessageId) {
+                    options.before = lastMessageId;
+                }
+
+                const messages = await townSquareChannel.messages.fetch(options);
+                
+                if (messages.size === 0) break;
+
+                // Filter messages by date and add to our collection
+                const filteredMessages = messages.filter(msg => 
+                    msg.createdAt >= utcDate && 
+                    !msg.author.bot && 
+                    messageCounts.hasOwnProperty(msg.author.id)
+                );
+
+                allMessages.push(...filteredMessages.values());
+                
+                // Check if we've gone past our date range
+                const oldestMessage = messages.last();
+                if (oldestMessage.createdAt < utcDate) {
+                    break;
+                }
+
+                lastMessageId = oldestMessage.id;
+            }
+
+            // Count messages per player
+            allMessages.forEach(msg => {
+                if (messageCounts[msg.author.id]) {
+                    messageCounts[msg.author.id].count++;
+                }
+            });
+
+            // Sort players by message count (highest first)
+            const sortedPlayers = Object.values(messageCounts)
+                .sort((a, b) => b.count - a.count);
+
+            // Create the response embed
+            const totalMessages = allMessages.length;
+            const playerList = sortedPlayers.length > 0 
+                ? sortedPlayers.map((player, index) => 
+                    `${index + 1}. **${player.username}**: ${player.count} messages`
+                ).join('\n')
+                : 'No messages found from players in the specified time period.';
+
+            const embed = new EmbedBuilder()
+                .setTitle('📊 Town Square Activity Report')
+                .setDescription(`Message count per player since **${dateTimeStr} EST**`)
+                .addFields(
+                    { name: `Player Activity (${sortedPlayers.length} players)`, value: playerList },
+                    { name: 'Summary', value: `**Total messages**: ${totalMessages}\n**Channel**: ${townSquareChannel.name}`, inline: false }
+                )
+                .setColor(0x3498DB)
+                .setTimestamp();
+
+            await message.reply({ embeds: [embed] });
+
+        } catch (error) {
+            console.error('Error fetching message activity:', error);
+            await message.reply('❌ An error occurred while fetching message activity. The date range might be too large or the channel might be inaccessible.');
+        }
+    }
+
+    async handleSpeed(message, args) {
+        const serverId = message.guild.id;
+
+        // Get active game
+        const gameResult = await this.db.query(
+            'SELECT * FROM games WHERE server_id = $1 AND status = $2',
+            [serverId, 'active']
+        );
+
+        if (!gameResult.rows.length) {
+            return message.reply('❌ No active game found.');
+        }
+
+        const game = gameResult.rows[0];
+
+        // Check for abort command
+        if (args.length > 0 && args[0].toLowerCase() === 'abort') {
+            return await this.handleSpeedAbort(message, game);
+        }
+
+        // Check if speed target is provided
+        if (!args.length || isNaN(parseInt(args[0]))) {
+            return message.reply('❌ Please provide a valid speed target number. Usage: `Wolf.speed <number>` or `Wolf.speed abort`');
+        }
+
+        const speedTarget = parseInt(args[0]);
+
+        if (speedTarget < 1) {
+            return message.reply('❌ Speed target must be at least 1.');
+        }
+
+        // Check if there's already an active speed vote
+        const existingSpeedResult = await this.db.query(
+            'SELECT * FROM game_speed WHERE game_id = $1',
+            [game.id]
+        );
+
+        if (existingSpeedResult.rows.length > 0) {
+            return message.reply('❌ There is already an active speed vote. Use `Wolf.speed abort` to cancel it first.');
+        }
+
+        try {
+            // Get the alive role
+            const aliveRole = message.guild.roles.cache.find(r => r.name === 'Alive');
+            if (!aliveRole) {
+                return message.reply('❌ Alive role not found. Please use `Wolf.roles` to set up roles.');
+            }
+
+            // Get the results channel
+            const resultsChannel = await this.client.channels.fetch(game.results_channel_id);
+            if (!resultsChannel) {
+                return message.reply('❌ Results channel not found.');
+            }
+
+            // Create the speed vote embed
+            const embed = new EmbedBuilder()
+                .setTitle('⚡ Speed Vote!')
+                .setDescription(`Bunch of impatient players want to speed up the game! React with ⚡ if you agree!`)
+                .addFields(
+                    { name: 'Target', value: speedTarget.toString(), inline: true },
+                    { name: 'Status', value: 'Waiting for reactions...', inline: true }
+                )
+                .setColor(0xFFD700)
+                .setTimestamp();
+
+            // Send the message and ping alive players in the results channel
+            const speedMessage = await resultsChannel.send({
+                content: `${aliveRole}`,
+                embeds: [embed]
+            });
+
+            // Add the lightning bolt reaction
+            await speedMessage.react('⚡');
+
+            // Store the speed vote in the database
+            await this.db.query(
+                'INSERT INTO game_speed (game_id, message_id, channel_id, target_reactions, current_reactions) VALUES ($1, $2, $3, $4, $5)',
+                [game.id, speedMessage.id, resultsChannel.id, speedTarget, 0]
+            );
+
+            console.log(`Speed vote created: target=${speedTarget}, message_id=${speedMessage.id}, channel=${resultsChannel.name}`);
+
+            // Reply to the mod who initiated the command
+            await message.reply(`✅ Speed vote created in ${resultsChannel}! Target: ${speedTarget} reactions.`);
+
+            // Set up reaction event listener
+            this.setupSpeedReactionListener(speedMessage, game, speedTarget);
+
+        } catch (error) {
+            console.error('Error creating speed vote:', error);
+            await message.reply('❌ An error occurred while creating the speed vote.');
+        }
+    }
+
+    async handleSpeedAbort(message, game) {
+        try {
+            // Check if there's an active speed vote
+            const speedResult = await this.db.query(
+                'SELECT * FROM game_speed WHERE game_id = $1',
+                [game.id]
+            );
+
+            if (!speedResult.rows.length) {
+                return message.reply('❌ No active speed vote to abort.');
+            }
+
+            const speedData = speedResult.rows[0];
+
+            // Delete the speed vote from database
+            await this.db.query(
+                'DELETE FROM game_speed WHERE game_id = $1',
+                [game.id]
+            );
+
+            // Try to update the original message
+            try {
+                const channel = await this.client.channels.fetch(speedData.channel_id);
+                const speedMessage = await channel.messages.fetch(speedData.message_id);
+
+                const abortEmbed = new EmbedBuilder()
+                    .setTitle('⚡ Speed Vote Aborted')
+                    .setDescription('The speed vote has been cancelled by a moderator.')
+                    .setColor(0xFF0000)
+                    .setTimestamp();
+
+                await speedMessage.edit({ embeds: [abortEmbed] });
+            } catch (error) {
+                console.error('Error updating speed message after abort:', error);
+            }
+
+            await message.reply('✅ Speed vote has been aborted.');
+
+        } catch (error) {
+            console.error('Error aborting speed vote:', error);
+            await message.reply('❌ An error occurred while aborting the speed vote.');
+        }
+    }
+
+    setupSpeedReactionListener(speedMessage, game, speedTarget) {
+        // Set up a periodic check for reaction count updates
+        const checkReactions = async () => {
+            try {
+                // Check if speed vote still exists in database
+                const speedCheck = await this.db.query(
+                    'SELECT * FROM game_speed WHERE game_id = $1',
+                    [game.id]
+                );
+
+                if (!speedCheck.rows.length) {
+                    // Speed vote was aborted or completed
+                    clearInterval(intervalId);
+                    return;
+                }
+
+                // Fetch the latest message to get current reactions
+                const channel = await this.client.channels.fetch(speedMessage.channel.id);
+                const message = await channel.messages.fetch(speedMessage.id);
+                
+                // Find the lightning bolt reaction
+                const lightningReaction = message.reactions.cache.get('⚡');
+                
+                if (lightningReaction) {
+                    // Count non-bot reactions
+                    const users = await lightningReaction.users.fetch();
+                    const currentReactions = users.filter(user => !user.bot).size;
+                    
+                    // Get the stored reaction count from database
+                    const storedCount = speedCheck.rows[0].current_reactions;
+                    
+                    // Only update if the count has changed
+                    if (currentReactions !== storedCount) {
+                        console.log(`Speed vote reaction count changed: ${storedCount} -> ${currentReactions}`);
+                        await this.updateSpeedVote(speedMessage, game, speedTarget, currentReactions);
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking speed vote reactions:', error);
+                clearInterval(intervalId);
+            }
+        };
+
+        // Check every 2 seconds for reaction updates
+        const intervalId = setInterval(checkReactions, 2000);
+        
+        // Initial check after a short delay to ensure the reaction is added
+        setTimeout(checkReactions, 1000);
+    }
+
+    async updateSpeedVote(speedMessage, game, speedTarget, currentReactions) {
+        try {
+            // Update database
+            await this.db.query(
+                'UPDATE game_speed SET current_reactions = $1 WHERE game_id = $2',
+                [currentReactions, game.id]
+            );
+
+            // Update the embed
+            const embed = new EmbedBuilder()
+                .setTitle('⚡ Speed Vote!')
+                .setDescription(`Bunch of impatient players want to speed up the game! React with ⚡ if you agree!`)
+                .addFields(
+                    { name: 'Target', value: speedTarget.toString(), inline: true },
+                    { name: 'Status', value: currentReactions >= speedTarget ? 'Target reached!' : 'Waiting for reactions...', inline: true }
+                )
+                .setColor(currentReactions >= speedTarget ? 0x00FF00 : 0xFFD700)
+                .setTimestamp();
+
+            await speedMessage.edit({ embeds: [embed] });
+
+            // Check if target is reached
+            if (currentReactions >= speedTarget) {
+                await this.completeSpeedVote(game, speedMessage);
+            }
+
+        } catch (error) {
+            console.error('Error updating speed vote:', error);
+        }
+    }
+
+    async completeSpeedVote(game, speedMessage) {
+        try {
+            // Get mod chat channel
+            const modChatChannel = await this.client.channels.fetch(game.mod_chat_channel_id);
+            if (!modChatChannel) {
+                console.error('Mod chat channel not found');
+                return;
+            }
+
+            // Get mod role
+            const modRole = speedMessage.guild.roles.cache.find(r => r.name === 'Mod');
+
+            // Send notification to mod chat
+            const notificationEmbed = new EmbedBuilder()
+                .setTitle('⚡ Speed Vote Completed!')
+                .setDescription('The speed vote target has been reached. Players want to speed up the game!')
+                .addFields(
+                    { name: 'Channel', value: `<#${speedMessage.channel.id}>`, inline: true },
+                    { name: 'Action Required', value: 'AMAB, what is taking you so long?', inline: true }
+                )
+                .setColor(0x00FF00)
+                .setTimestamp();
+
+            if (modRole) {
+                await modChatChannel.send({
+                    content: `${modRole}`,
+                    embeds: [notificationEmbed]
+                });
+            } else {
+                await modChatChannel.send({ embeds: [notificationEmbed] });
+            }
+
+            // Update the original speed message
+            const completedEmbed = new EmbedBuilder()
+                .setTitle('⚡ Speed Vote Completed!')
+                .setDescription('Target reached! Moderators have been notified.\nPing them 47 more times to make sure they see this!')
+                .setColor(0x00FF00)
+                .setTimestamp();
+
+            await speedMessage.edit({ embeds: [completedEmbed] });
+
+            // Delete the speed vote from database
+            await this.db.query(
+                'DELETE FROM game_speed WHERE game_id = $1',
+                [game.id]
+            );
+
+            console.log(`Speed vote completed for game ${game.id}`);
+
+        } catch (error) {
+            console.error('Error completing speed vote:', error);
+        }
+    }
+
+    async handleReaction(reaction, user) {
+        try {
+            // Only handle lightning bolt reactions
+            if (reaction.emoji.name !== '⚡') return;
+
+            // Check if this is a speed vote message
+            const speedVote = await this.db.query(
+                'SELECT * FROM game_speed WHERE message_id = $1',
+                [reaction.message.id]
+            );
+
+            if (speedVote.rows.length === 0) return;
+
+            // Remove the bot's initial reaction to keep the count clean
+            // The bot's reaction doesn't count toward the target but helps users react
+            await reaction.users.remove(this.client.user.id);
+            
+            console.log(`Removed bot reaction from speed vote message ${reaction.message.id} after ${user.tag} reacted`);
+
+        } catch (error) {
+            console.error('Error handling reaction:', error);
         }
     }
 
