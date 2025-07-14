@@ -7,7 +7,14 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "test": "node test/test-bot.js",
-    "db:refresh": "node -e \"require('dotenv').config(); const { execSync } = require('child_process'); execSync('psql -h ' + process.env.PG_HOST + ' -p ' + process.env.PG_PORT + ' -U ' + process.env.PG_USER + ' -d ' + process.env.PG_DATABASE + ' -f database_setup.sql', { stdio: 'inherit' });\""
+    "db:refresh": "node -e \"require('dotenv').config(); const { execSync } = require('child_process'); execSync('psql -h ' + process.env.PG_HOST + ' -p ' + process.env.PG_PORT + ' -U ' + process.env.PG_USER + ' -d ' + process.env.PG_DATABASE + ' -f database_setup.sql', { stdio: 'inherit' });\"",
+    "docker:build": "docker build -t werewolf-discord-bot .",
+    "docker:run": "docker-compose up -d",
+    "docker:stop": "docker-compose down",
+    "docker:logs": "docker-compose logs -f bot",
+    "aws:infrastructure": "./deploy-infrastructure.sh",
+    "aws:build": "./build-and-push.sh",
+    "aws:deploy": "./deploy-aws.sh"
   },
   "keywords": [
     "discord",

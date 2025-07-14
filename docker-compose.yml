@@ -1,0 +1,48 @@
+# Docker Compose for local development and testing
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: werewolf-db
+    environment:
+      POSTGRES_DB: werewolf_bot
+      POSTGRES_USER: werewolf_user
+      POSTGRES_PASSWORD: werewolf_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database_setup.sql:/docker-entrypoint-initdb.d/database_setup.sql
+    networks:
+      - werewolf-network
+    restart: unless-stopped
+
+  # Discord Bot
+  bot:
+    build: .
+    container_name: werewolf-bot
+    environment:
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - PG_HOST=postgres
+      - PG_PORT=5432
+      - PG_DATABASE=werewolf_bot
+      - PG_USER=werewolf_user
+      - PG_PASSWORD=werewolf_password
+      - BOT_PREFIX=Wolf.
+      - NODE_ENV=production
+    depends_on:
+      - postgres
+    networks:
+      - werewolf-network
+    restart: unless-stopped
+    # Wait for postgres to be ready
+    command: sh -c "sleep 30 && npm start"
+
+volumes:
+  postgres_data:
+
+networks:
+  werewolf-network:
+    driver: bridge

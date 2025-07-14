@@ -1,0 +1,23 @@
+# Docker Compose for AWS deployment (production)
+version: '3.8'
+
+services:
+  # Discord Bot
+  bot:
+    build: .
+    container_name: stinkbot
+    environment:
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - PG_HOST=${PG_HOST}
+      - PG_PORT=${PG_PORT:-5432}
+      - PG_DATABASE=${PG_DATABASE}
+      - PG_USER=${PG_USER}
+      - PG_PASSWORD=${PG_PASSWORD}
+      - BOT_PREFIX=${BOT_PREFIX:-Wolf.}
+      - NODE_ENV=production
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
