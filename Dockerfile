@@ -1,39 +1,17 @@
-# Use Node.js 18 LTS as base image
+# Use an official Node.js runtime as a parent image
 FROM node:18-alpine
 
-# Set working directory
-WORKDIR /app
+# Set the working directory in the container
+WORKDIR /usr/src/app
 
-# Install PostgreSQL client for database operations
-RUN apk add --no-cache postgresql-client
-
-# Copy package files first for better caching
+# Copy package.json and package-lock.json (if available)
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install app dependencies
+RUN npm install --production
 
-# Copy source code
-COPY src/ ./src/
-COPY database_setup.sql ./
-COPY ISSUE_TRACKING.md ./
+# Bundle app source
+COPY . .
 
-# Create non-root user for security
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S botuser -u 1001 -G nodejs
-
-# Change ownership of the app directory
-RUN chown -R botuser:nodejs /app
-
-# Switch to non-root user
-USER botuser
-
-# Expose port (if needed for health checks)
-EXPOSE 3000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "console.log('Bot is running')" || exit 1
-
-# Start the bot
-CMD ["npm", "start"]
+# Command to run the application
+CMD [ "node", "src/index.js" ]
