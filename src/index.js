@@ -1,7 +1,11 @@
 const { Client, GatewayIntentBits, PermissionFlagsBits } = require('discord.js');
 const db = require('./database');
 const WerewolfBot = require('./werewolf-bot');
-require('dotenv').config();
+
+// Configure dotenv based on NODE_ENV
+if (process.env.NODE_ENV !== 'production') {
+    require('dotenv').config();
+}
 
 const client = new Client({
     intents: [
