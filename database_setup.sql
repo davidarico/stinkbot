@@ -19,6 +19,9 @@ DROP TABLE IF EXISTS votes CASCADE;
 DROP TABLE IF EXISTS players CASCADE;
 DROP TABLE IF EXISTS games CASCADE;
 DROP TABLE IF EXISTS server_configs CASCADE;
+DROP TABLE IF EXISTS game_channels CASCADE;
+DROP TABLE IF EXISTS game_speed CASCADE;
+DROP TABLE IF EXISTS player_journals CASCADE;
 
 -- Table to store server configurations
 CREATE TABLE server_configs (
@@ -62,6 +65,8 @@ CREATE TABLE players (
     user_id VARCHAR(20) NOT NULL,
     username VARCHAR(100) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'alive', -- alive, dead
+    role VARCHAR(100), -- Player's assigned role (Werewolf, Villager, Seer, etc.)
+    is_wolf BOOLEAN DEFAULT FALSE, -- True if player has a wolf role
     signed_up_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(game_id, user_id)
 );
@@ -99,12 +104,25 @@ CREATE TABLE game_speed (
     UNIQUE(game_id)
 );
 
+-- Table to store player journals
+CREATE TABLE player_journals (
+    id SERIAL PRIMARY KEY,
+    server_id VARCHAR(20) NOT NULL,
+    user_id VARCHAR(20) NOT NULL,
+    channel_id VARCHAR(20) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(server_id, user_id),
+    UNIQUE(server_id, channel_id)
+);
+
 -- Indexes for better performance
 CREATE INDEX idx_games_server_status ON games(server_id, status);
 CREATE INDEX idx_players_game_status ON players(game_id, status);
 CREATE INDEX idx_votes_game_day ON votes(game_id, day_number);
 CREATE INDEX idx_game_channels_game ON game_channels(game_id);
 CREATE INDEX idx_game_speed_game ON game_speed(game_id);
+CREATE INDEX idx_player_journals_server_user ON player_journals(server_id, user_id);
+CREATE INDEX idx_player_journals_channel ON player_journals(channel_id);
 
 -- Function to update the updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()

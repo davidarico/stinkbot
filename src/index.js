@@ -4,6 +4,7 @@ const WerewolfBot = require('./werewolf-bot');
 
 // Configure dotenv based on NODE_ENV
 if (process.env.NODE_ENV !== 'production') {
+    console.log('🔧 Loading environment variables from .env file');
     require('dotenv').config();
 }
 

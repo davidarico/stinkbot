@@ -20,7 +20,7 @@ class WerewolfBot {
         const command = args.shift().toLowerCase();
 
         // Commands that anyone can use, they will not be able to use help since it shows admin commands
-        const playerCommands = ['in', 'out', 'vote', 'retract', 'alive'];
+        const playerCommands = ['in', 'out', 'vote', 'retract', 'alive', 'my_journal', 'peed'];
         
         // Check permissions for admin-only commands
         if (!playerCommands.includes(command) && !this.hasModeratorPermissions(message.member)) {
@@ -89,6 +89,18 @@ class WerewolfBot {
                 case 'journal':
                     await this.handleJournal(message, args);
                     break;
+                case 'server':
+                    await this.handleServer(message);
+                    break;
+                case 'role_assign':
+                    await this.handleRoleAssign(message, args);
+                    break;
+                case 'roles_list':
+                    await this.handleRolesList(message);
+                    break;
+                case 'my_journal':
+                    await this.handleMyJournal(message);
+                    break;
                 case 'ia':
                     await this.handleIA(message, args);
                     break;
@@ -152,8 +164,8 @@ class WerewolfBot {
         const modRole = guild.roles.cache.find(r => r.name === 'Mod');
 
         try {
-            // Dead Chat permissions: Dead can see and type, Alive cannot see, Spectators can see and type
-            if (deadRole && aliveRole && spectatorRole) {
+            // Dead Chat permissions: Dead can see and type, Alive cannot see, Spectators can see and type, Mods can see and type
+            if (deadRole && aliveRole && spectatorRole && modRole) {
                 await deadChat.permissionOverwrites.edit(guild.roles.everyone.id, {
                     ViewChannel: false,
                     SendMessages: false
@@ -169,12 +181,16 @@ class WerewolfBot {
                     ViewChannel: true,
                     SendMessages: true
                 });
+                await deadChat.permissionOverwrites.edit(modRole.id, {
+                    ViewChannel: true,
+                    SendMessages: true
+                });
             }
 
-            // Game channels: Alive can see and type, Dead can see but not type (except dead chat), Spectators cannot see
+            // Game channels: Alive can see and type, Dead can see but not type (except dead chat), Spectators can see but not type, Mods can see and type
             const gameChannels = [townSquare, memos, votingBooth];
             for (const channel of gameChannels) {
-                if (aliveRole && deadRole && spectatorRole) {
+                if (aliveRole && deadRole && spectatorRole && modRole) {
                     await channel.permissionOverwrites.edit(guild.roles.everyone.id, {
                         ViewChannel: false,
                         SendMessages: false
@@ -190,6 +206,10 @@ class WerewolfBot {
                     await channel.permissionOverwrites.edit(spectatorRole.id, {
                         ViewChannel: true,
                         SendMessages: false
+                    });
+                    await channel.permissionOverwrites.edit(modRole.id, {
+                        ViewChannel: true,
+                        SendMessages: true
                     });
                 }
             }
@@ -690,6 +710,9 @@ class WerewolfBot {
         // Send player list to dead chat
         await this.sendPlayerListToDeadChat(game.id, signupChannel);
 
+        // Send role assignments to player journals
+        const journalNotificationResults = await this.sendRoleNotificationsToJournals(game.id, serverId);
+
         const embed = new EmbedBuilder()
             .setTitle('🎮 Game Started!')
             .setDescription('All game channels have been created. The game has officially begun!\n\n🌙 **Night 1** - Wolves, make your moves!')
@@ -702,6 +725,15 @@ class WerewolfBot {
                 { name: 'Dead Chat', value: `<#${signupChannel.id}>`, inline: true }
             )
             .setColor(0x2C3E50);
+
+        // Add journal notification summary if there were any issues
+        if (journalNotificationResults.failed > 0 || journalNotificationResults.sent > 0) {
+            embed.addFields({
+                name: '📔 Role Notifications',
+                value: `• ${journalNotificationResults.sent} players notified in journals\n• ${journalNotificationResults.failed} players failed to notify${journalNotificationResults.failed > 0 ? ' (no journal or no role assigned)' : ''}`,
+                inline: false
+            });
+        }
 
         await message.reply({ embeds: [embed] });
     }
@@ -739,6 +771,83 @@ class WerewolfBot {
             .setColor(0x9B59B6);
 
         await deadChatChannel.send({ embeds: [embed] });
+    }
+
+    async sendRoleNotificationsToJournals(gameId, serverId) {
+        let sent = 0;
+        let failed = 0;
+
+        try {
+            // Get all players in the game with their roles
+            const playersResult = await this.db.query(
+                'SELECT user_id, username, role FROM players WHERE game_id = $1',
+                [gameId]
+            );
+
+            for (const player of playersResult.rows) {
+                try {
+                    // Skip players without assigned roles
+                    if (!player.role) {
+                        failed++;
+                        console.log(`Skipping ${player.username} - no role assigned`);
+                        continue;
+                    }
+
+                    // Check if player has a journal
+                    const journalResult = await this.db.query(
+                        'SELECT channel_id FROM player_journals WHERE server_id = $1 AND user_id = $2',
+                        [serverId, player.user_id]
+                    );
+
+                    if (journalResult.rows.length === 0) {
+                        failed++;
+                        console.log(`Skipping ${player.username} - no journal found`);
+                        continue;
+                    }
+
+                    const channelId = journalResult.rows[0].channel_id;
+
+                    // Verify the journal channel still exists
+                    const journalChannel = await this.client.channels.fetch(channelId);
+                    if (!journalChannel) {
+                        // Journal channel was deleted, clean up database
+                        await this.db.query(
+                            'DELETE FROM player_journals WHERE server_id = $1 AND user_id = $2',
+                            [serverId, player.user_id]
+                        );
+                        failed++;
+                        console.log(`Skipping ${player.username} - journal channel deleted`);
+                        continue;
+                    }
+
+                    // Create role notification embed
+                    const roleEmbed = new EmbedBuilder()
+                        .setTitle('🎭 Your Role Assignment')
+                        .setDescription(`The game has started! You have been assigned the role of **${player.role}**.`)
+                        .setColor(0x9B59B6)
+                        .setTimestamp()
+                        .setFooter({ text: 'Good luck and have fun!' });
+
+                    // Send the role notification to the journal
+                    await journalChannel.send({
+                        content: `<@${player.user_id}>`,
+                        embeds: [roleEmbed]
+                    });
+
+                    sent++;
+                    console.log(`Sent role notification to ${player.username}: ${player.role}`);
+
+                } catch (error) {
+                    console.error(`Error sending role notification to ${player.username}:`, error);
+                    failed++;
+                }
+            }
+
+        } catch (error) {
+            console.error('Error in sendRoleNotificationsToJournals:', error);
+        }
+
+        return { sent, failed };
     }
 
     async handleVote(message, args) {
@@ -1335,6 +1444,7 @@ class WerewolfBot {
             { name: 'Wolf.retract', value: 'Retract your current vote', inline: false },
             { name: 'Wolf.alive', value: 'Show all players currently alive in the game', inline: false },
             { name: 'Wolf.inlist', value: 'Show all players signed up for the current game (mobile-friendly format)', inline: false },
+            { name: 'Wolf.my_journal', value: '📔 Find your personal journal channel', inline: false },
             { name: 'Wolf.help', value: 'Show this help message', inline: false }
         );
 
@@ -1353,6 +1463,9 @@ class WerewolfBot {
                 { name: 'Wolf.day <message>', value: 'Set custom day transition message', inline: false },
                 { name: 'Wolf.night <message>', value: 'Set custom night transition message', inline: false },
                 { name: 'Wolf.journal @user', value: '📔 Create a personal journal for a player', inline: false },
+                { name: 'Wolf.role_assign', value: '🎭 Randomly assign roles from a provided list to all signed-up players', inline: false },
+                { name: 'Wolf.roles_list', value: '📋 Display all assigned roles for players in the current game', inline: false },
+                { name: 'Wolf.server', value: '🖥️ Display detailed server information for logging and debugging', inline: false },
                 { name: 'Wolf.ia <YYYY-MM-DD HH:MM>', value: '📊 Get message count per player in town square since specified date/time (EST)', inline: false },
                 { name: 'Wolf.speed <number>', value: '⚡ Start a speed vote with target number of reactions (use "abort" to cancel)', inline: false },
                 { name: 'Wolf.recovery', value: '🔄 Recovery mode - migrate from manual game management to bot control', inline: false },
@@ -2228,6 +2341,15 @@ class WerewolfBot {
             // Ping the user to notify them of their new journal
             await journalChannel.send(`${targetMember} - Your journal has been created! 📔`);
 
+            // Save journal to database
+            await this.db.query(
+                `INSERT INTO player_journals (server_id, user_id, channel_id) 
+                 VALUES ($1, $2, $3) 
+                 ON CONFLICT (server_id, user_id) 
+                 DO UPDATE SET channel_id = $3, created_at = CURRENT_TIMESTAMP`,
+                [serverId, targetUser.id, journalChannel.id]
+            );
+
             // Reply with success
             const successEmbed = new EmbedBuilder()
                 .setTitle('📔 Journal Created')
@@ -2676,6 +2798,584 @@ class WerewolfBot {
 
         } catch (error) {
             console.error('Error handling reaction:', error);
+        }
+    }
+
+    async handleRoleAssign(message, args) {
+        const serverId = message.guild.id;
+
+        // Get active game in signup or active phase
+        const gameResult = await this.db.query(
+            'SELECT * FROM games WHERE server_id = $1 AND status IN ($2, $3) ORDER BY id DESC LIMIT 1',
+            [serverId, 'signup', 'active']
+        );
+
+        if (!gameResult.rows.length) {
+            return message.reply('❌ No active game found.');
+        }
+
+        const game = gameResult.rows[0];
+
+        // Get all players in the game
+        const playersResult = await this.db.query(
+            'SELECT user_id, username FROM players WHERE game_id = $1 ORDER BY username',
+            [game.id]
+        );
+
+        if (playersResult.rows.length === 0) {
+            return message.reply('❌ No players found in the current game.');
+        }
+
+        // Check if roles were provided in the command
+        if (args.length === 0) {
+            const embed = new EmbedBuilder()
+                .setTitle('🎭 Role Assignment')
+                .setDescription('Please provide a list of roles to assign. Roles should be organized in three blocks separated by blank lines.')
+                .addFields(
+                    { name: 'Format', value: '```Villager\nSeer\nDoctor\n\nWerewolf\nWerewolf\n\nTanner\nJester```', inline: false },
+                    { name: 'Blocks', value: '• **First block**: Village roles\n• **Second block**: Wolf roles\n• **Third block**: Neutral roles', inline: false },
+                    { name: 'Current Players', value: playersResult.rows.map((p, i) => `${i + 1}. ${p.username}`).join('\n'), inline: false },
+                    { name: 'Player Count', value: `${playersResult.rows.length} players signed up`, inline: true }
+                )
+                .setColor(0x9B59B6)
+                .setFooter({ text: 'Please respond with your role list in the format above' });
+
+            await message.reply({ embeds: [embed] });
+
+            // Wait for the role list
+            const filter = (m) => m.author.id === message.author.id && !m.author.bot;
+            const collected = await message.channel.awaitMessages({ filter, max: 1, time: 120000 });
+
+            if (!collected.size) {
+                return message.reply('⏰ Role assignment timed out. Please try again.');
+            }
+
+            const roleText = collected.first().content.trim();
+            return this.parseAndAssignRoles(message, game, playersResult.rows, roleText);
+        } else {
+            // Roles provided directly in the command
+            const roleText = args.join(' ');
+            return this.parseAndAssignRoles(message, game, playersResult.rows, roleText);
+        }
+    }
+
+    async parseAndAssignRoles(message, game, players, roleText) {
+        try {
+            // Split by double newlines to get the three blocks
+            const blocks = roleText.split(/\n\s*\n/).map(block => block.trim()).filter(block => block.length > 0);
+            
+            if (blocks.length !== 3) {
+                const embed = new EmbedBuilder()
+                    .setTitle('❌ Invalid Format')
+                    .setDescription('Please provide exactly three blocks of roles separated by blank lines.')
+                    .addFields(
+                        { name: 'Expected Format', value: '```Village roles\n\nWolf roles\n\nNeutral roles```', inline: false },
+                        { name: 'Your Input', value: `Found ${blocks.length} blocks, expected 3`, inline: false }
+                    )
+                    .setColor(0xE74C3C);
+
+                return message.reply({ embeds: [embed] });
+            }
+
+            // Parse each block
+            const villageRoles = blocks[0].split('\n').map(role => role.trim()).filter(role => role.length > 0);
+            const wolfRoles = blocks[1].split('\n').map(role => role.trim()).filter(role => role.length > 0);
+            const neutralRoles = blocks[2].split('\n').map(role => role.trim()).filter(role => role.length > 0);
+
+            // Combine all roles with their categories
+            const allRoles = [
+                ...villageRoles.map(role => ({ role, isWolf: false, category: 'Village' })),
+                ...wolfRoles.map(role => ({ role, isWolf: true, category: 'Wolf' })),
+                ...neutralRoles.map(role => ({ role, isWolf: false, category: 'Neutral' }))
+            ];
+
+            return this.assignRoles(message, game, players, allRoles);
+        } catch (error) {
+            console.error('Error parsing roles:', error);
+            await message.reply('❌ An error occurred while parsing the roles. Please check your format and try again.');
+        }
+    }
+
+    async assignRoles(message, game, players, roleData) {
+        try {
+            // Validate role count with special testing exception
+            const isTestingMode = roleData.length === 3 && players.length === 1;
+            
+            if (roleData.length !== players.length && !isTestingMode) {
+                const embed = new EmbedBuilder()
+                    .setTitle('❌ Role Count Mismatch')
+                    .setDescription(`The number of roles (${roleData.length}) does not match the number of players (${players.length}).`)
+                    .addFields(
+                        { name: 'Players', value: `${players.length} players`, inline: true },
+                        { name: 'Roles', value: `${roleData.length} roles`, inline: true },
+                        { name: 'Role Breakdown', value: this.getRoleBreakdown(roleData), inline: false }
+                    )
+                    .setColor(0xE74C3C);
+
+                return message.reply({ embeds: [embed] });
+            }
+
+            // If in testing mode, only assign the first role to the single player
+            const effectiveRoleData = isTestingMode ? [roleData[0]] : roleData;
+
+            // Create a copy of players array for shuffling (preserve role order)
+            const shuffledPlayers = [...players];
+
+            // Shuffle only the players array using Fisher-Yates algorithm
+            for (let i = shuffledPlayers.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [shuffledPlayers[i], shuffledPlayers[j]] = [shuffledPlayers[j], shuffledPlayers[i]];
+            }
+
+            // Create role assignments (roles maintain their original order)
+            const assignments = [];
+            for (let i = 0; i < shuffledPlayers.length; i++) {
+                assignments.push({
+                    player: shuffledPlayers[i].username,
+                    role: effectiveRoleData[i].role,
+                    isWolf: effectiveRoleData[i].isWolf,
+                    category: effectiveRoleData[i].category,
+                    userId: shuffledPlayers[i].user_id,
+                    roleIndex: i
+                });
+            }
+
+            // Save role assignments to database
+            for (const assignment of assignments) {
+                await this.db.query(
+                    'UPDATE players SET role = $1, is_wolf = $2 WHERE game_id = $3 AND user_id = $4',
+                    [assignment.role, assignment.isWolf, game.id, assignment.userId]
+                );
+            }
+
+            // Create the assignment list organized by category
+            const villageAssignments = assignments.filter(a => a.category === 'Village');
+            const wolfAssignments = assignments.filter(a => a.category === 'Wolf');
+            const neutralAssignments = assignments.filter(a => a.category === 'Neutral');
+
+            let assignmentText = '';
+            
+            if (villageAssignments.length > 0) {
+                assignmentText += '**🏘️ Town:**\n';
+                assignmentText += villageAssignments.map(a => `• **${a.role}** - ${a.player}`).join('\n');
+            }
+            
+            if (wolfAssignments.length > 0) {
+                if (assignmentText) assignmentText += '\n\n';
+                assignmentText += '**🐺 Wolves:**\n';
+                assignmentText += wolfAssignments.map(a => `• **${a.role}** - ${a.player}`).join('\n');
+            }
+            
+            if (neutralAssignments.length > 0) {
+                if (assignmentText) assignmentText += '\n\n';
+                assignmentText += '**⚖️ Neutrals:**\n';
+                assignmentText += neutralAssignments.map(a => `• **${a.role}** - ${a.player}`).join('\n');
+            }
+
+            // Count role occurrences for summary
+            const roleCounts = {};
+            roleData.forEach(roleInfo => {
+                roleCounts[roleInfo.role] = (roleCounts[roleInfo.role] || 0) + 1;
+            });
+
+            const roleSummary = Object.entries(roleCounts)
+                .map(([role, count]) => count > 1 ? `${role} (${count})` : role)
+                .join(', ');
+
+            const embed = new EmbedBuilder()
+                .setTitle('🎭 Role Assignment Complete')
+                .setDescription(isTestingMode ? 
+                    'Testing mode: Assigned first role from the list to the single player!' : 
+                    'Roles have been randomly assigned to all players!')
+                .addFields(
+                    { name: 'Team Assignments', value: assignmentText, inline: false },
+                    { name: 'Role Summary', value: roleSummary, inline: false },
+                    { name: 'Team Counts', value: `🏘️ Town: ${villageAssignments.length} | 🐺 Wolves: ${wolfAssignments.length} | ⚖️ Neutrals: ${neutralAssignments.length}`, inline: false },
+                    { name: 'Game Info', value: `${game.game_name ? `${game.game_name} ` : ''}Game ${game.game_number}`, inline: true },
+                    { name: 'Total Players', value: `${assignments.length}`, inline: true }
+                )
+                .setColor(isTestingMode ? 0xF39C12 : 0x00AE86)
+                .setTimestamp()
+                .setFooter({ text: isTestingMode ? 
+                    'Testing Mode: Only first role assigned' : 
+                    'Assignments are randomized each time this command is run' });
+
+            // Add testing mode info if applicable
+            if (isTestingMode) {
+                embed.addFields({
+                    name: '🧪 Testing Mode',
+                    value: `Provided ${roleData.length} roles but only assigned the first one (${effectiveRoleData[0].role}) to test the system.`,
+                    inline: false
+                });
+            }
+
+            await message.reply({ embeds: [embed] });
+
+            // Send a confirmation message
+            const confirmEmbed = new EmbedBuilder()
+                .setTitle('✅ Assignment Summary')
+                .setDescription(isTestingMode ? 
+                    `Testing mode: Assigned 1 role to 1 player (provided ${roleData.length} roles for testing).` :
+                    `Successfully assigned ${roleData.length} roles to ${players.length} players with wolf flags set.`)
+                .setColor(0x2ECC71);
+
+            await message.reply({ embeds: [confirmEmbed] });
+
+        } catch (error) {
+            console.error('Error assigning roles:', error);
+            await message.reply('❌ An error occurred while assigning roles.');
+        }
+    }
+
+    getRoleBreakdown(roleData) {
+        const village = roleData.filter(r => r.category === 'Village').map(r => r.role);
+        const wolves = roleData.filter(r => r.category === 'Wolf').map(r => r.role);
+        const neutrals = roleData.filter(r => r.category === 'Neutral').map(r => r.role);
+        
+        let breakdown = '';
+        if (village.length > 0) breakdown += `**Village (${village.length}):** ${village.join(', ')}\n`;
+        if (wolves.length > 0) breakdown += `**Wolves (${wolves.length}):** ${wolves.join(', ')}\n`;
+        if (neutrals.length > 0) breakdown += `**Neutrals (${neutrals.length}):** ${neutrals.join(', ')}`;
+        
+        return breakdown || 'No roles provided';
+    }
+
+    async handleRolesList(message) {
+        const serverId = message.guild.id;
+
+        // Get active game
+        const gameResult = await this.db.query(
+            'SELECT * FROM games WHERE server_id = $1 AND status IN ($2, $3) ORDER BY id DESC LIMIT 1',
+            [serverId, 'signup', 'active']
+        );
+
+        if (!gameResult.rows.length) {
+            return message.reply('❌ No active game found.');
+        }
+
+        const game = gameResult.rows[0];
+
+        // Get all players with their roles
+        const playersResult = await this.db.query(
+            'SELECT user_id, username, role, status FROM players WHERE game_id = $1 ORDER BY username',
+            [game.id]
+        );
+
+        if (playersResult.rows.length === 0) {
+            return message.reply('❌ No players found in the current game.');
+        }
+
+        // Check if any roles have been assigned
+        const playersWithRoles = playersResult.rows.filter(player => player.role !== null);
+        
+        if (playersWithRoles.length === 0) {
+            const embed = new EmbedBuilder()
+                .setTitle('🎭 Player Roles')
+                .setDescription('No roles have been assigned yet. Use `Wolf.role_assign` to assign roles to players.')
+                .addFields({
+                    name: 'Players in Game',
+                    value: playersResult.rows.map((p, i) => `${i + 1}. ${p.username}`).join('\n'),
+                    inline: false
+                })
+                .setColor(0x95A5A6);
+
+            return message.reply({ embeds: [embed] });
+        }
+
+        // Sort players by role assignment order (if they were assigned in order)
+        // Players without roles will be at the end
+        const sortedPlayers = [
+            ...playersWithRoles,
+            ...playersResult.rows.filter(player => player.role === null)
+        ];
+
+        // Create role list
+        const rolesList = sortedPlayers.map((player, index) => {
+            const statusIcon = player.status === 'alive' ? '💚' : '💀';
+            const roleText = player.role ? `**${player.role}**` : '_No role assigned_';
+            return `${statusIcon} ${roleText} - ${player.username}`;
+        }).join('\n');
+
+        // Count role occurrences
+        const roleCounts = {};
+        playersWithRoles.forEach(player => {
+            roleCounts[player.role] = (roleCounts[player.role] || 0) + 1;
+        });
+
+        const roleSummary = Object.entries(roleCounts)
+            .map(([role, count]) => count > 1 ? `${role} (${count})` : role)
+            .join(', ');
+
+        const embed = new EmbedBuilder()
+            .setTitle('🎭 Player Roles')
+            .setDescription(`Here are all the assigned roles for ${game.game_name ? `${game.game_name} ` : ''}Game ${game.game_number}:`)
+            .addFields(
+                { name: 'Role Assignments', value: rolesList, inline: false },
+                { name: 'Role Summary', value: roleSummary || 'No roles assigned', inline: false },
+                { name: 'Legend', value: '💚 = Alive | 💀 = Dead', inline: false }
+            )
+            .setColor(0x9B59B6)
+            .setTimestamp();
+
+        await message.reply({ embeds: [embed] });
+    }
+
+    async handleMyJournal(message) {
+        const serverId = message.guild.id;
+        const userId = message.author.id;
+
+        try {
+            // Check if user has a journal in this server
+            const journalResult = await this.db.query(
+                'SELECT channel_id FROM player_journals WHERE server_id = $1 AND user_id = $2',
+                [serverId, userId]
+            );
+
+            if (journalResult.rows.length === 0) {
+                return message.reply('📔 You don\'t have a journal yet. Ask a moderator to create one for you with `Wolf.journal @yourname`.');
+            }
+
+            const channelId = journalResult.rows[0].channel_id;
+
+            // Verify the channel still exists
+            try {
+                const journalChannel = await message.guild.channels.fetch(channelId);
+                if (!journalChannel) {
+                    // Channel was deleted, remove from database
+                    await this.db.query(
+                        'DELETE FROM player_journals WHERE server_id = $1 AND user_id = $2',
+                        [serverId, userId]
+                    );
+                    return message.reply('📔 Your journal channel no longer exists. Ask a moderator to create a new one with `Wolf.journal @yourname`.');
+                }
+
+                const embed = new EmbedBuilder()
+                    .setTitle('📔 Your Journal')
+                    .setDescription(`Here's your personal journal: <#${channelId}>`)
+                    .setColor(0x8B4513);
+
+                await message.reply({ embeds: [embed] });
+
+            } catch (error) {
+                // Channel doesn't exist, remove from database
+                await this.db.query(
+                    'DELETE FROM player_journals WHERE server_id = $1 AND user_id = $2',
+                    [serverId, userId]
+                );
+                return message.reply('📔 Your journal channel no longer exists. Ask a moderator to create a new one with `Wolf.journal @yourname`.');
+            }
+
+        } catch (error) {
+            console.error('Error finding user journal:', error);
+            await message.reply('❌ An error occurred while looking for your journal.');
+        }
+    }
+
+    async handleServer(message) {
+        const serverId = message.guild.id;
+        const serverName = message.guild.name;
+        const memberCount = message.guild.memberCount;
+        console.log(`Fetching server info for ${serverName} (${serverId}) with ${memberCount} members`);
+
+        try {
+            // Get server configuration
+            const configResult = await this.db.query(
+                'SELECT * FROM server_configs WHERE server_id = $1',
+                [serverId]
+            );
+
+            let serverConfig = null;
+            if (configResult.rows.length > 0) {
+                serverConfig = configResult.rows[0];
+            }
+
+            // Get current active game
+            const activeGameResult = await this.db.query(
+                'SELECT * FROM games WHERE server_id = $1 AND status IN ($2, $3) ORDER BY id DESC LIMIT 1',
+                [serverId, 'signup', 'active']
+            );
+
+            let activeGame = null;
+            let playerCount = 0;
+            let aliveCount = 0;
+            let gameChannels = [];
+
+            if (activeGameResult.rows.length > 0) {
+                activeGame = activeGameResult.rows[0];
+                
+                // Get player counts
+                const playersResult = await this.db.query(
+                    'SELECT COUNT(*) as total FROM players WHERE game_id = $1',
+                    [activeGame.id]
+                );
+                playerCount = parseInt(playersResult.rows[0].total);
+
+                // Count alive players by checking Discord roles
+                const aliveRole = message.guild.roles.cache.find(r => r.name === 'Alive');
+                if (aliveRole) {
+                    const allPlayers = await this.db.query(
+                        'SELECT user_id FROM players WHERE game_id = $1',
+                        [activeGame.id]
+                    );
+
+                    for (const player of allPlayers.rows) {
+                        try {
+                            const member = await message.guild.members.fetch(player.user_id);
+                            if (member && member.roles.cache.has(aliveRole.id)) {
+                                aliveCount++;
+                            }
+                        } catch (error) {
+                            // Member might have left the server
+                            continue;
+                        }
+                    }
+                }
+
+                // Get additional game channels
+                const additionalChannelsResult = await this.db.query(
+                    'SELECT channel_id FROM game_channels WHERE game_id = $1',
+                    [activeGame.id]
+                );
+                gameChannels = additionalChannelsResult.rows.map(row => row.channel_id);
+            }
+
+            // Get total games played on server
+            const totalGamesResult = await this.db.query(
+                'SELECT COUNT(*) as total FROM games WHERE server_id = $1',
+                [serverId]
+            );
+            const totalGames = parseInt(totalGamesResult.rows[0].total);
+
+            // Get role information
+            const roles = {
+                mod: message.guild.roles.cache.find(r => r.name === 'Mod'),
+                spectator: message.guild.roles.cache.find(r => r.name === 'Spectator'),
+                signedUp: message.guild.roles.cache.find(r => r.name === 'Signed Up'),
+                alive: message.guild.roles.cache.find(r => r.name === 'Alive'),
+                dead: message.guild.roles.cache.find(r => r.name === 'Dead')
+            };
+
+            // Build the embed
+            const embed = new EmbedBuilder()
+                .setTitle(`🖥️ Server Information: ${serverName}`)
+                .setColor(0x3498DB)
+                .setTimestamp()
+                .setFooter({ text: `Server ID: ${serverId}` });
+
+            // Basic server info
+            embed.addFields(
+                { name: '📊 Basic Info', value: `**Members:** ${memberCount}\n**Total Games:** ${totalGames}`, inline: true }
+            );
+
+            // Server configuration
+            if (serverConfig) {
+                embed.addFields({
+                    name: '⚙️ Configuration',
+                    value: `**Prefix:** ${serverConfig.game_prefix}\n**Game Counter:** ${serverConfig.game_counter}\n**Game Name:** ${serverConfig.game_name || 'Not set'}`,
+                    inline: true
+                });
+            } else {
+                embed.addFields({
+                    name: '⚙️ Configuration',
+                    value: '❌ Not configured\nRun `Wolf.setup` first',
+                    inline: true
+                });
+            }
+
+            // Role status
+            const roleStatus = Object.entries(roles)
+                .map(([roleName, role]) => `${role ? '✅' : '❌'} ${roleName.charAt(0).toUpperCase() + roleName.slice(1)}`)
+                .join('\n');
+
+            embed.addFields({
+                name: '🎭 Role Status',
+                value: roleStatus,
+                inline: true
+            });
+
+            // Active game information
+            if (activeGame) {
+                let gameStatus = `**Status:** ${activeGame.status.charAt(0).toUpperCase() + activeGame.status.slice(1)}`;
+                if (activeGame.status === 'active') {
+                    gameStatus += `\n**Phase:** ${activeGame.day_phase.charAt(0).toUpperCase() + activeGame.day_phase.slice(1)} ${activeGame.day_number}`;
+                }
+                gameStatus += `\n**Players:** ${playerCount}`;
+                if (activeGame.status === 'active') {
+                    gameStatus += `\n**Alive:** ${aliveCount}`;
+                }
+
+                embed.addFields({
+                    name: `🎮 Active Game: ${activeGame.game_name ? `${activeGame.game_name} ` : ''}Game ${activeGame.game_number}`,
+                    value: gameStatus,
+                    inline: false
+                });
+
+                // Game channels
+                if (activeGame.status === 'active') {
+                    const channels = [];
+                    if (activeGame.town_square_channel_id) channels.push(`<#${activeGame.town_square_channel_id}>`);
+                    if (activeGame.voting_booth_channel_id) channels.push(`<#${activeGame.voting_booth_channel_id}>`);
+                    if (activeGame.wolf_chat_channel_id) channels.push(`<#${activeGame.wolf_chat_channel_id}>`);
+                    if (activeGame.signup_channel_id) channels.push(`<#${activeGame.signup_channel_id}> (Dead Chat)`);
+                    if (activeGame.memos_channel_id) channels.push(`<#${activeGame.memos_channel_id}>`);
+                    if (activeGame.results_channel_id) channels.push(`<#${activeGame.results_channel_id}>`);
+                    
+                    // Add additional channels
+                    for (const channelId of gameChannels) {
+                        try {
+                            const channel = await message.guild.channels.fetch(channelId);
+                            if (channel) {
+                                channels.push(`<#${channelId}>`);
+                            }
+                        } catch (error) {
+                            channels.push(`❌ Deleted channel (${channelId})`);
+                        }
+                    }
+
+                    if (channels.length > 0) {
+                        embed.addFields({
+                            name: '📢 Game Channels',
+                            value: channels.join('\n'),
+                            inline: false
+                        });
+                    }
+                }
+            } else {
+                embed.addFields({
+                    name: '🎮 Active Game',
+                    value: 'No active game',
+                    inline: false
+                });
+            }
+
+            // Database connectivity test
+            try {
+                await this.db.query('SELECT 1');
+                embed.addFields({
+                    name: '🗄️ Database',
+                    value: '✅ Connected',
+                    inline: true
+                });
+            } catch (error) {
+                embed.addFields({
+                    name: '🗄️ Database',
+                    value: '❌ Connection Error',
+                    inline: true
+                });
+            }
+
+            // Bot information
+            embed.addFields({
+                name: '🤖 Bot Info',
+                value: `**Prefix:** ${this.prefix}\n**Uptime:** ${process.uptime().toFixed(0)}s`,
+                inline: true
+            });
+
+            await message.reply({ embeds: [embed] });
+
+        } catch (error) {
+            console.error('Error getting server information:', error);
+            await message.reply('❌ An error occurred while retrieving server information.');
         }
     }
 
