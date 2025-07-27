@@ -92,6 +92,15 @@ class WerewolfBot {
                 case 'journal_link':
                     await this.handleJournalLink(message);
                     break;
+                case 'journal_owner':
+                    await this.handleJournalOwner(message);
+                    break;
+                case 'journal_unlink':
+                    await this.handleJournalUnlink(message);
+                    break;
+                case 'journal_assign':
+                    await this.handleJournalAssign(message, args);
+                    break;
                 case 'server':
                     await this.handleServer(message);
                     break;
@@ -1467,6 +1476,9 @@ class WerewolfBot {
                 { name: 'Wolf.night <message>', value: 'Set custom night transition message', inline: false },
                 { name: 'Wolf.journal @user', value: '📔 Create a personal journal for a player', inline: false },
                 { name: 'Wolf.journal_link', value: '🔗 Link existing journal channels to players using intelligent matching', inline: false },
+                { name: 'Wolf.journal_owner', value: '👤 Show who owns the current journal channel (use in journal)', inline: false },
+                { name: 'Wolf.journal_unlink', value: '🔓 Unlink the current journal from its owner (use in journal)', inline: false },
+                { name: 'Wolf.journal_assign @user', value: '🎯 Assign the current journal to a specific user (use in journal)', inline: false },
                 { name: 'Wolf.role_assign', value: '🎭 Randomly assign roles from a provided list to all signed-up players', inline: false },
                 { name: 'Wolf.roles_list', value: '📋 Display all assigned roles for players in the current game', inline: false },
                 { name: 'Wolf.server', value: '🖥️ Display detailed server information for logging and debugging', inline: false },
@@ -3616,6 +3628,202 @@ class WerewolfBot {
         } catch (error) {
             console.error('Error in journal linking:', error);
             await message.reply('❌ An error occurred during journal linking.');
+        }
+    }
+
+    async handleJournalOwner(message) {
+        const serverId = message.guild.id;
+        const channelId = message.channel.id;
+
+        try {
+            // Check if this channel is a journal
+            const journalResult = await this.db.query(
+                'SELECT user_id FROM player_journals WHERE server_id = $1 AND channel_id = $2',
+                [serverId, channelId]
+            );
+
+            if (journalResult.rows.length === 0) {
+                return message.reply('❌ This command can only be used in a journal channel.');
+            }
+
+            const userId = journalResult.rows[0].user_id;
+
+            try {
+                // Try to fetch the user from the guild
+                const member = await message.guild.members.fetch(userId);
+                const displayName = member.displayName || member.user.displayName || member.user.username;
+
+                const embed = new EmbedBuilder()
+                    .setTitle('📔 Journal Owner')
+                    .setDescription(`This journal belongs to **${displayName}** (${member.user.tag})`)
+                    .setColor(0x9B59B6)
+                    .setThumbnail(member.user.displayAvatarURL({ dynamic: true }));
+
+                await message.reply({ embeds: [embed] });
+
+            } catch (fetchError) {
+                // User might have left the server
+                const embed = new EmbedBuilder()
+                    .setTitle('📔 Journal Owner')
+                    .setDescription(`This journal belongs to a user who is no longer in the server.\nUser ID: ${userId}`)
+                    .setColor(0x95A5A6);
+
+                await message.reply({ embeds: [embed] });
+            }
+
+        } catch (error) {
+            console.error('Error getting journal owner:', error);
+            await message.reply('❌ An error occurred while retrieving journal owner information.');
+        }
+    }
+
+    async handleJournalUnlink(message) {
+        const serverId = message.guild.id;
+        const channelId = message.channel.id;
+
+        try {
+            // Check if this channel is a journal
+            const journalResult = await this.db.query(
+                'SELECT user_id FROM player_journals WHERE server_id = $1 AND channel_id = $2',
+                [serverId, channelId]
+            );
+
+            if (journalResult.rows.length === 0) {
+                return message.reply('❌ This command can only be used in a journal channel that is currently linked to a user.');
+            }
+
+            const userId = journalResult.rows[0].user_id;
+
+            // Get user information for confirmation
+            let userInfo = `User ID: ${userId}`;
+            try {
+                const member = await message.guild.members.fetch(userId);
+                const displayName = member.displayName || member.user.displayName || member.user.username;
+                userInfo = `**${displayName}** (${member.user.tag})`;
+            } catch (fetchError) {
+                userInfo = `User who left the server (ID: ${userId})`;
+            }
+
+            // Confirmation
+            const confirmEmbed = new EmbedBuilder()
+                .setTitle('⚠️ Confirm Journal Unlink')
+                .setDescription(`Are you sure you want to unlink this journal from ${userInfo}?`)
+                .setColor(0xE74C3C);
+
+            await message.reply({ embeds: [confirmEmbed] });
+            await message.reply('Type `confirm` to unlink or `cancel` to abort.');
+
+            const filter = (m) => m.author.id === message.author.id && ['confirm', 'cancel'].includes(m.content.toLowerCase());
+            const collected = await message.channel.awaitMessages({ filter, max: 1, time: 30000 });
+
+            if (!collected.size || collected.first().content.toLowerCase() === 'cancel') {
+                return message.reply('❌ Journal unlink cancelled.');
+            }
+
+            // Remove the journal association
+            await this.db.query(
+                'DELETE FROM player_journals WHERE server_id = $1 AND channel_id = $2',
+                [serverId, channelId]
+            );
+
+            const successEmbed = new EmbedBuilder()
+                .setTitle('✅ Journal Unlinked')
+                .setDescription(`Successfully unlinked this journal from ${userInfo}. The journal is now available for linking to another user.`)
+                .setColor(0x00AE86);
+
+            await message.reply({ embeds: [successEmbed] });
+
+        } catch (error) {
+            console.error('Error unlinking journal:', error);
+            await message.reply('❌ An error occurred while unlinking the journal.');
+        }
+    }
+
+    async handleJournalAssign(message, args) {
+        const serverId = message.guild.id;
+        const channelId = message.channel.id;
+
+        try {
+            // Check if this is a journal channel (ends with -journal)
+            if (!message.channel.name.endsWith('-journal')) {
+                return message.reply('❌ This command can only be used in a journal channel (channel name must end with "-journal").');
+            }
+
+            // Check if a user was mentioned
+            const targetUser = message.mentions.users.first();
+            if (!targetUser) {
+                return message.reply('❌ Please mention a user to assign this journal to. Usage: `Wolf.journal_assign @user`');
+            }
+
+            // Check if the mentioned user is in the server
+            let targetMember;
+            try {
+                targetMember = await message.guild.members.fetch(targetUser.id);
+            } catch (fetchError) {
+                return message.reply('❌ The mentioned user is not in this server.');
+            }
+
+            // Check if this journal is already linked to someone
+            const existingJournalResult = await this.db.query(
+                'SELECT user_id FROM player_journals WHERE server_id = $1 AND channel_id = $2',
+                [serverId, channelId]
+            );
+
+            if (existingJournalResult.rows.length > 0) {
+                const existingUserId = existingJournalResult.rows[0].user_id;
+                
+                // Get existing user info
+                let existingUserInfo = `User ID: ${existingUserId}`;
+                try {
+                    const existingMember = await message.guild.members.fetch(existingUserId);
+                    const existingDisplayName = existingMember.displayName || existingMember.user.displayName || existingMember.user.username;
+                    existingUserInfo = `**${existingDisplayName}** (${existingMember.user.tag})`;
+                } catch (fetchError) {
+                    existingUserInfo = `User who left the server (ID: ${existingUserId})`;
+                }
+
+                return message.reply(`❌ This journal is already linked to ${existingUserInfo}. Use \`Wolf.journal_unlink\` first to remove the existing assignment.`);
+            }
+
+            // Check if the target user already has a journal
+            const existingUserJournalResult = await this.db.query(
+                'SELECT channel_id FROM player_journals WHERE server_id = $1 AND user_id = $2',
+                [serverId, targetUser.id]
+            );
+
+            if (existingUserJournalResult.rows.length > 0) {
+                const existingChannelId = existingUserJournalResult.rows[0].channel_id;
+                return message.reply(`❌ **${targetMember.displayName || targetUser.username}** already has a journal linked: <#${existingChannelId}>. Use \`Wolf.journal_unlink\` in their current journal first.`);
+            }
+
+            // Create the journal assignment
+            await this.db.query(
+                'INSERT INTO player_journals (server_id, user_id, channel_id) VALUES ($1, $2, $3)',
+                [serverId, targetUser.id, channelId]
+            );
+
+            const displayName = targetMember.displayName || targetUser.displayName || targetUser.username;
+
+            const successEmbed = new EmbedBuilder()
+                .setTitle('✅ Journal Assigned')
+                .setDescription(`Successfully assigned this journal to **${displayName}** (${targetUser.tag})`)
+                .setColor(0x00AE86)
+                .setThumbnail(targetUser.displayAvatarURL({ dynamic: true }));
+
+            await message.reply({ embeds: [successEmbed] });
+
+            // Send a welcome message to the newly assigned user
+            const welcomeEmbed = new EmbedBuilder()
+                .setTitle('📔 Your Journal')
+                .setDescription(`Welcome to your personal journal, <@${targetUser.id}>! You can use this channel to keep notes, strategies, and thoughts during the game.`)
+                .setColor(0x9B59B6)
+                .setFooter({ text: 'Use Wolf.my_journal to find this channel from anywhere!' });
+
+            await message.channel.send({ embeds: [welcomeEmbed] });
+
+        } catch (error) {
+            console.error('Error assigning journal:', error);
+            await message.reply('❌ An error occurred while assigning the journal.');
         }
     }
 
