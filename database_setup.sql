@@ -89,6 +89,8 @@ CREATE TABLE game_channels (
     game_id INTEGER REFERENCES games(id) ON DELETE CASCADE,
     channel_id VARCHAR(20) NOT NULL,
     channel_name VARCHAR(100) NOT NULL,
+    day_message TEXT,
+    night_message TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(game_id, channel_id)
 );
