@@ -74,12 +74,6 @@ class WerewolfBot {
                 case 'add_channel':
                     await this.handleAddChannel(message, args);
                     break;
-                case 'day':
-                    await this.handleDayMessage(message, args);
-                    break;
-                case 'night':
-                    await this.handleNightMessage(message, args);
-                    break;
                 case 'issues':
                     await this.handleIssues(message);
                     break;
@@ -1531,16 +1525,14 @@ class WerewolfBot {
                            '`Wolf.roles` - 🎭 Create all game roles\n' +
                            '`Wolf.create` - Create a new game with signup channel\n' +
                            '`Wolf.start` - Start the game and create all channels\n' +
-                           '`Wolf.settings <setting> <value>` - Change game settings (e.g., votes_to_hang)\n' +
+                           '`Wolf.settings` - View/change game settings (votes_to_hang, day_message, night_message)\n' +
                            '`Wolf.next` - Move to the next phase (day/night)\n' +
                            '`Wolf.end` - End the current game (requires confirmation)', 
                     inline: false 
                 },
                 { 
                     name: '🔧 Channel & Phase Management', 
-                    value: '`Wolf.add_channel <n>` - Create additional channel in game category\n' +
-                           '`Wolf.day <message>` - Set custom day transition message\n' +
-                           '`Wolf.night <message>` - Set custom night transition message', 
+                    value: '`Wolf.add_channel <n>` - Create additional channel in game category', 
                     inline: false 
                 },
                 { 
@@ -1776,96 +1768,6 @@ class WerewolfBot {
         } catch (error) {
             console.error('Error creating channel:', error);
             await message.reply('❌ An error occurred while creating the channel.');
-        }
-    }
-
-    async handleDayMessage(message, args) {
-        const serverId = message.guild.id;
-
-        // Get active game
-        const gameResult = await this.db.query(
-            'SELECT * FROM games WHERE server_id = $1 AND status IN ($2, $3)',
-            [serverId, 'signup', 'active']
-        );
-
-        if (!gameResult.rows.length) {
-            return message.reply('❌ No active game found.');
-        }
-
-        const game = gameResult.rows[0];
-
-        // Check if message is provided
-        if (!args.length) {
-            return message.reply(`❌ Please provide a day message. Usage: \`Wolf.day <message>\`\n\nCurrent day message: "${game.day_message}"`);
-        }
-
-        const newMessage = args.join(' ');
-
-        try {
-            // Update the day message
-            await this.db.query(
-                'UPDATE games SET day_message = $1 WHERE id = $2',
-                [newMessage, game.id]
-            );
-
-            const embed = new EmbedBuilder()
-                .setTitle('🌅 Day Message Updated')
-                .setDescription('Successfully updated the day transition message!')
-                .addFields(
-                    { name: 'New Day Message', value: newMessage, inline: false }
-                )
-                .setColor(0xF1C40F);
-
-            await message.reply({ embeds: [embed] });
-
-        } catch (error) {
-            console.error('Error updating day message:', error);
-            await message.reply('❌ An error occurred while updating the day message.');
-        }
-    }
-
-    async handleNightMessage(message, args) {
-        const serverId = message.guild.id;
-
-        // Get active game
-        const gameResult = await this.db.query(
-            'SELECT * FROM games WHERE server_id = $1 AND status IN ($2, $3)',
-            [serverId, 'signup', 'active']
-        );
-
-        if (!gameResult.rows.length) {
-            return message.reply('❌ No active game found.');
-        }
-
-        const game = gameResult.rows[0];
-
-        // Check if message is provided
-        if (!args.length) {
-            return message.reply(`❌ Please provide a night message. Usage: \`Wolf.night <message>\`\n\nCurrent night message: "${game.night_message}"`);
-        }
-
-        const newMessage = args.join(' ');
-
-        try {
-            // Update the night message
-            await this.db.query(
-                'UPDATE games SET night_message = $1 WHERE id = $2',
-                [newMessage, game.id]
-            );
-
-            const embed = new EmbedBuilder()
-                .setTitle('🌙 Night Message Updated')
-                .setDescription('Successfully updated the night transition message!')
-                .addFields(
-                    { name: 'New Night Message', value: newMessage, inline: false }
-                )
-                .setColor(0x2C3E50);
-
-            await message.reply({ embeds: [embed] });
-
-        } catch (error) {
-            console.error('Error updating night message:', error);
-            await message.reply('❌ An error occurred while updating the night message.');
         }
     }
 
@@ -2905,8 +2807,8 @@ class WerewolfBot {
 
         // Get active game
         const gameResult = await this.db.query(
-            'SELECT * FROM games WHERE server_id = $1 AND status = $2',
-            [serverId, 'active']
+            'SELECT * FROM games WHERE server_id = $1 AND status IN ($2, $3)',
+            [serverId, 'signup', 'active']
         );
 
         if (!gameResult.rows.length) {
@@ -2921,7 +2823,9 @@ class WerewolfBot {
                 .setTitle('⚙️ Game Settings')
                 .setDescription('Current game settings for this server:')
                 .addFields(
-                    { name: 'Votes to Hang', value: `${game.votes_to_hang}\n*To change: \`Wolf.settings votes_to_hang 3\`*`, inline: false }
+                    { name: 'Votes to Hang', value: `${game.votes_to_hang}\n*To change: \`Wolf.settings votes_to_hang 3\`*`, inline: false },
+                    { name: 'Day Message', value: `${game.day_message}\n*To change: \`Wolf.settings day_message Your message here\`*`, inline: false },
+                    { name: 'Night Message', value: `${game.night_message}\n*To change: \`Wolf.settings night_message Your message here\`*`, inline: false }
                 )
                 .setColor(0x3498DB)
                 .setTimestamp();
@@ -2936,9 +2840,9 @@ class WerewolfBot {
 
         // Handle setting changes
         const setting = args[0].toLowerCase();
-        const value = args[1];
 
         if (setting === 'votes_to_hang') {
+            const value = args[1];
             if (!value) {
                 return message.reply('❌ Please provide a value for votes_to_hang. Example: `Wolf.settings votes_to_hang 3`');
             }
@@ -2964,8 +2868,57 @@ class WerewolfBot {
 
             // Update voting message if it exists
             await this.updateVotingMessage({ ...game, votes_to_hang: newValue });
+
+        } else if (setting === 'day_message') {
+            if (args.length < 2) {
+                return message.reply('❌ Please provide a day message. Example: `Wolf.settings day_message WAKE UP! Time to vote!`');
+            }
+
+            const newMessage = args.slice(1).join(' ');
+
+            // Update the day message
+            await this.db.query(
+                'UPDATE games SET day_message = $1 WHERE id = $2',
+                [newMessage, game.id]
+            );
+
+            const embed = new EmbedBuilder()
+                .setTitle('🌅 Day Message Updated')
+                .setDescription('✅ **Day Message** has been updated!')
+                .addFields(
+                    { name: 'New Day Message', value: newMessage, inline: false }
+                )
+                .setColor(0xF1C40F)
+                .setTimestamp();
+
+            await message.reply({ embeds: [embed] });
+
+        } else if (setting === 'night_message') {
+            if (args.length < 2) {
+                return message.reply('❌ Please provide a night message. Example: `Wolf.settings night_message Night falls. Someone is snoring really loudly.`');
+            }
+
+            const newMessage = args.slice(1).join(' ');
+
+            // Update the night message
+            await this.db.query(
+                'UPDATE games SET night_message = $1 WHERE id = $2',
+                [newMessage, game.id]
+            );
+
+            const embed = new EmbedBuilder()
+                .setTitle('🌙 Night Message Updated')
+                .setDescription('✅ **Night Message** has been updated!')
+                .addFields(
+                    { name: 'New Night Message', value: newMessage, inline: false }
+                )
+                .setColor(0x2C3E50)
+                .setTimestamp();
+
+            await message.reply({ embeds: [embed] });
+
         } else {
-            return message.reply('❌ Unknown setting. Available settings: `votes_to_hang`');
+            return message.reply('❌ Unknown setting. Available settings: `votes_to_hang`, `day_message`, `night_message`');
         }
     }
 
