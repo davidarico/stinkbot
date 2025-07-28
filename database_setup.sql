@@ -51,6 +51,7 @@ CREATE TABLE games (
     memos_channel_id VARCHAR(20),
     results_channel_id VARCHAR(20),
     voting_booth_channel_id VARCHAR(20),
+    voting_message_id VARCHAR(20), -- ID of the current voting message
     mod_chat_channel_id VARCHAR(20),
     category_id VARCHAR(20),
     phase_change_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
