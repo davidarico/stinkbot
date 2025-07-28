@@ -1129,31 +1129,48 @@ class WerewolfBot {
             game.town_square_channel_id
         ].filter(id => id); // Filter out any null/undefined channel IDs
 
-        // Get additional channels created with add_channel command
+        // Get additional channels created with add_channel command with their custom messages
         const additionalChannels = await this.db.query(
-            'SELECT channel_id FROM game_channels WHERE game_id = $1',
+            'SELECT channel_id, day_message, night_message FROM game_channels WHERE game_id = $1',
             [game.id]
         );
 
-        // Add additional channel IDs to the list
-        additionalChannels.rows.forEach(row => {
-            gameChannelIds.push(row.channel_id);
-        });
-
-        // Send the phase change message to all game channels
-        const channelPromises = gameChannelIds.map(async (channelId) => {
+        // Send the phase change message to main game channels (voting booth, wolf chat, town square)
+        const mainChannelPromises = gameChannelIds.map(async (channelId) => {
             try {
                 const channel = await this.client.channels.fetch(channelId);
                 if (channel) {
                     await channel.send({ embeds: [embed] });
                 }
             } catch (error) {
-                console.error(`Error sending phase message to channel ${channelId}:`, error);
+                console.error(`Error sending phase message to main channel ${channelId}:`, error);
+            }
+        });
+
+        // Send custom messages to additional channels
+        const additionalChannelPromises = additionalChannels.rows.map(async (channelData) => {
+            try {
+                const channel = await this.client.channels.fetch(channelData.channel_id);
+                if (channel) {
+                    // Use channel-specific message if set, otherwise use default
+                    const customMessage = newPhase === 'day' 
+                        ? (channelData.day_message || game.day_message)
+                        : (channelData.night_message || game.night_message);
+                    
+                    const customEmbed = new EmbedBuilder()
+                        .setTitle(title)
+                        .setDescription(`It is now **${newPhase} ${newDay}**.\n\n${customMessage}`)
+                        .setColor(newPhase === 'day' ? 0xF1C40F : 0x2C3E50);
+
+                    await channel.send({ embeds: [customEmbed] });
+                }
+            } catch (error) {
+                console.error(`Error sending custom phase message to channel ${channelData.channel_id}:`, error);
             }
         });
 
         // Wait for all channel messages to be sent
-        await Promise.all(channelPromises);
+        await Promise.all([...mainChannelPromises, ...additionalChannelPromises]);
 
 
         const aliveRole = message.guild.roles.cache.find(r => r.name === 'Alive');
@@ -1525,7 +1542,7 @@ class WerewolfBot {
                            '`Wolf.roles` - 🎭 Create all game roles\n' +
                            '`Wolf.create` - Create a new game with signup channel\n' +
                            '`Wolf.start` - Start the game and create all channels\n' +
-                           '`Wolf.settings` - View/change game settings (votes_to_hang, day_message, night_message)\n' +
+                           '`Wolf.settings` - View/change game and channel settings (votes_to_hang, messages)\n' +
                            '`Wolf.next` - Move to the next phase (day/night)\n' +
                            '`Wolf.end` - End the current game (requires confirmation)', 
                     inline: false 
@@ -1690,6 +1707,12 @@ class WerewolfBot {
         const game = gameResult.rows[0];
         const channelName = args.join('-').toLowerCase();
 
+        // Get roles
+        const aliveRole = message.guild.roles.cache.find(r => r.name === 'Alive');
+        const deadRole = message.guild.roles.cache.find(r => r.name === 'Dead');
+        const spectatorRole = message.guild.roles.cache.find(r => r.name === 'Spectator');
+        const modRole = message.guild.roles.cache.find(r => r.name === 'Mod');
+
         // Get server config for prefix
         const configResult = await this.db.query(
             'SELECT * FROM server_configs WHERE server_id = $1',
@@ -1748,10 +1771,10 @@ class WerewolfBot {
 
             // Permissions are set during channel creation
 
-            // Save channel to database
+            // Save channel to database with default day/night messages from the game
             await this.db.query(
-                'INSERT INTO game_channels (game_id, channel_id, channel_name) VALUES ($1, $2, $3)',
-                [game.id, newChannel.id, fullChannelName]
+                'INSERT INTO game_channels (game_id, channel_id, channel_name, day_message, night_message) VALUES ($1, $2, $3, $4, $5)',
+                [game.id, newChannel.id, fullChannelName, game.day_message, game.night_message]
             );
 
             const embed = new EmbedBuilder()
@@ -2819,16 +2842,40 @@ class WerewolfBot {
 
         // If no arguments provided, display current settings (anyone can view)
         if (args.length === 0) {
+            // Get additional channels for this game
+            const channelsResult = await this.db.query(
+                'SELECT channel_name, day_message, night_message FROM game_channels WHERE game_id = $1 ORDER BY channel_name',
+                [game.id]
+            );
+
             const embed = new EmbedBuilder()
                 .setTitle('⚙️ Game Settings')
                 .setDescription('Current game settings for this server:')
                 .addFields(
                     { name: 'Votes to Hang', value: `${game.votes_to_hang}\n*To change: \`Wolf.settings votes_to_hang 3\`*`, inline: false },
-                    { name: 'Day Message', value: `${game.day_message}\n*To change: \`Wolf.settings day_message Your message here\`*`, inline: false },
-                    { name: 'Night Message', value: `${game.night_message}\n*To change: \`Wolf.settings night_message Your message here\`*`, inline: false }
+                    { name: 'Default Day Message', value: `${game.day_message}\n*To change: \`Wolf.settings day_message Your message here\`*`, inline: false },
+                    { name: 'Default Night Message', value: `${game.night_message}\n*To change: \`Wolf.settings night_message Your message here\`*`, inline: false }
                 )
                 .setColor(0x3498DB)
                 .setTimestamp();
+
+            // Add channel-specific messages if any exist
+            if (channelsResult.rows.length > 0) {
+                let channelInfo = '';
+                for (const channel of channelsResult.rows) {
+                    const shortName = channel.channel_name.split('-').slice(-1)[0]; // Get the last part after the last dash
+                    channelInfo += `**${shortName}:**\n`;
+                    channelInfo += `Day: ${channel.day_message || 'Using default'}\n`;
+                    channelInfo += `Night: ${channel.night_message || 'Using default'}\n`;
+                    channelInfo += `*To change: \`Wolf.settings ${shortName} day_message/night_message Your message\`*\n\n`;
+                }
+                
+                embed.addFields({ 
+                    name: 'Channel-Specific Messages', 
+                    value: channelInfo.trim(),
+                    inline: false 
+                });
+            }
 
             return message.reply({ embeds: [embed] });
         }
@@ -2839,9 +2886,53 @@ class WerewolfBot {
         }
 
         // Handle setting changes
-        const setting = args[0].toLowerCase();
+        const firstArg = args[0].toLowerCase();
 
-        if (setting === 'votes_to_hang') {
+        // Check if this is a channel-specific setting (format: <channel_name> day_message|night_message <message>)
+        if (args.length >= 3) {
+            const channelName = firstArg;
+            const settingType = args[1].toLowerCase();
+            
+            if (settingType === 'day_message' || settingType === 'night_message') {
+                // Find the channel in the database
+                const channelResult = await this.db.query(
+                    'SELECT * FROM game_channels WHERE game_id = $1 AND (channel_name LIKE $2 OR channel_name LIKE $3)',
+                    [game.id, `%${channelName}`, `%${channelName}%`]
+                );
+
+                if (!channelResult.rows.length) {
+                    return message.reply(`❌ Channel "${channelName}" not found. Make sure you use the short channel name (e.g., "memes" for "g1-memes").`);
+                }
+
+                const channel = channelResult.rows[0];
+                const newMessage = args.slice(2).join(' ');
+
+                // Update the channel's message
+                const columnName = settingType;
+                await this.db.query(
+                    `UPDATE game_channels SET ${columnName} = $1 WHERE id = $2`,
+                    [newMessage, channel.id]
+                );
+
+                const shortName = channel.channel_name.split('-').slice(-1)[0];
+                const messageType = settingType === 'day_message' ? 'Day' : 'Night';
+                const emoji = settingType === 'day_message' ? '🌅' : '🌙';
+
+                const embed = new EmbedBuilder()
+                    .setTitle(`${emoji} Channel ${messageType} Message Updated`)
+                    .setDescription(`✅ **${shortName}** ${messageType.toLowerCase()} message has been updated!`)
+                    .addFields(
+                        { name: `New ${messageType} Message`, value: newMessage, inline: false }
+                    )
+                    .setColor(settingType === 'day_message' ? 0xF1C40F : 0x2C3E50)
+                    .setTimestamp();
+
+                return message.reply({ embeds: [embed] });
+            }
+        }
+
+        // Handle global game settings
+        if (firstArg === 'votes_to_hang') {
             const value = args[1];
             if (!value) {
                 return message.reply('❌ Please provide a value for votes_to_hang. Example: `Wolf.settings votes_to_hang 3`');
@@ -2869,22 +2960,22 @@ class WerewolfBot {
             // Update voting message if it exists
             await this.updateVotingMessage({ ...game, votes_to_hang: newValue });
 
-        } else if (setting === 'day_message') {
+        } else if (firstArg === 'day_message') {
             if (args.length < 2) {
                 return message.reply('❌ Please provide a day message. Example: `Wolf.settings day_message WAKE UP! Time to vote!`');
             }
 
             const newMessage = args.slice(1).join(' ');
 
-            // Update the day message
+            // Update the default day message
             await this.db.query(
                 'UPDATE games SET day_message = $1 WHERE id = $2',
                 [newMessage, game.id]
             );
 
             const embed = new EmbedBuilder()
-                .setTitle('🌅 Day Message Updated')
-                .setDescription('✅ **Day Message** has been updated!')
+                .setTitle('🌅 Default Day Message Updated')
+                .setDescription('✅ **Default Day Message** has been updated!')
                 .addFields(
                     { name: 'New Day Message', value: newMessage, inline: false }
                 )
@@ -2893,22 +2984,22 @@ class WerewolfBot {
 
             await message.reply({ embeds: [embed] });
 
-        } else if (setting === 'night_message') {
+        } else if (firstArg === 'night_message') {
             if (args.length < 2) {
                 return message.reply('❌ Please provide a night message. Example: `Wolf.settings night_message Night falls. Someone is snoring really loudly.`');
             }
 
             const newMessage = args.slice(1).join(' ');
 
-            // Update the night message
+            // Update the default night message
             await this.db.query(
                 'UPDATE games SET night_message = $1 WHERE id = $2',
                 [newMessage, game.id]
             );
 
             const embed = new EmbedBuilder()
-                .setTitle('🌙 Night Message Updated')
-                .setDescription('✅ **Night Message** has been updated!')
+                .setTitle('🌙 Default Night Message Updated')
+                .setDescription('✅ **Default Night Message** has been updated!')
                 .addFields(
                     { name: 'New Night Message', value: newMessage, inline: false }
                 )
@@ -2918,7 +3009,7 @@ class WerewolfBot {
             await message.reply({ embeds: [embed] });
 
         } else {
-            return message.reply('❌ Unknown setting. Available settings: `votes_to_hang`, `day_message`, `night_message`');
+            return message.reply('❌ Unknown setting. Available settings:\n• `votes_to_hang`\n• `day_message`, `night_message` (default messages)\n• `<channel_name> day_message`, `<channel_name> night_message` (channel-specific)');
         }
     }
 
