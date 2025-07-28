@@ -116,6 +116,12 @@ class WerewolfBot {
                 case 'settings':
                     await this.handleSettings(message, args);
                     break;
+                case 'create_vote':
+                    await this.handleCreateVote(message);
+                    break;
+                case 'get_votes':
+                    await this.handleGetVotes(message);
+                    break;
                 case 'meme':
                     await this.handleMeme(message);
                     break;
@@ -795,18 +801,152 @@ class WerewolfBot {
     }
 
     async createVotingMessage(gameId, votingChannel) {
-        // Get the current game to check day number and votes to hang
-        const gameResult = await this.db.query('SELECT day_number, votes_to_hang FROM games WHERE id = $1', [gameId]);
-        const dayNumber = gameResult.rows[0]?.day_number || 1;
-        const votesToHang = gameResult.rows[0]?.votes_to_hang || 4;
-        
-        const embed = new EmbedBuilder()
-            .setTitle(`🗳️ Day ${dayNumber} Voting`)
-            .setDescription(`Use \`Wolf.vote @user\` to vote for someone.\nUse \`Wolf.retract\` to retract your vote.\n\n**Votes needed to hang: ${votesToHang}**`)
-            .addFields({ name: 'Current Votes', value: 'No votes yet.' })
-            .setColor(0xE74C3C);
+        try {
+            // Get the current game to check day number and votes to hang
+            const gameResult = await this.db.query('SELECT day_number, votes_to_hang FROM games WHERE id = $1', [gameId]);
+            const dayNumber = gameResult.rows[0]?.day_number || 1;
+            const votesToHang = gameResult.rows[0]?.votes_to_hang || 4;
+            
+            const embed = new EmbedBuilder()
+                .setTitle(`🗳️ Day ${dayNumber} Voting`)
+                .setDescription(`Use \`Wolf.vote @user\` to vote for someone.\nUse \`Wolf.retract\` to retract your vote.\n\n**Votes needed to hang: ${votesToHang}**`)
+                .addFields({ name: 'Current Votes', value: 'No votes yet.' })
+                .setColor(0xE74C3C);
 
-        await votingChannel.send({ embeds: [embed] });
+            const votingMessage = await votingChannel.send({ embeds: [embed] });
+            
+            // Store the voting message ID in the database
+            const updateResult = await this.db.query(
+                'UPDATE games SET voting_message_id = $1 WHERE id = $2',
+                [votingMessage.id, gameId]
+            );
+            
+            console.log(`[DEBUG] Created voting message ${votingMessage.id} for game ${gameId}, database update affected ${updateResult.rowCount} rows`);
+            
+        } catch (error) {
+            console.error('Error creating voting message:', error);
+            throw error;
+        }
+    }
+
+    async handleCreateVote(message) {
+        const serverId = message.guild.id;
+
+        // Get active game
+        const gameResult = await this.db.query(
+            'SELECT * FROM games WHERE server_id = $1 AND status = $2',
+            [serverId, 'active']
+        );
+
+        if (!gameResult.rows.length) {
+            return message.reply('❌ No active game found.');
+        }
+
+        const game = gameResult.rows[0];
+
+        // Check if it's day phase and day 2+ (when voting is allowed)
+        if (game.day_phase === 'night') {
+            return message.reply('❌ Voting messages can only be created during the day phase.');
+        }
+
+        try {
+            const votingChannel = await this.client.channels.fetch(game.voting_booth_channel_id);
+            
+            // Create the new voting message (this will overwrite the stored ID)
+            await this.createVotingMessage(game.id, votingChannel);
+            
+            // Get the updated game data with the new voting message ID
+            const updatedGameResult = await this.db.query(
+                'SELECT * FROM games WHERE server_id = $1 AND status = $2',
+                [serverId, 'active']
+            );
+            const updatedGame = updatedGameResult.rows[0];
+            
+            // Immediately update the voting message with current votes
+            await this.updateVotingMessage(updatedGame);
+            
+            await message.reply('✅ Voting message created successfully!');
+            
+        } catch (error) {
+            console.error('Error creating voting message:', error);
+            await message.reply('❌ An error occurred while creating the voting message.');
+        }
+    }
+
+    async handleGetVotes(message) {
+        const serverId = message.guild.id;
+
+        // Get active game
+        const gameResult = await this.db.query(
+            'SELECT * FROM games WHERE server_id = $1 AND status = $2',
+            [serverId, 'active']
+        );
+
+        if (!gameResult.rows.length) {
+            return message.reply('❌ No active game found.');
+        }
+
+        const game = gameResult.rows[0];
+
+        // Check if it's day phase
+        if (game.day_phase === 'night') {
+            return message.reply('❌ Voting is not active during the night phase.');
+        }
+
+        if (game.day_number < 2) {
+            return message.reply('❌ Voting is not allowed on Day 1.');
+        }
+
+        try {
+            // Get current votes
+            const votesResult = await this.db.query(
+                `SELECT v.target_user_id, p.username as target_username, 
+                        COUNT(*) as vote_count,
+                        STRING_AGG(p2.username, ', ') as voters
+                 FROM votes v
+                 JOIN players p ON v.target_user_id = p.user_id AND p.game_id = v.game_id
+                 JOIN players p2 ON v.voter_user_id = p2.user_id AND p2.game_id = v.game_id
+                 WHERE v.game_id = $1 AND v.day_number = $2
+                 GROUP BY v.target_user_id, p.username
+                 ORDER BY vote_count DESC, p.username`,
+                [game.id, game.day_number]
+            );
+
+            // Get voting message status
+            let votingMessageStatus = '❌ No voting message found';
+            if (game.voting_message_id) {
+                try {
+                    const votingChannel = await this.client.channels.fetch(game.voting_booth_channel_id);
+                    const votingMessage = await votingChannel.messages.fetch(game.voting_message_id);
+                    if (votingMessage) {
+                        votingMessageStatus = `✅ Active voting message: [${game.voting_message_id}]`;
+                    }
+                } catch (error) {
+                    votingMessageStatus = `⚠️ Stored voting message not found: ${game.voting_message_id}`;
+                }
+            }
+
+            let voteText = 'No votes cast yet.';
+            if (votesResult.rows.length > 0) {
+                voteText = votesResult.rows.map(row => {
+                    const voters = row.voters.split(', ').map(voter => `- ${voter}`).join('\n');
+                    return `**${row.target_username}** (${row.vote_count})\n${voters}`;
+                }).join('\n\n');
+            }
+
+            const embed = new EmbedBuilder()
+                .setTitle(`🗳️ Day ${game.day_number} Vote Status`)
+                .setDescription(`**Game Phase:** ${game.day_phase === 'day' ? '🌞 Day' : '🌙 Night'} ${game.day_number}\n**Votes needed to hang:** ${game.votes_to_hang}\n**Voting Message:** ${votingMessageStatus}`)
+                .addFields({ name: 'Current Votes', value: voteText })
+                .setColor(0x3498DB)
+                .setTimestamp();
+
+            await message.reply({ embeds: [embed] });
+
+        } catch (error) {
+            console.error('Error getting vote status:', error);
+            await message.reply('❌ An error occurred while retrieving vote status.');
+        }
     }
 
     async sendPlayerListToDeadChat(gameId, deadChatChannel) {
@@ -1042,11 +1182,62 @@ class WerewolfBot {
 
     async updateVotingMessage(game) {
         try {
-            const votingChannel = await this.client.channels.fetch(game.voting_booth_channel_id);
-            const messages = await votingChannel.messages.fetch({ limit: 10 });
-            const votingMessage = messages.find(msg => msg.author.bot && msg.embeds.length > 0);
+            // If we don't have a voting message ID, try to find it the old way as fallback
+            if (!game.voting_message_id) {
+                const votingChannel = await this.client.channels.fetch(game.voting_booth_channel_id);
+                let votingMessage = null;
+                let lastMessageId = null;
+                let searchAttempts = 0;
+                const maxSearchAttempts = 50; // Prevent infinite loops (5000 messages max)
+                
+                // Keep searching through message history until we find a voting message
+                while (!votingMessage && searchAttempts < maxSearchAttempts) {
+                    const fetchOptions = { limit: 100 };
+                    if (lastMessageId) {
+                        fetchOptions.before = lastMessageId;
+                    }
+                    
+                    const messages = await votingChannel.messages.fetch(fetchOptions);
+                    if (messages.size === 0) {
+                        // No more messages to search
+                        break;
+                    }
+                    
+                    // Look for a bot message with embeds that contains voting title
+                    votingMessage = messages.find(msg => 
+                        msg.author.bot && 
+                        msg.embeds.length > 0 && 
+                        msg.embeds[0].title && 
+                        msg.embeds[0].title.includes('Voting')
+                    );
+                    
+                    if (!votingMessage) {
+                        // Get the ID of the oldest message in this batch for next iteration
+                        lastMessageId = messages.last().id;
+                        searchAttempts++;
+                    }
+                }
+                
+                if (!votingMessage) {
+                    console.log(`No voting message found in channel history after searching ${searchAttempts * 100} messages`);
+                    return;
+                }
+                
+                // Store the found message ID for future use
+                await this.db.query(
+                    'UPDATE games SET voting_message_id = $1 WHERE id = $2',
+                    [votingMessage.id, game.id]
+                );
+                game.voting_message_id = votingMessage.id;
+            }
 
-            if (!votingMessage) return;
+            const votingChannel = await this.client.channels.fetch(game.voting_booth_channel_id);
+            const votingMessage = await votingChannel.messages.fetch(game.voting_message_id);
+
+            if (!votingMessage) {
+                console.error('Voting message not found with ID:', game.voting_message_id);
+                return;
+            }
 
             // Get current votes
             const votesResult = await this.db.query(
@@ -1079,6 +1270,13 @@ class WerewolfBot {
             await votingMessage.edit({ embeds: [embed] });
         } catch (error) {
             console.error('Error updating voting message:', error);
+            // If the stored message ID is invalid, clear it from the database
+            if (error.code === 10008) { // Unknown Message error
+                await this.db.query(
+                    'UPDATE games SET voting_message_id = NULL WHERE id = $1',
+                    [game.id]
+                );
+            }
         }
     }
 
@@ -1128,6 +1326,12 @@ class WerewolfBot {
             // Clear all votes for the game at the end of each day
             await this.db.query(
                 'DELETE FROM votes WHERE game_id = $1',
+                [game.id]
+            );
+            
+            // Clear voting message ID since we'll need a new voting message for the next day
+            await this.db.query(
+                'UPDATE games SET voting_message_id = NULL WHERE id = $1',
                 [game.id]
             );
         }
@@ -1207,6 +1411,7 @@ class WerewolfBot {
         if (newPhase === 'day') {
             // Only create a new voting message for day 2+ (day 1 doesn't have voting)
             if (newDay >= 2) {
+                console.log(`[DEBUG] Creating voting message for Day ${newDay} in game ${game.id}`);
                 await this.createVotingMessage(game.id, votingChannel);
             }
 
@@ -1611,7 +1816,8 @@ class WerewolfBot {
                 },
                 { 
                     name: '🔧 Channel & Phase Management', 
-                    value: '`Wolf.add_channel <n>` - Create additional channel in game category', 
+                    value: '`Wolf.add_channel <n>` - Create additional channel in game category\n' +
+                           '`Wolf.create_vote` - 🗳️ Manually create a voting message (voting booth only)', 
                     inline: false 
                 },
                 { 
