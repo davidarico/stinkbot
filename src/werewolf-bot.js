@@ -20,7 +20,7 @@ class WerewolfBot {
         const command = args.shift().toLowerCase();
 
         // Commands that anyone can use
-        const playerCommands = ['in', 'out', 'vote', 'retract', 'alive', 'my_journal', 'peed', 'help', 'meme'];
+        const playerCommands = ['in', 'out', 'vote', 'retract', 'alive', 'peed', 'help', 'meme'];
         
         // Check permissions for admin-only commands
         if (!playerCommands.includes(command) && !this.hasModeratorPermissions(message.member)) {
@@ -692,7 +692,12 @@ class WerewolfBot {
                     id: aliveRole.id,
                     deny: ['ViewChannel'],
                     allow: ['SendMessages']
-                }
+                },
+                {
+                    id: deadRole.id,
+                    allow: ['ViewChannel'],
+                    deny: ['SendMessages']
+                },
             ]
         });
         await wolfChat.setPosition(votingBooth.position + 1); // Position wolf chat below voting booth
@@ -953,7 +958,7 @@ class WerewolfBot {
         }
 
         // Check if user is trying to vote for themselves
-        if (target.id === voterId) {
+        if (target.id === voterId && process.env.NODE_ENV !== 'development') {
             return message.reply('❌ You cannot vote for yourself.');
         }
 
@@ -1101,8 +1106,26 @@ class WerewolfBot {
             newDay = game.day_number + 1;
         }
 
-        // Clear all votes for the game at the end of each day
+        // Before clearing votes when switching to night, get voting results
+        let votingResults = null;
         if (game.day_phase === 'day') {
+            // Get voting results before clearing
+            const votesResult = await this.db.query(
+                `SELECT v.target_user_id, p.username as target_username, 
+                        COUNT(*) as vote_count,
+                        STRING_AGG(p2.username, ', ') as voters
+                 FROM votes v
+                 JOIN players p ON v.target_user_id = p.user_id AND p.game_id = v.game_id
+                 JOIN players p2 ON v.voter_user_id = p2.user_id AND p2.game_id = v.game_id
+                 WHERE v.game_id = $1 AND v.day_number = $2
+                 GROUP BY v.target_user_id, p.username
+                 ORDER BY vote_count DESC, p.username`,
+                [game.id, game.day_number]
+            );
+
+            votingResults = votesResult.rows;
+
+            // Clear all votes for the game at the end of each day
             await this.db.query(
                 'DELETE FROM votes WHERE game_id = $1',
                 [game.id]
@@ -1120,6 +1143,7 @@ class WerewolfBot {
         
         const title = newPhase === 'day' ? '🌞 Day Time!' : '🌙 Night Time!';
 
+        // Standard embed for all channels (without voting results)
         const embed = new EmbedBuilder()
             .setTitle(title)
             .setDescription(`It is now **${newPhase} ${newDay}**.\n\n${phaseMessage}`)
@@ -1160,6 +1184,7 @@ class WerewolfBot {
                         ? (channelData.day_message || game.day_message)
                         : (channelData.night_message || game.night_message);
                     
+                    // Standard embed for custom channels (without voting results)
                     const customEmbed = new EmbedBuilder()
                         .setTitle(title)
                         .setDescription(`It is now **${newPhase} ${newDay}**.\n\n${customMessage}`)
@@ -1207,8 +1232,44 @@ class WerewolfBot {
             });
         }
 
-        // Also reply to the command user
-        await message.reply({ embeds: [embed] });
+        // Create separate voting results embed for the moderator who issued the command
+        let modReplyEmbed = embed;
+        if (newPhase === 'night' && votingResults && votingResults.length > 0) {
+            const playersWithEnoughVotes = votingResults.filter(result => result.vote_count >= game.votes_to_hang);
+            
+            let votingResultsDescription = embed.data.description + '\n\n**📊 Day ' + game.day_number + ' Voting Results:**';
+            
+            if (playersWithEnoughVotes.length > 0) {
+                votingResultsDescription += '\n\n**Players who surpassed the vote threshold (' + game.votes_to_hang + ' votes):**';
+                playersWithEnoughVotes.forEach(result => {
+                    votingResultsDescription += `\n• **${result.target_username}** - ${result.vote_count} votes`;
+                });
+            } else {
+                votingResultsDescription += '\n\n*No players reached the vote threshold of ' + game.votes_to_hang + ' votes.*';
+            }
+            
+            votingResultsDescription += '\n\n**Vote Breakdown:**';
+            votingResults.forEach(result => {
+                const voters = result.voters.split(', ').join(', ');
+                votingResultsDescription += `\n• **${result.target_username}** (${result.vote_count}): ${voters}`;
+            });
+
+            modReplyEmbed = new EmbedBuilder()
+                .setTitle(title)
+                .setDescription(votingResultsDescription)
+                .setColor(newPhase === 'day' ? 0xF1C40F : 0x2C3E50);
+        } else if (newPhase === 'night' && (!votingResults || votingResults.length === 0)) {
+            if (game.day_number > 1) { // Only show this message for day 2+ (when voting is actually possible)
+                const votingResultsDescription = embed.data.description + '\n\n**📊 Day ' + game.day_number + ' Voting Results:**\n*No votes were cast today.*';
+                modReplyEmbed = new EmbedBuilder()
+                    .setTitle(title)
+                    .setDescription(votingResultsDescription)
+                    .setColor(newPhase === 'day' ? 0xF1C40F : 0x2C3E50);
+            }
+        }
+
+        // Reply to the command user (moderator) with voting results if switching to night
+        await message.reply({ embeds: [modReplyEmbed] });
     }
 
     async handleEnd(message) {
@@ -1528,10 +1589,7 @@ class WerewolfBot {
                        '`Wolf.vote @user` - Vote for a player (voting booth, day phase only)\n' +
                        '`Wolf.retract` - Retract your current vote\n' +
                        '`Wolf.alive` - Show all players currently alive\n' +
-                       '`Wolf.inlist` - Show all signed up players (mobile-friendly)\n' +
-                       '`Wolf.my_journal` - 📔 Find your personal journal channel\n' +
-                       '`Wolf.settings` - ⚙️ View current game settings\n' +
-                       '`Wolf.meme` - 😤 Get a sassy response from the bot\n' +
+                       '`Wolf.meme` - 😤 I dare you to try me\n' +
                        '`Wolf.help` - Show this help message', 
                 inline: false 
             }
