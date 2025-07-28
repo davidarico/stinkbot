@@ -20,7 +20,7 @@ class WerewolfBot {
         const command = args.shift().toLowerCase();
 
         // Commands that anyone can use
-        const playerCommands = ['in', 'out', 'vote', 'retract', 'alive', 'my_journal', 'peed'];
+        const playerCommands = ['in', 'out', 'vote', 'retract', 'alive', 'my_journal', 'peed', 'help'];
         
         // Check permissions for admin-only commands
         if (!playerCommands.includes(command) && !this.hasModeratorPermissions(message.member)) {
@@ -118,6 +118,9 @@ class WerewolfBot {
                     break;
                 case 'speed':
                     await this.handleSpeed(message, args);
+                    break;
+                case 'settings':
+                    await this.handleSettings(message, args);
                     break;
                 case 'peed':
                     await message.reply('💦 IM PISSING REALLY HARD AND ITS REALLY COOL 💦');
@@ -790,13 +793,14 @@ class WerewolfBot {
     }
 
     async createVotingMessage(gameId, votingChannel) {
-        // Get the current game to check day number
-        const gameResult = await this.db.query('SELECT day_number FROM games WHERE id = $1', [gameId]);
+        // Get the current game to check day number and votes to hang
+        const gameResult = await this.db.query('SELECT day_number, votes_to_hang FROM games WHERE id = $1', [gameId]);
         const dayNumber = gameResult.rows[0]?.day_number || 1;
+        const votesToHang = gameResult.rows[0]?.votes_to_hang || 4;
         
         const embed = new EmbedBuilder()
             .setTitle(`🗳️ Day ${dayNumber} Voting`)
-            .setDescription('Use `Wolf.vote @user` to vote for someone.\nUse `Wolf.retract` to retract your vote.')
+            .setDescription(`Use \`Wolf.vote @user\` to vote for someone.\nUse \`Wolf.retract\` to retract your vote.\n\n**Votes needed to hang: ${votesToHang}**`)
             .addFields({ name: 'Current Votes', value: 'No votes yet.' })
             .setColor(0xE74C3C);
 
@@ -1066,7 +1070,7 @@ class WerewolfBot {
 
             const embed = new EmbedBuilder()
                 .setTitle(`🗳️ Day ${game.day_number} Voting`)
-                .setDescription('Use `Wolf.vote @user` to vote for someone.\nUse `Wolf.retract` to retract your vote.')
+                .setDescription(`Use \`Wolf.vote @user\` to vote for someone.\nUse \`Wolf.retract\` to retract your vote.\n\n**Votes needed to hang: ${game.votes_to_hang}**`)
                 .addFields({ name: 'Current Votes', value: voteText })
                 .setColor(0xE74C3C);
 
@@ -1512,6 +1516,7 @@ class WerewolfBot {
                        '`Wolf.alive` - Show all players currently alive\n' +
                        '`Wolf.inlist` - Show all signed up players (mobile-friendly)\n' +
                        '`Wolf.my_journal` - 📔 Find your personal journal channel\n' +
+                       '`Wolf.settings` - ⚙️ View current game settings\n' +
                        '`Wolf.help` - Show this help message', 
                 inline: false 
             }
@@ -1526,6 +1531,7 @@ class WerewolfBot {
                            '`Wolf.roles` - 🎭 Create all game roles\n' +
                            '`Wolf.create` - Create a new game with signup channel\n' +
                            '`Wolf.start` - Start the game and create all channels\n' +
+                           '`Wolf.settings <setting> <value>` - Change game settings (e.g., votes_to_hang)\n' +
                            '`Wolf.next` - Move to the next phase (day/night)\n' +
                            '`Wolf.end` - End the current game (requires confirmation)', 
                     inline: false 
@@ -2891,6 +2897,75 @@ class WerewolfBot {
 
         } catch (error) {
             console.error('Error handling reaction:', error);
+        }
+    }
+
+    async handleSettings(message, args) {
+        const serverId = message.guild.id;
+
+        // Get active game
+        const gameResult = await this.db.query(
+            'SELECT * FROM games WHERE server_id = $1 AND status = $2',
+            [serverId, 'active']
+        );
+
+        if (!gameResult.rows.length) {
+            return message.reply('❌ No active game found.');
+        }
+
+        const game = gameResult.rows[0];
+
+        // If no arguments provided, display current settings (anyone can view)
+        if (args.length === 0) {
+            const embed = new EmbedBuilder()
+                .setTitle('⚙️ Game Settings')
+                .setDescription('Current game settings for this server:')
+                .addFields(
+                    { name: 'Votes to Hang', value: `${game.votes_to_hang}\n*To change: \`Wolf.settings votes_to_hang 3\`*`, inline: false }
+                )
+                .setColor(0x3498DB)
+                .setTimestamp();
+
+            return message.reply({ embeds: [embed] });
+        }
+
+        // Check permissions for changing settings (moderators only)
+        if (!this.hasModeratorPermissions(message.member)) {
+            return message.reply('❌ You need moderator permissions to change game settings.');
+        }
+
+        // Handle setting changes
+        const setting = args[0].toLowerCase();
+        const value = args[1];
+
+        if (setting === 'votes_to_hang') {
+            if (!value) {
+                return message.reply('❌ Please provide a value for votes_to_hang. Example: `Wolf.settings votes_to_hang 3`');
+            }
+
+            const newValue = parseInt(value);
+            if (isNaN(newValue) || newValue < 1 || newValue > 20) {
+                return message.reply('❌ Votes to hang must be a number between 1 and 20.');
+            }
+
+            // Update the game setting
+            await this.db.query(
+                'UPDATE games SET votes_to_hang = $1 WHERE id = $2',
+                [newValue, game.id]
+            );
+
+            const embed = new EmbedBuilder()
+                .setTitle('⚙️ Setting Updated')
+                .setDescription(`✅ **Votes to Hang** has been updated to **${newValue}**`)
+                .setColor(0x27AE60)
+                .setTimestamp();
+
+            await message.reply({ embeds: [embed] });
+
+            // Update voting message if it exists
+            await this.updateVotingMessage({ ...game, votes_to_hang: newValue });
+        } else {
+            return message.reply('❌ Unknown setting. Available settings: `votes_to_hang`');
         }
     }
 

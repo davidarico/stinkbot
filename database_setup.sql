@@ -42,6 +42,7 @@ CREATE TABLE games (
     status VARCHAR(20) NOT NULL DEFAULT 'signup', -- signup, active, ended
     day_phase VARCHAR(10) NOT NULL DEFAULT 'night', -- day, night
     day_number INTEGER NOT NULL DEFAULT 1,
+    votes_to_hang INTEGER NOT NULL DEFAULT 4,
     day_message TEXT DEFAULT 'WAKE UP! Time to bully your fellow villagers and vote them out.',
     night_message TEXT DEFAULT 'Night falls. Someone is snoring really loudly.',
     signup_channel_id VARCHAR(20),
