@@ -1573,7 +1573,7 @@ class WerewolfBot {
 
         // Get all signed up players
         const playersResult = await this.db.query(
-            'SELECT username FROM players WHERE game_id = $1 ORDER BY signed_up_at',
+            'SELECT username FROM players WHERE game_id = $1 ORDER BY username',
             [game.id]
         );
 
