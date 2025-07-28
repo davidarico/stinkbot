@@ -168,6 +168,160 @@ class WerewolfBot {
         await this.assignRole(member, 'Spectator');
     }
 
+    getChannelPermissionOverwrites(guild, channelType) {
+        const aliveRole = guild.roles.cache.find(r => r.name === 'Alive');
+        const deadRole = guild.roles.cache.find(r => r.name === 'Dead');
+        const spectatorRole = guild.roles.cache.find(r => r.name === 'Spectator');
+        const modRole = guild.roles.cache.find(r => r.name === 'Mod');
+
+        if (!aliveRole || !deadRole || !spectatorRole || !modRole) {
+            console.warn('Some roles not found when setting permissions');
+            return [];
+        }
+
+        const permissionOverwrites = [];
+
+        switch (channelType) {
+            case 'deadChat':
+                permissionOverwrites.push(
+                    {
+                        id: guild.roles.everyone.id,
+                        deny: ['ViewChannel', 'SendMessages']
+                    },
+                    {
+                        id: deadRole.id,
+                        allow: ['ViewChannel', 'SendMessages']
+                    },
+                    {
+                        id: aliveRole.id,
+                        deny: ['ViewChannel']
+                    },
+                    {
+                        id: spectatorRole.id,
+                        allow: ['ViewChannel', 'SendMessages']
+                    },
+                    {
+                        id: modRole.id,
+                        allow: ['ViewChannel', 'SendMessages']
+                    }
+                );
+                break;
+
+            case 'gameChannel':
+                permissionOverwrites.push(
+                    {
+                        id: guild.roles.everyone.id,
+                        deny: ['ViewChannel', 'SendMessages']
+                    },
+                    {
+                        id: aliveRole.id,
+                        allow: ['ViewChannel', 'SendMessages']
+                    },
+                    {
+                        id: deadRole.id,
+                        allow: ['ViewChannel'],
+                        deny: ['SendMessages']
+                    },
+                    {
+                        id: spectatorRole.id,
+                        allow: ['ViewChannel'],
+                        deny: ['SendMessages']
+                    },
+                    {
+                        id: modRole.id,
+                        allow: ['ViewChannel', 'SendMessages']
+                    }
+                );
+                break;
+
+            case 'votingBooth':
+                // Voting booth starts closed (night phase)
+                permissionOverwrites.push(
+                    {
+                        id: guild.roles.everyone.id,
+                        deny: ['ViewChannel', 'SendMessages']
+                    },
+                    {
+                        id: aliveRole.id,
+                        allow: ['ViewChannel'],
+                        deny: ['SendMessages']
+                    },
+                    {
+                        id: deadRole.id,
+                        allow: ['ViewChannel'],
+                        deny: ['SendMessages']
+                    },
+                    {
+                        id: spectatorRole.id,
+                        allow: ['ViewChannel'],
+                        deny: ['SendMessages']
+                    },
+                    {
+                        id: modRole.id,
+                        allow: ['ViewChannel', 'SendMessages']
+                    }
+                );
+                break;
+
+            case 'results':
+                permissionOverwrites.push(
+                    {
+                        id: guild.roles.everyone.id,
+                        deny: ['ViewChannel', 'SendMessages']
+                    },
+                    {
+                        id: aliveRole.id,
+                        allow: ['ViewChannel'],
+                        deny: ['SendMessages']
+                    },
+                    {
+                        id: deadRole.id,
+                        allow: ['ViewChannel'],
+                        deny: ['SendMessages']
+                    },
+                    {
+                        id: spectatorRole.id,
+                        allow: ['ViewChannel'],
+                        deny: ['SendMessages']
+                    },
+                    {
+                        id: modRole.id,
+                        allow: ['ViewChannel', 'SendMessages']
+                    }
+                );
+                break;
+
+            case 'wolfChat':
+                permissionOverwrites.push(
+                    {
+                        id: guild.roles.everyone.id,
+                        deny: ['ViewChannel', 'SendMessages']
+                    },
+                    {
+                        id: modRole.id,
+                        allow: ['ViewChannel', 'SendMessages']
+                    },
+                    {
+                        id: spectatorRole.id,
+                        allow: ['ViewChannel'],
+                        deny: ['SendMessages']
+                    },
+                    {
+                        id: aliveRole.id,
+                        deny: ['ViewChannel'],
+                        allow: ['SendMessages']
+                    }
+                );
+                break;
+
+            default:
+                console.warn(`Unknown channel type: ${channelType}`);
+                return [];
+        }
+
+        return permissionOverwrites;
+    }
+
     async setupChannelPermissions(game, deadChat, townSquare, wolfChat, memos, results, votingBooth) {
         const guild = deadChat.guild;
         const aliveRole = guild.roles.cache.find(r => r.name === 'Alive');
@@ -642,6 +796,7 @@ class WerewolfBot {
             name: `${config.game_prefix}${game.game_number}-results`,
             type: ChannelType.GuildText,
             parent: category.id,
+            permissionOverwrites: this.getChannelPermissionOverwrites(message.guild, 'results')
         });
         await results.setPosition(signupChannel.position); // Position results above the signup channel
 
@@ -650,6 +805,7 @@ class WerewolfBot {
             name: `${config.game_prefix}${game.game_number}-player-memos`,
             type: ChannelType.GuildText,
             parent: category.id,
+            permissionOverwrites: this.getChannelPermissionOverwrites(message.guild, 'gameChannel')
         });
         await memos.setPosition(results.position + 1); // Position memos below results
 
@@ -658,14 +814,16 @@ class WerewolfBot {
             name: `${config.game_prefix}${game.game_number}-townsquare`,
             type: ChannelType.GuildText,
             parent: category.id,
+            permissionOverwrites: this.getChannelPermissionOverwrites(message.guild, 'gameChannel')
         });
         await townSquare.setPosition(memos.position + 1); // Position town square below memos
 
-        // 5. Voting-Booth
+        // 5. Voting-Booth (starts locked for night phase)
         const votingBooth = await message.guild.channels.create({
             name: `${config.game_prefix}${game.game_number}-voting-booth`,
             type: ChannelType.GuildText,
             parent: category.id,
+            permissionOverwrites: this.getChannelPermissionOverwrites(message.guild, 'votingBooth')
         });
         await votingBooth.setPosition(townSquare.position + 1); // Position voting booth below town square
 
@@ -676,11 +834,32 @@ class WerewolfBot {
             name: `${config.game_prefix}${game.game_number}-wolf-chat`,
             type: ChannelType.GuildText,
             parent: category.id,
+            permissionOverwrites: this.getChannelPermissionOverwrites(message.guild, 'wolfChat')
         });
         await wolfChat.setPosition(votingBooth.position + 1); // Position wolf chat below voting booth
 
-        // Rename signup channel to dead-chat
+        // Rename signup channel to dead-chat and apply dead chat permissions
         await signupChannel.setName(`${config.game_prefix}${game.game_number}-dead-chat`);
+        
+        // Apply dead chat permissions to the renamed signup channel
+        const deadChatPermissions = this.getChannelPermissionOverwrites(message.guild, 'deadChat');
+        for (const perm of deadChatPermissions) {
+            const permissions = {};
+            
+            if (perm.allow?.includes('ViewChannel')) {
+                permissions.ViewChannel = true;
+            } else if (perm.deny?.includes('ViewChannel')) {
+                permissions.ViewChannel = false;
+            }
+            
+            if (perm.allow?.includes('SendMessages')) {
+                permissions.SendMessages = true;
+            } else if (perm.deny?.includes('SendMessages')) {
+                permissions.SendMessages = false;
+            }
+            
+            await signupChannel.permissionOverwrites.edit(perm.id, permissions);
+        }
         
         // 8. Dead-Chat (already renamed above from signup channel)
         // All channels were positioned above it, there was no success trying to reposition it at this point
@@ -701,8 +880,7 @@ class WerewolfBot {
             }
         }
 
-        // Set up channel permissions for game roles
-        await this.setupChannelPermissions(game, signupChannel, townSquare, wolfChat, memos, results, votingBooth);
+        // Channel permissions are now set during channel creation
 
         // Update game in database
         await this.db.query(
@@ -1120,16 +1298,27 @@ class WerewolfBot {
 
 
         const aliveRole = message.guild.roles.cache.find(r => r.name === 'Alive');
-        // If it's a new day (day 2 or later), create new voting message
+        // If it's a new day, create new voting message and allow voting
         const votingChannel = await this.client.channels.fetch(game.voting_booth_channel_id);
-        if (newPhase === 'day' && newDay >= 2) {
-            await this.createVotingMessage(game.id, votingChannel);
+        if (newPhase === 'day') {
+            // Only create a new voting message for day 2+ (day 1 doesn't have voting)
+            if (newDay >= 2) {
+                await this.createVotingMessage(game.id, votingChannel);
+            }
 
-            // Reopen voting booth channel
-            await votingChannel.permissionOverwrites.edit(aliveRole.id, {
-                ViewChannel: true,
-                SendMessages: true
-            });
+            // Allow voting during day phase (but only for day 2+)
+            if (newDay >= 2) {
+                await votingChannel.permissionOverwrites.edit(aliveRole.id, {
+                    ViewChannel: true,
+                    SendMessages: true
+                });
+            } else {
+                // Day 1 - keep voting booth read-only
+                await votingChannel.permissionOverwrites.edit(aliveRole.id, {
+                    ViewChannel: true,
+                    SendMessages: false
+                });
+            }
         }
         else {
             // Close voting booth channel for the night phase
@@ -1256,6 +1445,10 @@ class WerewolfBot {
     }
 
     async handleRefresh(message) {
+        if (process.env.NODE_ENV !== 'development') {
+            return message.reply('❌ This command is only available in development mode.');
+        }
+
         const serverId = message.guild.id;
 
         // Confirmation
@@ -1447,46 +1640,71 @@ class WerewolfBot {
             .setDescription('Here are the available commands:')
             .setColor(0x3498DB);
 
-        // Player commands (everyone can use)
+        // Player commands (everyone can use) - grouped together
         embed.addFields(
-            { name: 'Player Commands', value: 'Commands anyone can use:', inline: false },
-            { name: 'Wolf.in', value: 'Sign up for the current game', inline: false },
-            { name: 'Wolf.out', value: 'Remove yourself from the current game', inline: false },
-            { name: 'Wolf.vote @user', value: 'Vote for a player (only in voting booth during day)', inline: false },
-            { name: 'Wolf.retract', value: 'Retract your current vote', inline: false },
-            { name: 'Wolf.alive', value: 'Show all players currently alive in the game', inline: false },
-            { name: 'Wolf.inlist', value: 'Show all players signed up for the current game (mobile-friendly format)', inline: false },
-            { name: 'Wolf.my_journal', value: '📔 Find your personal journal channel', inline: false },
-            { name: 'Wolf.help', value: 'Show this help message', inline: false }
+            { 
+                name: '👥 Player Commands', 
+                value: '`Wolf.in` - Sign up for the current game\n' +
+                       '`Wolf.out` - Remove yourself from the current game\n' +
+                       '`Wolf.vote @user` - Vote for a player (voting booth, day phase only)\n' +
+                       '`Wolf.retract` - Retract your current vote\n' +
+                       '`Wolf.alive` - Show all players currently alive\n' +
+                       '`Wolf.inlist` - Show all signed up players (mobile-friendly)\n' +
+                       '`Wolf.my_journal` - 📔 Find your personal journal channel\n' +
+                       '`Wolf.help` - Show this help message', 
+                inline: false 
+            }
         );
 
-        // Admin commands (only if user is admin)
+        // Admin commands (only if user is admin) - grouped by category
         if (isAdmin) {
             embed.addFields(
-                { name: 'Moderator Commands', value: 'Commands only moderators can use:', inline: false },
-                { name: 'Wolf.setup', value: 'Initial server setup - configure game prefix, starting number, and game name', inline: false },
-                { name: 'Wolf.roles', value: '🎭 Create all game roles (Mod, Spectator, Signed Up, Alive, Dead)', inline: false },
-                { name: 'Wolf.create', value: 'Create a new game with signup channel', inline: false },
-                { name: 'Wolf.start', value: 'Start the game and create all game channels', inline: false },
-                { name: 'Wolf.next', value: 'Move to the next phase (day/night)', inline: false },
-                { name: 'Wolf.end', value: 'End the current game (requires confirmation)', inline: false },
-
-                { name: 'Wolf.add_channel <name>', value: 'Create an additional channel in the game category', inline: false },
-                { name: 'Wolf.day <message>', value: 'Set custom day transition message', inline: false },
-                { name: 'Wolf.night <message>', value: 'Set custom night transition message', inline: false },
-                { name: 'Wolf.journal @user', value: '📔 Create a personal journal for a player', inline: false },
-                { name: 'Wolf.journal_link', value: '🔗 Link existing journal channels to players using intelligent matching', inline: false },
-                { name: 'Wolf.journal_owner', value: '👤 Show who owns the current journal channel (use in journal)', inline: false },
-                { name: 'Wolf.journal_unlink', value: '🔓 Unlink the current journal from its owner (use in journal)', inline: false },
-                { name: 'Wolf.journal_assign @user', value: '🎯 Assign the current journal to a specific user (use in journal)', inline: false },
-                { name: 'Wolf.role_assign', value: '🎭 Randomly assign roles from a provided list to all signed-up players', inline: false },
-                { name: 'Wolf.roles_list', value: '📋 Display all assigned roles for players in the current game', inline: false },
-                { name: 'Wolf.server', value: '🖥️ Display detailed server information for logging and debugging', inline: false },
-                { name: 'Wolf.ia <YYYY-MM-DD HH:MM>', value: '📊 Get message count per player in town square since specified date/time (EST)', inline: false },
-                { name: 'Wolf.speed <number>', value: '⚡ Start a speed vote with target number of reactions (use "abort" to cancel)', inline: false },
-                { name: 'Wolf.recovery', value: '🔄 Recovery mode - migrate from manual game management to bot control', inline: false },
-                { name: 'Wolf.issues', value: '🐛 Display current known issues and bugs', inline: false },
-                { name: 'Wolf.refresh', value: '🔄 Reset server (delete all channels except #general, reset to game 1) - for testing only!', inline: false }
+                { 
+                    name: '⚙️ Setup & Game Management', 
+                    value: '`Wolf.setup` - Initial server setup (prefix, starting number, game name)\n' +
+                           '`Wolf.roles` - 🎭 Create all game roles\n' +
+                           '`Wolf.create` - Create a new game with signup channel\n' +
+                           '`Wolf.start` - Start the game and create all channels\n' +
+                           '`Wolf.next` - Move to the next phase (day/night)\n' +
+                           '`Wolf.end` - End the current game (requires confirmation)', 
+                    inline: false 
+                },
+                { 
+                    name: '🔧 Channel & Phase Management', 
+                    value: '`Wolf.add_channel <n>` - Create additional channel in game category\n' +
+                           '`Wolf.day <message>` - Set custom day transition message\n' +
+                           '`Wolf.night <message>` - Set custom night transition message', 
+                    inline: false 
+                },
+                { 
+                    name: '📔 Journal Management', 
+                    value: '`Wolf.journal @user` - Create a personal journal for a player\n' +
+                           '`Wolf.journal_link` - 🔗 Link existing journals to players\n' +
+                           '`Wolf.journal_owner` - 👤 Show journal owner (use in journal)\n' +
+                           '`Wolf.journal_unlink` - 🔓 Unlink journal (use in journal)\n' +
+                           '`Wolf.journal_assign @user` - 🎯 Assign journal to user (use in journal)', 
+                    inline: false 
+                },
+                { 
+                    name: '🎭 Role & Player Management', 
+                    value: '`Wolf.role_assign` - Randomly assign roles to signed-up players\n' +
+                           '`Wolf.roles_list` - 📋 Display all assigned roles for current game', 
+                    inline: false 
+                },
+                { 
+                    name: '📊 Analysis & Utilities', 
+                    value: '`Wolf.server` - 🖥️ Display detailed server information\n' +
+                           '`Wolf.ia <YYYY-MM-DD HH:MM>` - Message count per player since date (EST)\n' +
+                           '`Wolf.speed <number>` - ⚡ Start speed vote with reaction target', 
+                    inline: false 
+                },
+                { 
+                    name: '🔄 Recovery & Maintenance', 
+                    value: '`Wolf.recovery` - Migration from manual to bot control\n' +
+                           '`Wolf.issues` - 🐛 Display current known issues\n' +
+                           '`Wolf.refresh` - Reset server (testing only!)', 
+                    inline: false 
+                }
             );
         } else {
             embed.setFooter({ text: 'Note: Some commands are only available to moderators.' });
@@ -1624,12 +1842,13 @@ class WerewolfBot {
         const fullChannelName = `${config.game_prefix}${game.game_number}-${channelName}`;
 
         try {
-            // Create the channel in the game category
+            // Create the channel in the game category with proper permissions
             const category = await this.client.channels.fetch(game.category_id);
             const newChannel = await message.guild.channels.create({
                 name: fullChannelName,
                 type: ChannelType.GuildText,
                 parent: category.id,
+                permissionOverwrites: this.getChannelPermissionOverwrites(message.guild, 'gameChannel')
             });
 
             // Position the channel between voting booth and wolf chat
@@ -1649,30 +1868,7 @@ class WerewolfBot {
                 // Continue even if positioning fails - channel is still created
             }
 
-            // Set up permissions for the new channel (same as other game channels)
-            const guild = message.guild;
-            const aliveRole = guild.roles.cache.find(r => r.name === 'Alive');
-            const deadRole = guild.roles.cache.find(r => r.name === 'Dead');
-            const spectatorRole = guild.roles.cache.find(r => r.name === 'Spectator');
-
-            if (aliveRole && deadRole && spectatorRole) {
-                await newChannel.permissionOverwrites.edit(guild.roles.everyone.id, {
-                    ViewChannel: false,
-                    SendMessages: false
-                });
-                await newChannel.permissionOverwrites.edit(aliveRole.id, {
-                    ViewChannel: false,
-                    SendMessages: false
-                });
-                await newChannel.permissionOverwrites.edit(deadRole.id, {
-                    ViewChannel: true,
-                    SendMessages: false
-                });
-                await newChannel.permissionOverwrites.edit(spectatorRole.id, {
-                    ViewChannel: true,
-                    SendMessages: false
-                });
-            }
+            // Permissions are set during channel creation
 
             // Save channel to database
             await this.db.query(
