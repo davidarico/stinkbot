@@ -20,7 +20,7 @@ class WerewolfBot {
         const command = args.shift().toLowerCase();
 
         // Commands that anyone can use
-        const playerCommands = ['in', 'out', 'vote', 'retract', 'alive', 'my_journal', 'peed'];
+        const playerCommands = ['in', 'out', 'vote', 'retract', 'alive', 'my_journal', 'peed', 'help'];
         
         // Check permissions for admin-only commands
         if (!playerCommands.includes(command) && !this.hasModeratorPermissions(message.member)) {
@@ -119,6 +119,9 @@ class WerewolfBot {
                 case 'speed':
                     await this.handleSpeed(message, args);
                     break;
+                case 'settings':
+                    await this.handleSettings(message, args);
+                    break;
                 case 'peed':
                     await message.reply('💦 IM PISSING REALLY HARD AND ITS REALLY COOL 💦');
                     break;
@@ -166,269 +169,6 @@ class WerewolfBot {
         await this.removeRole(member, 'Alive');
         await this.removeRole(member, 'Dead');
         await this.assignRole(member, 'Spectator');
-    }
-
-    getChannelPermissionOverwrites(guild, channelType) {
-        const aliveRole = guild.roles.cache.find(r => r.name === 'Alive');
-        const deadRole = guild.roles.cache.find(r => r.name === 'Dead');
-        const spectatorRole = guild.roles.cache.find(r => r.name === 'Spectator');
-        const modRole = guild.roles.cache.find(r => r.name === 'Mod');
-
-        if (!aliveRole || !deadRole || !spectatorRole || !modRole) {
-            console.warn('Some roles not found when setting permissions');
-            return [];
-        }
-
-        const permissionOverwrites = [];
-
-        switch (channelType) {
-            case 'deadChat':
-                permissionOverwrites.push(
-                    {
-                        id: guild.roles.everyone.id,
-                        deny: ['ViewChannel', 'SendMessages']
-                    },
-                    {
-                        id: deadRole.id,
-                        allow: ['ViewChannel', 'SendMessages']
-                    },
-                    {
-                        id: aliveRole.id,
-                        deny: ['ViewChannel']
-                    },
-                    {
-                        id: spectatorRole.id,
-                        allow: ['ViewChannel', 'SendMessages']
-                    },
-                    {
-                        id: modRole.id,
-                        allow: ['ViewChannel', 'SendMessages']
-                    }
-                );
-                break;
-
-            case 'gameChannel':
-                permissionOverwrites.push(
-                    {
-                        id: guild.roles.everyone.id,
-                        deny: ['ViewChannel', 'SendMessages']
-                    },
-                    {
-                        id: aliveRole.id,
-                        allow: ['ViewChannel', 'SendMessages']
-                    },
-                    {
-                        id: deadRole.id,
-                        allow: ['ViewChannel'],
-                        deny: ['SendMessages']
-                    },
-                    {
-                        id: spectatorRole.id,
-                        allow: ['ViewChannel'],
-                        deny: ['SendMessages']
-                    },
-                    {
-                        id: modRole.id,
-                        allow: ['ViewChannel', 'SendMessages']
-                    }
-                );
-                break;
-
-            case 'votingBooth':
-                // Voting booth starts closed (night phase)
-                permissionOverwrites.push(
-                    {
-                        id: guild.roles.everyone.id,
-                        deny: ['ViewChannel', 'SendMessages']
-                    },
-                    {
-                        id: aliveRole.id,
-                        allow: ['ViewChannel'],
-                        deny: ['SendMessages']
-                    },
-                    {
-                        id: deadRole.id,
-                        allow: ['ViewChannel'],
-                        deny: ['SendMessages']
-                    },
-                    {
-                        id: spectatorRole.id,
-                        allow: ['ViewChannel'],
-                        deny: ['SendMessages']
-                    },
-                    {
-                        id: modRole.id,
-                        allow: ['ViewChannel', 'SendMessages']
-                    }
-                );
-                break;
-
-            case 'results':
-                permissionOverwrites.push(
-                    {
-                        id: guild.roles.everyone.id,
-                        deny: ['ViewChannel', 'SendMessages']
-                    },
-                    {
-                        id: aliveRole.id,
-                        allow: ['ViewChannel'],
-                        deny: ['SendMessages']
-                    },
-                    {
-                        id: deadRole.id,
-                        allow: ['ViewChannel'],
-                        deny: ['SendMessages']
-                    },
-                    {
-                        id: spectatorRole.id,
-                        allow: ['ViewChannel'],
-                        deny: ['SendMessages']
-                    },
-                    {
-                        id: modRole.id,
-                        allow: ['ViewChannel', 'SendMessages']
-                    }
-                );
-                break;
-
-            case 'wolfChat':
-                permissionOverwrites.push(
-                    {
-                        id: guild.roles.everyone.id,
-                        deny: ['ViewChannel', 'SendMessages']
-                    },
-                    {
-                        id: modRole.id,
-                        allow: ['ViewChannel', 'SendMessages']
-                    },
-                    {
-                        id: spectatorRole.id,
-                        allow: ['ViewChannel'],
-                        deny: ['SendMessages']
-                    },
-                    {
-                        id: aliveRole.id,
-                        deny: ['ViewChannel'],
-                        allow: ['SendMessages']
-                    }
-                );
-                break;
-
-            default:
-                console.warn(`Unknown channel type: ${channelType}`);
-                return [];
-        }
-
-        return permissionOverwrites;
-    }
-
-    async setupChannelPermissions(game, deadChat, townSquare, wolfChat, memos, results, votingBooth) {
-        const guild = deadChat.guild;
-        const aliveRole = guild.roles.cache.find(r => r.name === 'Alive');
-        const deadRole = guild.roles.cache.find(r => r.name === 'Dead');
-        const spectatorRole = guild.roles.cache.find(r => r.name === 'Spectator');
-        const modRole = guild.roles.cache.find(r => r.name === 'Mod');
-
-        try {
-            // Dead Chat permissions: Dead can see and type, Alive cannot see, Spectators can see and type, Mods can see and type
-            if (deadRole && aliveRole && spectatorRole && modRole) {
-                await deadChat.permissionOverwrites.edit(guild.roles.everyone.id, {
-                    ViewChannel: false,
-                    SendMessages: false
-                });
-                await deadChat.permissionOverwrites.edit(deadRole.id, {
-                    ViewChannel: true,
-                    SendMessages: true
-                });
-                await deadChat.permissionOverwrites.edit(aliveRole.id, {
-                    ViewChannel: false
-                });
-                await deadChat.permissionOverwrites.edit(spectatorRole.id, {
-                    ViewChannel: true,
-                    SendMessages: true
-                });
-                await deadChat.permissionOverwrites.edit(modRole.id, {
-                    ViewChannel: true,
-                    SendMessages: true
-                });
-            }
-
-            // Game channels: Alive can see and type, Dead can see but not type (except dead chat), Spectators can see but not type, Mods can see and type
-            const gameChannels = [townSquare, memos, votingBooth];
-            for (const channel of gameChannels) {
-                if (aliveRole && deadRole && spectatorRole && modRole) {
-                    await channel.permissionOverwrites.edit(guild.roles.everyone.id, {
-                        ViewChannel: false,
-                        SendMessages: false
-                    });
-                    await channel.permissionOverwrites.edit(aliveRole.id, {
-                        ViewChannel: true,
-                        SendMessages: true
-                    });
-                    await channel.permissionOverwrites.edit(deadRole.id, {
-                        ViewChannel: true,
-                        SendMessages: false
-                    });
-                    await channel.permissionOverwrites.edit(spectatorRole.id, {
-                        ViewChannel: true,
-                        SendMessages: false
-                    });
-                    await channel.permissionOverwrites.edit(modRole.id, {
-                        ViewChannel: true,
-                        SendMessages: true
-                    });
-                }
-            }
-
-            // Results channel: Only Mod can type, everyone else can see but not type
-            if (results && modRole && aliveRole && deadRole && spectatorRole) {
-                await results.permissionOverwrites.edit(guild.roles.everyone.id, {
-                    ViewChannel: false,
-                    SendMessages: false
-                });
-                await results.permissionOverwrites.edit(aliveRole.id, {
-                    ViewChannel: true,
-                    SendMessages: false
-                });
-                await results.permissionOverwrites.edit(deadRole.id, {
-                    ViewChannel: true,
-                    SendMessages: false
-                });
-                await results.permissionOverwrites.edit(spectatorRole.id, {
-                    ViewChannel: true,
-                    SendMessages: false
-                });
-                await results.permissionOverwrites.edit(modRole.id, {
-                    ViewChannel: true,
-                    SendMessages: true
-                });
-            }
-
-            // Wolf Chat: Mods can see and type, everyone else cannot see. Mod will manually set this channels permissions
-            if (wolfChat && modRole && spectatorRole && aliveRole) {
-                await wolfChat.permissionOverwrites.edit(guild.roles.everyone.id, {
-                    ViewChannel: false,
-                    SendMessages: false
-                });
-                await wolfChat.permissionOverwrites.edit(modRole.id, {
-                    ViewChannel: true,
-                    SendMessages: true
-                });
-                await wolfChat.permissionOverwrites.edit(spectatorRole.id, {
-                    ViewChannel: true,
-                    SendMessages: false
-                });
-                await wolfChat.permissionOverwrites.edit(aliveRole.id, {
-                    ViewChannel: false,
-                    SendMessages: true
-                });
-            }
-
-            // Mod chat is already set up in channel creation
-            console.log('Channel permissions set up successfully');
-        } catch (error) {
-            console.error('Error setting up channel permissions:', error);
-        }
     }
 
     async handleSetup(message, args) {
@@ -568,6 +308,7 @@ class WerewolfBot {
             // Continue even if positioning fails - category is still created
         }
 
+        // Create mod chat channel
         const modRole = message.guild.roles.cache.find(r => r.name === 'Mod');
 
         const modChatName = `${config.game_prefix}${config.game_counter}-mod-chat`;
@@ -575,31 +316,35 @@ class WerewolfBot {
             name: modChatName,
             type: ChannelType.GuildText,
             parent: category.id,
+            permissionOverwrites: [
+                {
+                    id: message.guild.roles.everyone.id,
+                    deny: ['ViewChannel', 'SendMessages']
+                },
+                {
+                    id: modRole.id,
+                    allow: ['ViewChannel', 'SendMessages']
+                }
+            ]
         });
 
-        await modChat.permissionOverwrites.edit(message.guild.roles.everyone.id, {
-            ViewChannel: false,
-            SendMessages: false
-        });
-        await modChat.permissionOverwrites.edit(modRole.id, {
-            ViewChannel: true,
-            SendMessages: true
-        });
-
+        // Create breakdown channel
         const breakdownName = `${config.game_prefix}${config.game_counter}-breakdown`;
-        const breakdown = await message.guild.channels.create({
+        await message.guild.channels.create({
             name: breakdownName,
             type: ChannelType.GuildText,
             parent: category.id,
-        });
-
-        await breakdown.permissionOverwrites.edit(message.guild.roles.everyone.id, {
-            ViewChannel: true,
-            SendMessages: false
-        });
-        await breakdown.permissionOverwrites.edit(modRole.id, {
-            ViewChannel: true,
-            SendMessages: true
+            permissionOverwrites: [
+                {
+                    id: message.guild.roles.everyone.id,
+                    allow: ['ViewChannel'],
+                    deny: ['SendMessages']
+                },
+                {
+                    id: modRole.id,
+                    allow: ['ViewChannel', 'SendMessages']
+                }
+            ]
         });
 
         const signupChannelName = `${config.game_prefix}${config.game_counter}-signups`;
@@ -765,6 +510,10 @@ class WerewolfBot {
         }
 
         const game = gameResult.rows[0];
+        const aliveRole = message.guild.roles.cache.find(r => r.name === 'Alive');
+        const deadRole = message.guild.roles.cache.find(r => r.name === 'Dead');
+        const spectatorRole = message.guild.roles.cache.find(r => r.name === 'Spectator');
+        const modRole = message.guild.roles.cache.find(r => r.name === 'Mod');
 
         // Check if there are players
         const playersResult = await this.db.query(
@@ -791,50 +540,163 @@ class WerewolfBot {
 
         // 1. Breakdown is already created on Wolf.create and will be at the top of the category
 
-        // 2. Results
+        // 2. Results - Only Mod can type, everyone else can see but not type
         const results = await message.guild.channels.create({
             name: `${config.game_prefix}${game.game_number}-results`,
             type: ChannelType.GuildText,
             parent: category.id,
-            permissionOverwrites: this.getChannelPermissionOverwrites(message.guild, 'results')
+            permissionOverwrites: [
+                {
+                    id: message.guild.roles.everyone.id,
+                    deny: ['ViewChannel', 'SendMessages']
+                },
+                {
+                    id: aliveRole.id,
+                    allow: ['ViewChannel'],
+                    deny: ['SendMessages']
+                },
+                {
+                    id: deadRole.id,
+                    allow: ['ViewChannel'],
+                    deny: ['SendMessages']
+                },
+                {
+                    id: spectatorRole.id,
+                    allow: ['ViewChannel'],
+                    deny: ['SendMessages']
+                },
+                {
+                    id: modRole.id,
+                    allow: ['ViewChannel', 'SendMessages']
+                }
+            ]
         });
         await results.setPosition(signupChannel.position); // Position results above the signup channel
 
-        // 3. Player-memos
+        // 3. Player-memos - Alive can see and type, Dead can see but not type, Spectators can see but not type, Mods can see and type
         const memos = await message.guild.channels.create({
             name: `${config.game_prefix}${game.game_number}-player-memos`,
             type: ChannelType.GuildText,
             parent: category.id,
-            permissionOverwrites: this.getChannelPermissionOverwrites(message.guild, 'gameChannel')
+            permissionOverwrites: [
+                {
+                    id: message.guild.roles.everyone.id,
+                    deny: ['ViewChannel', 'SendMessages']
+                },
+                {
+                    id: aliveRole.id,
+                    allow: ['ViewChannel', 'SendMessages']
+                },
+                {
+                    id: deadRole.id,
+                    allow: ['ViewChannel'],
+                    deny: ['SendMessages']
+                },
+                {
+                    id: spectatorRole.id,
+                    allow: ['ViewChannel'],
+                    deny: ['SendMessages']
+                },
+                {
+                    id: modRole.id,
+                    allow: ['ViewChannel', 'SendMessages']
+                }
+            ]
         });
         await memos.setPosition(results.position + 1); // Position memos below results
 
-        // 4. Townsquare
+        // 4. Townsquare - Alive can see and type, Dead can see but not type, Spectators can see but not type, Mods can see and type
         const townSquare = await message.guild.channels.create({
             name: `${config.game_prefix}${game.game_number}-townsquare`,
             type: ChannelType.GuildText,
             parent: category.id,
-            permissionOverwrites: this.getChannelPermissionOverwrites(message.guild, 'gameChannel')
+            permissionOverwrites: [
+                {
+                    id: message.guild.roles.everyone.id,
+                    deny: ['ViewChannel', 'SendMessages']
+                },
+                {
+                    id: aliveRole.id,
+                    allow: ['ViewChannel', 'SendMessages']
+                },
+                {
+                    id: deadRole.id,
+                    allow: ['ViewChannel'],
+                    deny: ['SendMessages']
+                },
+                {
+                    id: spectatorRole.id,
+                    allow: ['ViewChannel'],
+                    deny: ['SendMessages']
+                },
+                {
+                    id: modRole.id,
+                    allow: ['ViewChannel', 'SendMessages']
+                }
+            ]
         });
         await townSquare.setPosition(memos.position + 1); // Position town square below memos
 
-        // 5. Voting-Booth (starts locked for night phase)
+        // 5. Voting-Booth (starts locked for night phase) - All can see but none can type initially
         const votingBooth = await message.guild.channels.create({
             name: `${config.game_prefix}${game.game_number}-voting-booth`,
             type: ChannelType.GuildText,
             parent: category.id,
-            permissionOverwrites: this.getChannelPermissionOverwrites(message.guild, 'votingBooth')
+            permissionOverwrites: [
+                {
+                    id: message.guild.roles.everyone.id,
+                    deny: ['ViewChannel', 'SendMessages']
+                },
+                {
+                    id: aliveRole.id,
+                    allow: ['ViewChannel'],
+                    deny: ['SendMessages']
+                },
+                {
+                    id: deadRole.id,
+                    allow: ['ViewChannel'],
+                    deny: ['SendMessages']
+                },
+                {
+                    id: spectatorRole.id,
+                    allow: ['ViewChannel'],
+                    deny: ['SendMessages']
+                },
+                {
+                    id: modRole.id,
+                    allow: ['ViewChannel', 'SendMessages']
+                }
+            ]
         });
         await votingBooth.setPosition(townSquare.position + 1); // Position voting booth below town square
 
         // 6. <added channels> will be positioned here when created with Wolf.add_channel
 
-        // 7. Wolf-Chat
+        // 7. Wolf-Chat - Mods can see and type, Spectators can see but not type, Alive cannot see but can type (for wolves), everyone else cannot see
         const wolfChat = await message.guild.channels.create({
             name: `${config.game_prefix}${game.game_number}-wolf-chat`,
             type: ChannelType.GuildText,
             parent: category.id,
-            permissionOverwrites: this.getChannelPermissionOverwrites(message.guild, 'wolfChat')
+            permissionOverwrites: [
+                {
+                    id: message.guild.roles.everyone.id,
+                    deny: ['ViewChannel', 'SendMessages']
+                },
+                {
+                    id: modRole.id,
+                    allow: ['ViewChannel', 'SendMessages']
+                },
+                {
+                    id: spectatorRole.id,
+                    allow: ['ViewChannel'],
+                    deny: ['SendMessages']
+                },
+                {
+                    id: aliveRole.id,
+                    deny: ['ViewChannel'],
+                    allow: ['SendMessages']
+                }
+            ]
         });
         await wolfChat.setPosition(votingBooth.position + 1); // Position wolf chat below voting booth
 
@@ -842,24 +704,26 @@ class WerewolfBot {
         await signupChannel.setName(`${config.game_prefix}${game.game_number}-dead-chat`);
         
         // Apply dead chat permissions to the renamed signup channel
-        const deadChatPermissions = this.getChannelPermissionOverwrites(message.guild, 'deadChat');
-        for (const perm of deadChatPermissions) {
-            const permissions = {};
-            
-            if (perm.allow?.includes('ViewChannel')) {
-                permissions.ViewChannel = true;
-            } else if (perm.deny?.includes('ViewChannel')) {
-                permissions.ViewChannel = false;
-            }
-            
-            if (perm.allow?.includes('SendMessages')) {
-                permissions.SendMessages = true;
-            } else if (perm.deny?.includes('SendMessages')) {
-                permissions.SendMessages = false;
-            }
-            
-            await signupChannel.permissionOverwrites.edit(perm.id, permissions);
-        }
+        // Dead can see and type, Alive cannot see, Spectators can see and type, Mods can see and type
+        await signupChannel.permissionOverwrites.edit(message.guild.roles.everyone.id, {
+            ViewChannel: false,
+            SendMessages: false
+        });
+        await signupChannel.permissionOverwrites.edit(deadRole.id, {
+            ViewChannel: true,
+            SendMessages: true
+        });
+        await signupChannel.permissionOverwrites.edit(aliveRole.id, {
+            ViewChannel: false
+        });
+        await signupChannel.permissionOverwrites.edit(spectatorRole.id, {
+            ViewChannel: true,
+            SendMessages: true
+        });
+        await signupChannel.permissionOverwrites.edit(modRole.id, {
+            ViewChannel: true,
+            SendMessages: true
+        });
         
         // 8. Dead-Chat (already renamed above from signup channel)
         // All channels were positioned above it, there was no success trying to reposition it at this point
@@ -929,13 +793,14 @@ class WerewolfBot {
     }
 
     async createVotingMessage(gameId, votingChannel) {
-        // Get the current game to check day number
-        const gameResult = await this.db.query('SELECT day_number FROM games WHERE id = $1', [gameId]);
+        // Get the current game to check day number and votes to hang
+        const gameResult = await this.db.query('SELECT day_number, votes_to_hang FROM games WHERE id = $1', [gameId]);
         const dayNumber = gameResult.rows[0]?.day_number || 1;
+        const votesToHang = gameResult.rows[0]?.votes_to_hang || 4;
         
         const embed = new EmbedBuilder()
             .setTitle(`🗳️ Day ${dayNumber} Voting`)
-            .setDescription('Use `Wolf.vote @user` to vote for someone.\nUse `Wolf.retract` to retract your vote.')
+            .setDescription(`Use \`Wolf.vote @user\` to vote for someone.\nUse \`Wolf.retract\` to retract your vote.\n\n**Votes needed to hang: ${votesToHang}**`)
             .addFields({ name: 'Current Votes', value: 'No votes yet.' })
             .setColor(0xE74C3C);
 
@@ -1205,7 +1070,7 @@ class WerewolfBot {
 
             const embed = new EmbedBuilder()
                 .setTitle(`🗳️ Day ${game.day_number} Voting`)
-                .setDescription('Use `Wolf.vote @user` to vote for someone.\nUse `Wolf.retract` to retract your vote.')
+                .setDescription(`Use \`Wolf.vote @user\` to vote for someone.\nUse \`Wolf.retract\` to retract your vote.\n\n**Votes needed to hang: ${game.votes_to_hang}**`)
                 .addFields({ name: 'Current Votes', value: voteText })
                 .setColor(0xE74C3C);
 
@@ -1651,6 +1516,7 @@ class WerewolfBot {
                        '`Wolf.alive` - Show all players currently alive\n' +
                        '`Wolf.inlist` - Show all signed up players (mobile-friendly)\n' +
                        '`Wolf.my_journal` - 📔 Find your personal journal channel\n' +
+                       '`Wolf.settings` - ⚙️ View current game settings\n' +
                        '`Wolf.help` - Show this help message', 
                 inline: false 
             }
@@ -1665,6 +1531,7 @@ class WerewolfBot {
                            '`Wolf.roles` - 🎭 Create all game roles\n' +
                            '`Wolf.create` - Create a new game with signup channel\n' +
                            '`Wolf.start` - Start the game and create all channels\n' +
+                           '`Wolf.settings <setting> <value>` - Change game settings (e.g., votes_to_hang)\n' +
                            '`Wolf.next` - Move to the next phase (day/night)\n' +
                            '`Wolf.end` - End the current game (requires confirmation)', 
                     inline: false 
@@ -1848,7 +1715,26 @@ class WerewolfBot {
                 name: fullChannelName,
                 type: ChannelType.GuildText,
                 parent: category.id,
-                permissionOverwrites: this.getChannelPermissionOverwrites(message.guild, 'gameChannel')
+                permissionOverwrites: [
+                    {
+                        id: message.guild.roles.everyone.id,
+                        deny: ['ViewChannel', 'SendMessages']
+                    },
+                    {
+                        id: modRole.id,
+                        allow: ['ViewChannel', 'SendMessages']
+                    },
+                    {
+                        id: spectatorRole.id,
+                        allow: ['ViewChannel'],
+                        deny: ['SendMessages']
+                    },
+                    {
+                        id: aliveRole.id,
+                        deny: ['ViewChannel'],
+                        allow: ['SendMessages']
+                    }
+                ]
             });
 
             // Position the channel between voting booth and wolf chat
@@ -3011,6 +2897,75 @@ class WerewolfBot {
 
         } catch (error) {
             console.error('Error handling reaction:', error);
+        }
+    }
+
+    async handleSettings(message, args) {
+        const serverId = message.guild.id;
+
+        // Get active game
+        const gameResult = await this.db.query(
+            'SELECT * FROM games WHERE server_id = $1 AND status = $2',
+            [serverId, 'active']
+        );
+
+        if (!gameResult.rows.length) {
+            return message.reply('❌ No active game found.');
+        }
+
+        const game = gameResult.rows[0];
+
+        // If no arguments provided, display current settings (anyone can view)
+        if (args.length === 0) {
+            const embed = new EmbedBuilder()
+                .setTitle('⚙️ Game Settings')
+                .setDescription('Current game settings for this server:')
+                .addFields(
+                    { name: 'Votes to Hang', value: `${game.votes_to_hang}\n*To change: \`Wolf.settings votes_to_hang 3\`*`, inline: false }
+                )
+                .setColor(0x3498DB)
+                .setTimestamp();
+
+            return message.reply({ embeds: [embed] });
+        }
+
+        // Check permissions for changing settings (moderators only)
+        if (!this.hasModeratorPermissions(message.member)) {
+            return message.reply('❌ You need moderator permissions to change game settings.');
+        }
+
+        // Handle setting changes
+        const setting = args[0].toLowerCase();
+        const value = args[1];
+
+        if (setting === 'votes_to_hang') {
+            if (!value) {
+                return message.reply('❌ Please provide a value for votes_to_hang. Example: `Wolf.settings votes_to_hang 3`');
+            }
+
+            const newValue = parseInt(value);
+            if (isNaN(newValue) || newValue < 1 || newValue > 20) {
+                return message.reply('❌ Votes to hang must be a number between 1 and 20.');
+            }
+
+            // Update the game setting
+            await this.db.query(
+                'UPDATE games SET votes_to_hang = $1 WHERE id = $2',
+                [newValue, game.id]
+            );
+
+            const embed = new EmbedBuilder()
+                .setTitle('⚙️ Setting Updated')
+                .setDescription(`✅ **Votes to Hang** has been updated to **${newValue}**`)
+                .setColor(0x27AE60)
+                .setTimestamp();
+
+            await message.reply({ embeds: [embed] });
+
+            // Update voting message if it exists
+            await this.updateVotingMessage({ ...game, votes_to_hang: newValue });
+        } else {
+            return message.reply('❌ Unknown setting. Available settings: `votes_to_hang`');
         }
     }
 
