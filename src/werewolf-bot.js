@@ -20,7 +20,7 @@ class WerewolfBot {
         const command = args.shift().toLowerCase();
 
         // Commands that anyone can use
-        const playerCommands = ['in', 'out', 'vote', 'retract', 'alive', 'my_journal', 'peed', 'help'];
+        const playerCommands = ['in', 'out', 'vote', 'retract', 'alive', 'my_journal', 'peed', 'help', 'meme'];
         
         // Check permissions for admin-only commands
         if (!playerCommands.includes(command) && !this.hasModeratorPermissions(message.member)) {
@@ -115,6 +115,9 @@ class WerewolfBot {
                     break;
                 case 'settings':
                     await this.handleSettings(message, args);
+                    break;
+                case 'meme':
+                    await this.handleMeme(message);
                     break;
                 case 'peed':
                     await message.reply('💦 IM PISSING REALLY HARD AND ITS REALLY COOL 💦');
@@ -1528,6 +1531,7 @@ class WerewolfBot {
                        '`Wolf.inlist` - Show all signed up players (mobile-friendly)\n' +
                        '`Wolf.my_journal` - 📔 Find your personal journal channel\n' +
                        '`Wolf.settings` - ⚙️ View current game settings\n' +
+                       '`Wolf.meme` - 😤 Get a sassy response from the bot\n' +
                        '`Wolf.help` - Show this help message', 
                 inline: false 
             }
@@ -4020,6 +4024,23 @@ class WerewolfBot {
         } catch (error) {
             console.error('Error assigning journal:', error);
             await message.reply('❌ An error occurred while assigning the journal.');
+        }
+    }
+
+    async handleMeme(message) {
+        try {
+            const username = message.author.username.toLowerCase();
+            const displayName = message.member ? message.member.displayName.toLowerCase() : '';
+            
+            // Check if the user has "geese" in their username or display name
+            if (username.includes('geese') || displayName.includes('geese')) {
+                await message.reply('And especially you! You\'re not getting anything from me');
+            } else {
+                await message.reply('Are you kidding me? After all the vitriol you put me through, you expect me to just give you a little funny quip or joke? I\'ll give you something to laugh about if youre not careful');
+            }
+        } catch (error) {
+            console.error('Error handling meme command:', error);
+            await message.reply('❌ An error occurred while processing the meme command.');
         }
     }
 
