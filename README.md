@@ -107,22 +107,39 @@ Commands are divided into two categories: **Player Commands** (available to ever
 | `Wolf.out` | Remove yourself from the current game |
 | `Wolf.vote @user` | Vote for a player (day phase only) |
 | `Wolf.retract` | Retract your current vote |
+| `Wolf.alive` | Show all players currently alive in the game |
+| `Wolf.inlist` | Show all players signed up for the current game (mobile-friendly format) |
+| `Wolf.my_journal` | 📔 Find your personal journal channel |
+| `Wolf.help` | Show all available commands |
 
 ### Moderator Commands (Moderators Only)
 
 | Command | Description |
 |---------|-------------|
-| `Wolf.help` | Show all available commands |
 | `Wolf.setup` | Configure server settings |
 | `Wolf.roles` | 🎭 Create all game roles |
 | `Wolf.create` | Create a new game |
 | `Wolf.start` | Start the game and create channels |
 | `Wolf.next` | Move to next phase (day/night) |
-| `Wolf.inlist` | Gets a list of signed up users |
 | `Wolf.end` | End the current game |
+| `Wolf.add_channel <name>` | Create an additional channel in the game category |
+| `Wolf.day <message>` | Set custom day transition message |
+| `Wolf.night <message>` | Set custom night transition message |
+| `Wolf.journal @user` | 📔 Create a personal journal for a player |
+| `Wolf.journal_link` | 🔗 Link existing journal channels to players using intelligent matching |
+| `Wolf.journal_owner` | 👤 Show who owns the current journal channel (use in journal) |
+| `Wolf.journal_unlink` | 🔓 Unlink the current journal from its owner (use in journal) |
+| `Wolf.journal_assign @user` | 🎯 Assign the current journal to a specific user (use in journal) |
+| `Wolf.role_assign` | 🎭 Randomly assign roles from a provided list to all signed-up players |
+| `Wolf.roles_list` | 📋 Display all assigned roles for players in the current game |
+| `Wolf.server` | 🖥️ Display detailed server information for logging and debugging |
+| `Wolf.ia <YYYY-MM-DD HH:MM>` | 📊 Get message count per player in town square since specified date/time (EST) |
+| `Wolf.speed <number>` | ⚡ Start a speed vote with target number of reactions (use "abort" to cancel) |
+| `Wolf.recovery` | 🔄 Recovery mode - migrate from manual game management to bot control |
+| `Wolf.issues` | 🐛 Display current known issues and bugs |
 | `Wolf.refresh` | 🔄 **Reset server** (delete channels, reset roles to Spectator) |
 
-> ⚠️ **Warning**: The `refresh` command will delete ALL text channels except #general, reset all members to Spectator role, and reset the server to game 1. Use only for testing!
+> ⚠️ **Warning**: The `refresh` command will delete ALL text channels except #general, delete ALL categories, reset game counter to 1, end any active games, and reset all members to Spectator role. This action cannot be undone! Use only for testing!
 
 ## 🎯 Typical Game Flow
 

@@ -19,7 +19,7 @@ class WerewolfBot {
         const args = message.content.slice(prefix.length).trim().split(/ +/);
         const command = args.shift().toLowerCase();
 
-        // Commands that anyone can use, they will not be able to use help since it shows admin commands
+        // Commands that anyone can use
         const playerCommands = ['in', 'out', 'vote', 'retract', 'alive', 'my_journal', 'peed'];
         
         // Check permissions for admin-only commands
@@ -1485,6 +1485,7 @@ class WerewolfBot {
                 { name: 'Wolf.ia <YYYY-MM-DD HH:MM>', value: '📊 Get message count per player in town square since specified date/time (EST)', inline: false },
                 { name: 'Wolf.speed <number>', value: '⚡ Start a speed vote with target number of reactions (use "abort" to cancel)', inline: false },
                 { name: 'Wolf.recovery', value: '🔄 Recovery mode - migrate from manual game management to bot control', inline: false },
+                { name: 'Wolf.issues', value: '🐛 Display current known issues and bugs', inline: false },
                 { name: 'Wolf.refresh', value: '🔄 Reset server (delete all channels except #general, reset to game 1) - for testing only!', inline: false }
             );
         } else {
