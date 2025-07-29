@@ -20,7 +20,7 @@ class WerewolfBot {
         const command = args.shift().toLowerCase();
 
         // Commands that anyone can use
-        const playerCommands = ['in', 'out', 'vote', 'retract', 'alive', 'peed', 'help', 'meme', 'speed_check'];
+        const playerCommands = ['in', 'out', 'vote', 'retract', 'alive', 'peed', 'help', 'meme'];
         
         // Check permissions for admin-only commands
         if (!playerCommands.includes(command) && !this.hasModeratorPermissions(message.member)) {
@@ -1843,7 +1843,6 @@ class WerewolfBot {
                        '`Wolf.vote @user` - Vote for a player (voting booth, day phase only)\n' +
                        '`Wolf.retract` - Retract your current vote\n' +
                        '`Wolf.alive` - Show all players currently alive\n' +
-                       '`Wolf.speed_check` - Show alive player activity since current phase started\n' +
                        '`Wolf.meme` - 😤 I dare you to try me\n' +
                        '`Wolf.help` - Show this help message', 
                 inline: false 
