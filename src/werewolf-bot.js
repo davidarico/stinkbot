@@ -807,6 +807,23 @@ class WerewolfBot {
             const dayNumber = gameResult.rows[0]?.day_number || 1;
             const votesToHang = gameResult.rows[0]?.votes_to_hang || 4;
             
+            // Unpin any existing pinned messages in the voting channel
+            try {
+                const pinnedMessages = await votingChannel.messages.fetchPinned();
+                for (const [messageId, pinnedMessage] of pinnedMessages) {
+                    if (pinnedMessage.author.bot && 
+                        pinnedMessage.embeds.length > 0 && 
+                        pinnedMessage.embeds[0].title && 
+                        pinnedMessage.embeds[0].title.includes('Voting')) {
+                        await pinnedMessage.unpin();
+                        console.log(`[DEBUG] Unpinned old voting message ${messageId}`);
+                    }
+                }
+            } catch (error) {
+                console.error('Error unpinning old voting messages:', error);
+                // Continue even if unpinning fails
+            }
+            
             const embed = new EmbedBuilder()
                 .setTitle(`🗳️ Day ${dayNumber} Voting`)
                 .setDescription(`Use \`Wolf.vote @user\` to vote for someone.\nUse \`Wolf.retract\` to retract your vote.\n\n**Votes needed to hang: ${votesToHang}**`)
@@ -814,6 +831,15 @@ class WerewolfBot {
                 .setColor(0xE74C3C);
 
             const votingMessage = await votingChannel.send({ embeds: [embed] });
+            
+            // Pin the new voting message
+            try {
+                await votingMessage.pin();
+                console.log(`[DEBUG] Pinned new voting message ${votingMessage.id}`);
+            } catch (error) {
+                console.error('Error pinning voting message:', error);
+                // Continue even if pinning fails
+            }
             
             // Store the voting message ID in the database
             const updateResult = await this.db.query(
@@ -2678,7 +2704,19 @@ class WerewolfBot {
         // Check if date/time argument is provided
         let argumentsArray = args
         if (!argumentsArray.length) {
-            argumentsArray = [new Date().toISOString().split('T')[0], '09:30'];
+            // Use current date in EST/EDT timezone instead of UTC to avoid next-day issues
+            const now = moment.tz("America/New_York");
+            const cutoffTime = moment.tz("America/New_York").hour(9).minute(30).second(0).millisecond(0);
+            
+            // If it's before 9:30 AM EST today, search from 9:30 AM yesterday
+            let searchDate;
+            if (now.isBefore(cutoffTime)) {
+                searchDate = now.subtract(1, 'day').format('YYYY-MM-DD');
+            } else {
+                searchDate = now.format('YYYY-MM-DD');
+            }
+            
+            argumentsArray = [searchDate, '09:30'];
         }
 
         // Parse the date/time argument
@@ -2717,9 +2755,16 @@ class WerewolfBot {
                 return message.reply('❌ No players found in the current game.');
             }
 
+            // Randomize the player order to prevent role inference
+            const shuffledPlayers = [...playersResult.rows];
+            for (let i = shuffledPlayers.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [shuffledPlayers[i], shuffledPlayers[j]] = [shuffledPlayers[j], shuffledPlayers[i]];
+            }
+
             // Initialize message count object
             const messageCounts = {};
-            playersResult.rows.forEach(player => {
+            shuffledPlayers.forEach(player => {
                 messageCounts[player.user_id] = {
                     username: player.username,
                     count: 0
