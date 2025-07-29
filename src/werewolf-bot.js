@@ -2704,7 +2704,19 @@ class WerewolfBot {
         // Check if date/time argument is provided
         let argumentsArray = args
         if (!argumentsArray.length) {
-            argumentsArray = [new Date().toISOString().split('T')[0], '09:30'];
+            // Use current date in EST/EDT timezone instead of UTC to avoid next-day issues
+            const now = moment.tz("America/New_York");
+            const cutoffTime = moment.tz("America/New_York").hour(9).minute(30).second(0).millisecond(0);
+            
+            // If it's before 9:30 AM EST today, search from 9:30 AM yesterday
+            let searchDate;
+            if (now.isBefore(cutoffTime)) {
+                searchDate = now.subtract(1, 'day').format('YYYY-MM-DD');
+            } else {
+                searchDate = now.format('YYYY-MM-DD');
+            }
+            
+            argumentsArray = [searchDate, '09:30'];
         }
 
         // Parse the date/time argument
