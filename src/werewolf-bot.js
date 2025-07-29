@@ -1488,6 +1488,8 @@ class WerewolfBot {
 
         // Create separate voting results embed for the moderator who issued the command
         let modReplyEmbed = embed;
+        let votingBoothEmbed = null; // Embed to send to voting booth
+        
         if (newPhase === 'night' && votingResults && votingResults.length > 0) {
             const playersWithEnoughVotes = votingResults.filter(result => result.vote_count >= game.votes_to_hang);
             
@@ -1512,6 +1514,30 @@ class WerewolfBot {
                 .setTitle(title)
                 .setDescription(votingResultsDescription)
                 .setColor(newPhase === 'day' ? 0xF1C40F : 0x2C3E50);
+
+            // Create voting booth embed with just the voting breakdown
+            let votingBoothDescription = '';
+            
+            if (playersWithEnoughVotes.length > 0) {
+                votingBoothDescription += '\n\n**Players who surpassed the vote threshold (' + game.votes_to_hang + ' votes):**';
+                playersWithEnoughVotes.forEach(result => {
+                    votingBoothDescription += `\n• **${result.target_username}** - ${result.vote_count} votes`;
+                });
+            } else {
+                votingBoothDescription += '\n\n*No players reached the vote threshold of ' + game.votes_to_hang + ' votes.*';
+            }
+            
+            votingBoothDescription += '\n\n**Vote Breakdown:**';
+            votingResults.forEach(result => {
+                const voters = result.voters.split(', ').join(', ');
+                votingBoothDescription += `\n• **${result.target_username}** (${result.vote_count}): ${voters}`;
+            });
+
+            votingBoothEmbed = new EmbedBuilder()
+                .setTitle(`📊 Day ${game.day_number} Voting Results`)
+                .setDescription(votingBoothDescription)
+                .setColor(0x2C3E50);
+                
         } else if (newPhase === 'night' && (!votingResults || votingResults.length === 0)) {
             if (game.day_number > 1) { // Only show this message for day 2+ (when voting is actually possible)
                 const votingResultsDescription = embed.data.description + '\n\n**📊 Day ' + game.day_number + ' Voting Results:**\n*No votes were cast today.*';
@@ -1519,6 +1545,21 @@ class WerewolfBot {
                     .setTitle(title)
                     .setDescription(votingResultsDescription)
                     .setColor(newPhase === 'day' ? 0xF1C40F : 0x2C3E50);
+
+                // Create voting booth embed for no votes
+                votingBoothEmbed = new EmbedBuilder()
+                    .setTitle('📊 Final Vote Results')
+                    .setDescription(`**📊 Day ${game.day_number} Voting Results:**\n*No votes were cast today.*`)
+                    .setColor(0x2C3E50);
+            }
+        }
+
+        // Send voting results to voting booth channel if switching to night and there are results to show
+        if (newPhase === 'night' && votingBoothEmbed && game.day_number > 1) {
+            try {
+                await votingChannel.send({ embeds: [votingBoothEmbed] });
+            } catch (error) {
+                console.error('Error sending voting results to voting booth:', error);
             }
         }
 
