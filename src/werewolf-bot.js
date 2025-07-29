@@ -20,7 +20,7 @@ class WerewolfBot {
         const command = args.shift().toLowerCase();
 
         // Commands that anyone can use
-        const playerCommands = ['in', 'out', 'vote', 'retract', 'alive', 'peed', 'help', 'meme'];
+        const playerCommands = ['in', 'out', 'vote', 'retract', 'alive', 'peed', 'help', 'meme', 'speed_check'];
         
         // Check permissions for admin-only commands
         if (!playerCommands.includes(command) && !this.hasModeratorPermissions(message.member)) {
@@ -112,6 +112,9 @@ class WerewolfBot {
                     break;
                 case 'speed':
                     await this.handleSpeed(message, args);
+                    break;
+                case 'speed_check':
+                    await this.handleSpeedCheck(message);
                     break;
                 case 'settings':
                     await this.handleSettings(message, args);
@@ -754,7 +757,7 @@ class WerewolfBot {
 
         // Channel permissions are now set during channel creation
 
-        // Update game in database
+        // Update game in database with explicit UTC timestamp
         await this.db.query(
             `UPDATE games SET 
              status = 'active',
@@ -764,9 +767,10 @@ class WerewolfBot {
              wolf_chat_channel_id = $2,
              memos_channel_id = $3,
              results_channel_id = $4,
-             voting_booth_channel_id = $5
-             WHERE id = $6`,
-            [townSquare.id, wolfChat.id, memos.id, results.id, votingBooth.id, game.id]
+             voting_booth_channel_id = $5,
+             phase_change_at = $6
+             WHERE id = $7`,
+            [townSquare.id, wolfChat.id, memos.id, results.id, votingBooth.id, new Date().toISOString(), game.id]
         );
 
         // Send player list to dead chat
@@ -1362,10 +1366,10 @@ class WerewolfBot {
             );
         }
 
-        // Update game phase
+        // Update game phase with explicit UTC timestamp
         await this.db.query(
-            'UPDATE games SET day_phase = $1, day_number = $2 WHERE id = $3',
-            [newPhase, newDay, game.id]
+            'UPDATE games SET day_phase = $1, day_number = $2, phase_change_at = $3 WHERE id = $4',
+            [newPhase, newDay, new Date().toISOString(), game.id]
         );
 
         // Use custom messages or defaults
@@ -1839,6 +1843,7 @@ class WerewolfBot {
                        '`Wolf.vote @user` - Vote for a player (voting booth, day phase only)\n' +
                        '`Wolf.retract` - Retract your current vote\n' +
                        '`Wolf.alive` - Show all players currently alive\n' +
+                       '`Wolf.speed_check` - Show alive player activity since current phase started\n' +
                        '`Wolf.meme` - 😤 I dare you to try me\n' +
                        '`Wolf.help` - Show this help message', 
                 inline: false 
@@ -2774,8 +2779,31 @@ class WerewolfBot {
                 return message.reply('❌ No players found in the current game.');
             }
 
+            // Filter players to only include those with the Alive role
+            const aliveRole = message.guild.roles.cache.find(r => r.name === 'Alive');
+            if (!aliveRole) {
+                return message.reply('❌ Alive role not found. Please use `Wolf.roles` to set up roles.');
+            }
+
+            const alivePlayers = [];
+            for (const player of playersResult.rows) {
+                try {
+                    const member = await message.guild.members.fetch(player.user_id);
+                    if (member && member.roles.cache.has(aliveRole.id)) {
+                        alivePlayers.push(player);
+                    }
+                } catch (error) {
+                    console.error(`Error checking role for player ${player.username}:`, error);
+                    // Skip this player if we can't fetch them
+                }
+            }
+
+            if (alivePlayers.length === 0) {
+                return message.reply('❌ No alive players found in the current game.');
+            }
+
             // Randomize the player order to prevent role inference
-            const shuffledPlayers = [...playersResult.rows];
+            const shuffledPlayers = [...alivePlayers];
             for (let i = shuffledPlayers.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [shuffledPlayers[i], shuffledPlayers[j]] = [shuffledPlayers[j], shuffledPlayers[i]];
@@ -2857,6 +2885,167 @@ class WerewolfBot {
         } catch (error) {
             console.error('Error fetching message activity:', error);
             await message.reply('❌ An error occurred while fetching message activity. The date range might be too large or the channel might be inaccessible.');
+        }
+    }
+
+    async handleSpeedCheck(message) {
+        const serverId = message.guild.id;
+
+        // Get active game - TIMESTAMPTZ columns are automatically returned in UTC
+        const gameResult = await this.db.query(
+            'SELECT * FROM games WHERE server_id = $1 AND status = $2',
+            [serverId, 'active']
+        );
+
+        if (!gameResult.rows.length) {
+            return message.reply('❌ No active game found.');
+        }
+
+        const game = gameResult.rows[0];
+
+        if (!game.phase_change_at) {
+            return message.reply('❌ No phase change time recorded for this game.');
+        }
+
+        try {
+            // Get the town square channel
+            const townSquareChannel = await this.client.channels.fetch(game.town_square_channel_id);
+            if (!townSquareChannel) {
+                return message.reply('❌ Town square channel not found.');
+            }
+
+            // Get all players in the game
+            const playersResult = await this.db.query(
+                'SELECT user_id, username FROM players WHERE game_id = $1',
+                [game.id]
+            );
+
+            if (playersResult.rows.length === 0) {
+                return message.reply('❌ No players found in the current game.');
+            }
+
+            // Filter players to only include those with the Alive role
+            const aliveRole = message.guild.roles.cache.find(r => r.name === 'Alive');
+            if (!aliveRole) {
+                return message.reply('❌ Alive role not found. Please use `Wolf.roles` to set up roles.');
+            }
+
+            const alivePlayers = [];
+            for (const player of playersResult.rows) {
+                try {
+                    const member = await message.guild.members.fetch(player.user_id);
+                    if (member && member.roles.cache.has(aliveRole.id)) {
+                        alivePlayers.push(player);
+                    }
+                } catch (error) {
+                    console.error(`Error checking role for player ${player.username}:`, error);
+                    // Skip this player if we can't fetch them
+                }
+            }
+
+            if (alivePlayers.length === 0) {
+                return message.reply('❌ No alive players found in the current game.');
+            }
+
+            // Randomize the player order to prevent role inference
+            const shuffledPlayers = [...alivePlayers];
+            for (let i = shuffledPlayers.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [shuffledPlayers[i], shuffledPlayers[j]] = [shuffledPlayers[j], shuffledPlayers[i]];
+            }
+
+            // Initialize message count object
+            const messageCounts = {};
+            shuffledPlayers.forEach(player => {
+                messageCounts[player.user_id] = {
+                    username: player.username,
+                    count: 0
+                };
+            });
+
+            // Use phase_change_at as the start time (TIMESTAMPTZ is automatically UTC)
+            const phaseChangeDate = new Date(game.phase_change_at);
+            
+            // Debug logging
+            console.log(`Speed check debug:
+                - Phase change at (raw from DB): ${game.phase_change_at}
+                - Phase change as Date: ${phaseChangeDate.toISOString()}
+                - Phase change in EST: ${moment.utc(game.phase_change_at).tz("America/New_York").format('YYYY-MM-DD HH:mm:ss')}
+                - Current time: ${new Date().toISOString()}
+                - Time difference: ${(new Date() - phaseChangeDate) / (1000 * 60)} minutes`);
+
+            // Fetch messages from the town square since the phase change
+            let allMessages = [];
+            let lastMessageId = null;
+            
+            // Discord API limits us to 100 messages per request, so we need to paginate
+            while (true) {
+                const options = { limit: 100 };
+                if (lastMessageId) {
+                    options.before = lastMessageId;
+                }
+
+                const messages = await townSquareChannel.messages.fetch(options);
+                
+                if (messages.size === 0) break;
+
+                // Filter messages by date and add to our collection
+                const filteredMessages = messages.filter(msg => 
+                    msg.createdAt >= phaseChangeDate && 
+                    !msg.author.bot && 
+                    messageCounts.hasOwnProperty(msg.author.id)
+                );
+
+                allMessages.push(...filteredMessages.values());
+                
+                // Check if we've gone past our date range
+                const oldestMessage = messages.last();
+                if (oldestMessage.createdAt < phaseChangeDate) {
+                    break;
+                }
+
+                lastMessageId = oldestMessage.id;
+            }
+
+            // Count messages per player
+            allMessages.forEach(msg => {
+                if (messageCounts[msg.author.id]) {
+                    messageCounts[msg.author.id].count++;
+                }
+            });
+
+            // Sort players by message count (highest first)
+            const sortedPlayers = Object.values(messageCounts)
+                .sort((a, b) => b.count - a.count);
+
+            // Convert UTC time to EST for display - TIMESTAMPTZ is already UTC
+            const estTime = moment.utc(game.phase_change_at).tz("America/New_York").format('YYYY-MM-DD HH:mm:ss');
+            
+            // Create the response embed
+            const totalMessages = allMessages.length;
+            const playerList = sortedPlayers.length > 0 
+                ? sortedPlayers.map((player, index) => 
+                    `${index + 1}. **${player.username}**: ${player.count} messages`
+                ).join('\n')
+                : `No messages found from alive players since phase change.\n\n**Debug info:**\n• Phase started: ${estTime} EST\n• Current time: ${moment.utc().tz("America/New_York").format('YYYY-MM-DD HH:mm:ss')} EST\n• Messages need to be sent AFTER the phase start time`;
+
+            const currentPhase = game.day_phase === 'day' ? '🌞 Day' : '🌙 Night';
+            
+            const embed = new EmbedBuilder()
+                .setTitle('⚡ Speed Check - Current Phase Activity')
+                .setDescription(`Message count per alive player since **${currentPhase} ${game.day_number}** started\n\n**Phase started:** ${estTime} EST`)
+                .addFields(
+                    { name: `Alive Player Activity (${sortedPlayers.length} players)`, value: playerList },
+                    { name: 'Summary', value: `**Total messages**: ${totalMessages}\n**Channel**: ${townSquareChannel.name}`, inline: false }
+                )
+                .setColor(game.day_phase === 'day' ? 0xF1C40F : 0x2C3E50)
+                .setTimestamp();
+
+            await message.reply({ embeds: [embed] });
+
+        } catch (error) {
+            console.error('Error fetching speed check activity:', error);
+            await message.reply('❌ An error occurred while fetching speed check activity.');
         }
     }
 

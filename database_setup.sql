@@ -29,8 +29,8 @@ CREATE TABLE server_configs (
     game_prefix VARCHAR(10) NOT NULL DEFAULT 'g',
     game_counter INTEGER NOT NULL DEFAULT 1,
     game_name VARCHAR(100),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Table to store active games
@@ -56,9 +56,9 @@ CREATE TABLE games (
     voting_message_id VARCHAR(20), -- ID of the current voting message
     mod_chat_channel_id VARCHAR(20),
     category_id VARCHAR(20),
-    phase_change_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    phase_change_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(server_id, game_number)
 );
 
@@ -71,7 +71,7 @@ CREATE TABLE players (
     status VARCHAR(20) NOT NULL DEFAULT 'alive', -- alive, dead
     role VARCHAR(100), -- Player's assigned role (Werewolf, Villager, Seer, etc.)
     is_wolf BOOLEAN DEFAULT FALSE, -- True if player has a wolf role
-    signed_up_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    signed_up_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(game_id, user_id)
 );
 
@@ -82,7 +82,7 @@ CREATE TABLE votes (
     voter_user_id VARCHAR(20) NOT NULL,
     target_user_id VARCHAR(20) NOT NULL,
     day_number INTEGER NOT NULL,
-    voted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    voted_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(game_id, voter_user_id, day_number)
 );
 
@@ -94,7 +94,7 @@ CREATE TABLE game_channels (
     channel_name VARCHAR(100) NOT NULL,
     day_message TEXT,
     night_message TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(game_id, channel_id)
 );
 
@@ -106,7 +106,7 @@ CREATE TABLE game_speed (
     channel_id VARCHAR(20) NOT NULL,
     target_reactions INTEGER NOT NULL,
     current_reactions INTEGER NOT NULL DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(game_id)
 );
 
@@ -116,7 +116,7 @@ CREATE TABLE player_journals (
     server_id VARCHAR(20) NOT NULL,
     user_id VARCHAR(20) NOT NULL,
     channel_id VARCHAR(20) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(server_id, user_id),
     UNIQUE(server_id, channel_id)
 );
