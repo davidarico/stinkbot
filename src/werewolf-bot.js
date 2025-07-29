@@ -1381,8 +1381,6 @@ class WerewolfBot {
 
         // Post phase change message to all game channels
         const gameChannelIds = [
-            game.voting_booth_channel_id,
-            game.wolf_chat_channel_id,
             game.town_square_channel_id
         ].filter(id => id); // Filter out any null/undefined channel IDs
 
@@ -1429,6 +1427,27 @@ class WerewolfBot {
 
         // Wait for all channel messages to be sent
         await Promise.all([...mainChannelPromises, ...additionalChannelPromises]);
+
+        // Send wolf-specific message to wolf chat if set
+        if (game.wolf_chat_channel_id && (game.wolf_day_message || game.wolf_night_message)) {
+            const wolfMessage = newPhase === 'day' ? game.wolf_day_message : game.wolf_night_message;
+            
+            if (wolfMessage) {
+                try {
+                    const wolfChannel = await this.client.channels.fetch(game.wolf_chat_channel_id);
+                    if (wolfChannel) {
+                        const wolfEmbed = new EmbedBuilder()
+                            .setTitle(title)
+                            .setDescription(`It is now **${newPhase} ${newDay}**.\n\n${wolfMessage}`)
+                            .setColor(newPhase === 'day' ? 0xF1C40F : 0x2C3E50);
+
+                        await wolfChannel.send({ embeds: [wolfEmbed] });
+                    }
+                } catch (error) {
+                    console.error(`Error sending wolf phase message to wolf chat:`, error);
+                }
+            }
+        }
 
 
         const aliveRole = message.guild.roles.cache.find(r => r.name === 'Alive');
@@ -3167,7 +3186,9 @@ class WerewolfBot {
                 .addFields(
                     { name: 'Votes to Hang', value: `${game.votes_to_hang}\n*To change: \`Wolf.settings votes_to_hang 3\`*`, inline: false },
                     { name: 'Default Day Message', value: `${game.day_message}\n*To change: \`Wolf.settings day_message Your message here\`*`, inline: false },
-                    { name: 'Default Night Message', value: `${game.night_message}\n*To change: \`Wolf.settings night_message Your message here\`*`, inline: false }
+                    { name: 'Default Night Message', value: `${game.night_message}\n*To change: \`Wolf.settings night_message Your message here\`*`, inline: false },
+                    { name: 'Wolf Day Message', value: `${game.wolf_day_message || 'Not set'}\n*To change: \`Wolf.settings wolf day_message Your message here\`*`, inline: false },
+                    { name: 'Wolf Night Message', value: `${game.wolf_night_message || 'Not set'}\n*To change: \`Wolf.settings wolf night_message Your message here\`*`, inline: false }
                 )
                 .setColor(0x3498DB)
                 .setTimestamp();
@@ -3200,6 +3221,55 @@ class WerewolfBot {
 
         // Handle setting changes
         const firstArg = args[0].toLowerCase();
+
+        // Check if this is a wolf-specific setting (format: wolf day_message|night_message <message>)
+        if (firstArg === 'wolf' && args.length >= 3) {
+            const settingType = args[1].toLowerCase();
+            
+            if (settingType === 'day_message') {
+                const newMessage = args.slice(2).join(' ');
+
+                // Update the wolf day message
+                await this.db.query(
+                    'UPDATE games SET wolf_day_message = $1 WHERE id = $2',
+                    [newMessage, game.id]
+                );
+
+                const embed = new EmbedBuilder()
+                    .setTitle('🐺🌅 Wolf Day Message Updated')
+                    .setDescription('✅ **Wolf Day Message** has been updated!')
+                    .addFields(
+                        { name: 'New Wolf Day Message', value: newMessage, inline: false }
+                    )
+                    .setColor(0xF1C40F)
+                    .setTimestamp();
+
+                return message.reply({ embeds: [embed] });
+
+            } else if (settingType === 'night_message') {
+                const newMessage = args.slice(2).join(' ');
+
+                // Update the wolf night message
+                await this.db.query(
+                    'UPDATE games SET wolf_night_message = $1 WHERE id = $2',
+                    [newMessage, game.id]
+                );
+
+                const embed = new EmbedBuilder()
+                    .setTitle('🐺🌙 Wolf Night Message Updated')
+                    .setDescription('✅ **Wolf Night Message** has been updated!')
+                    .addFields(
+                        { name: 'New Wolf Night Message', value: newMessage, inline: false }
+                    )
+                    .setColor(0x2C3E50)
+                    .setTimestamp();
+
+                return message.reply({ embeds: [embed] });
+
+            } else {
+                return message.reply('❌ Wolf message type must be `day_message` or `night_message`. Example: `Wolf.settings wolf day_message Your message here`');
+            }
+        }
 
         // Check if this is a channel-specific setting (format: <channel_name> day_message|night_message <message>)
         if (args.length >= 3) {
@@ -3322,7 +3392,7 @@ class WerewolfBot {
             await message.reply({ embeds: [embed] });
 
         } else {
-            return message.reply('❌ Unknown setting. Available settings:\n• `votes_to_hang`\n• `day_message`, `night_message` (default messages)\n• `<channel_name> day_message`, `<channel_name> night_message` (channel-specific)');
+            return message.reply('❌ Unknown setting. Available settings:\n• `votes_to_hang`\n• `day_message`, `night_message` (default messages)\n• `wolf day_message`, `wolf night_message` (wolf chat specific)\n• `<channel_name> day_message`, `<channel_name> night_message` (channel-specific)');
         }
     }
 

@@ -45,6 +45,8 @@ CREATE TABLE games (
     votes_to_hang INTEGER NOT NULL DEFAULT 4,
     day_message TEXT DEFAULT 'WAKE UP! Time to bully your fellow villagers and vote them out.',
     night_message TEXT DEFAULT 'Night falls. Someone is snoring really loudly.',
+    wolf_day_message TEXT, -- Custom day message for wolf chat (optional)
+    wolf_night_message TEXT, -- Custom night message for wolf chat (optional)
     signup_channel_id VARCHAR(20),
     town_square_channel_id VARCHAR(20),
     wolf_chat_channel_id VARCHAR(20),
