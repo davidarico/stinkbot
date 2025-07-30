@@ -131,6 +131,9 @@ class WerewolfBot {
                 case 'peed':
                     await message.reply('💦 IM PISSING REALLY HARD AND ITS REALLY COOL 💦');
                     break;
+                case 'mylo':
+                    await message.reply('Mylo can maybe backpedal to Orphan if we need to if this doesn\'t land')
+                    break;
                 default:
                     await message.reply('❓ Unknown command bozo.');
             }
