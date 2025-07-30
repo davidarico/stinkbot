@@ -48,6 +48,7 @@ CREATE TABLE games (
     wolf_day_message TEXT, -- Custom day message for wolf chat (optional)
     wolf_night_message TEXT, -- Custom night message for wolf chat (optional)
     signup_channel_id VARCHAR(20),
+    signup_message_id VARCHAR(20), -- ID of the current signup message
     town_square_channel_id VARCHAR(20),
     wolf_chat_channel_id VARCHAR(20),
     memos_channel_id VARCHAR(20),
