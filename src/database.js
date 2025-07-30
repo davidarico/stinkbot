@@ -11,6 +11,10 @@ const pool = new Pool({
     database: process.env.PG_DATABASE,
     user: process.env.PG_USER,
     password: process.env.PG_PASSWORD,
+    // SSL configuration for Supabase
+    ssl: {
+        rejectUnauthorized: false, // For Supabase, this is usually safe
+    },
     // Add connection pooling settings for Supabase
     max: 20, // Maximum connections in pool
     idleTimeoutMillis: 30000,
