@@ -5,21 +5,20 @@ if (process.env.NODE_ENV !== 'production') {
     require('dotenv').config();
 }
 
+// Use connection string format for better Supabase compatibility
+const connectionString = process.env.DATABASE_URL || 
+    `postgresql://${process.env.PG_USER}:${process.env.PG_PASSWORD}@${process.env.PG_HOST}:${process.env.PG_PORT || 6543}/${process.env.PG_DATABASE}?sslmode=require`;
+
 const pool = new Pool({
-    host: process.env.PG_HOST, // Build for a Supabase transaction pooler host
-    port: process.env.PG_PORT || 6543, // Transaction pooler port
-    database: process.env.PG_DATABASE,
-    user: process.env.PG_USER,
-    password: process.env.PG_PASSWORD,
-    // SSL configuration for Supabase
-    ssl: {
-        rejectUnauthorized: false, // For Supabase, this is usually safe
-    },
+    connectionString: connectionString,
     // Add connection pooling settings for Supabase
     max: 20, // Maximum connections in pool
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 2000,
-    options: process.env.PG_SCHEMA ? `-c search_path=${process.env.PG_SCHEMA},public` : undefined,
+    // SSL configuration (redundant with sslmode=require in connection string, but kept for compatibility)
+    ssl: {
+        rejectUnauthorized: false
+    }
 });
 
 // Test the connection
