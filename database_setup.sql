@@ -2,18 +2,6 @@
 -- This script will completely refresh the database structure
 -- WARNING: This will delete ALL existing data!
 
--- Drop existing triggers first
-DROP TRIGGER IF EXISTS update_games_updated_at ON games;
-DROP TRIGGER IF EXISTS update_server_configs_updated_at ON server_configs;
-
--- Drop existing function
-DROP FUNCTION IF EXISTS update_updated_at_column();
-
--- Drop existing indexes
-DROP INDEX IF EXISTS idx_votes_game_day;
-DROP INDEX IF EXISTS idx_players_game_status;
-DROP INDEX IF EXISTS idx_games_server_status;
-
 -- Drop existing tables (CASCADE will drop dependent objects)
 DROP TABLE IF EXISTS votes CASCADE;
 DROP TABLE IF EXISTS players CASCADE;
@@ -121,6 +109,18 @@ CREATE TABLE player_journals (
     UNIQUE(server_id, user_id),
     UNIQUE(server_id, channel_id)
 );
+
+-- Drop existing triggers first
+DROP TRIGGER IF EXISTS update_games_updated_at ON games;
+DROP TRIGGER IF EXISTS update_server_configs_updated_at ON server_configs;
+
+-- Drop existing function
+DROP FUNCTION IF EXISTS update_updated_at_column();
+
+-- Drop existing indexes
+DROP INDEX IF EXISTS idx_votes_game_day;
+DROP INDEX IF EXISTS idx_players_game_status;
+DROP INDEX IF EXISTS idx_games_server_status;
 
 -- Indexes for better performance
 CREATE INDEX idx_games_server_status ON games(server_id, status);
