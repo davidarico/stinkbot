@@ -360,7 +360,7 @@ class WerewolfBot {
             parent: category.id,
         });
 
-        // Save game to database
+        // Save game to database first
         await this.db.query(
             `INSERT INTO games (server_id, game_number, game_name, signup_channel_id, category_id, mod_chat_channel_id)
              VALUES ($1, $2, $3, $4, $5, $6)`,
@@ -389,7 +389,22 @@ class WerewolfBot {
             .setDescription('A new game is starting! Use `Wolf.in` to join or `Wolf.out` to leave.')
             .setColor(0x3498DB);
 
-        await signupChannel.send({ embeds: [signupEmbed] });
+        const signupMessage = await signupChannel.send({ embeds: [signupEmbed] });
+        
+        // Pin the signup message and store its ID in the database
+        try {
+            await signupMessage.pin();
+            console.log(`[DEBUG] Pinned signup message ${signupMessage.id}`);
+        } catch (error) {
+            console.error('Error pinning signup message:', error);
+            // Continue even if pinning fails
+        }
+        
+        // Store the signup message ID in the database
+        await this.db.query(
+            'UPDATE games SET signup_message_id = $1 WHERE server_id = $2 AND game_number = $3',
+            [signupMessage.id, serverId, config.game_counter]
+        );
     }
 
     async handleSignUp(message) {
@@ -476,29 +491,86 @@ class WerewolfBot {
     }
 
     async updateSignupMessage(game) {
-        const playersResult = await this.db.query(
-            'SELECT username FROM players WHERE game_id = $1 ORDER BY signed_up_at',
-            [game.id]
-        );
-
-        const playersList = playersResult.rows.map((p, i) => `${i + 1}. ${p.username}`).join('\n') || 'No players signed up yet.';
-
-        const embed = new EmbedBuilder()
-            .setTitle('🐺 Werewolf Game Signups')
-            .setDescription('A new game is starting! Use `Wolf.in` to join or `Wolf.out` to leave.')
-            .addFields({ name: `Players (${playersResult.rows.length})`, value: playersList })
-            .setColor(0x3498DB);
-
         try {
-            const channel = await this.client.channels.fetch(game.signup_channel_id);
-            const messages = await channel.messages.fetch({ limit: 10 });
-            const botMessage = messages.find(msg => msg.author.bot && msg.embeds.length > 0);
-            
-            if (botMessage) {
-                await botMessage.edit({ embeds: [embed] });
+            // If we don't have a signup message ID, try to find it the old way as fallback
+            if (!game.signup_message_id) {
+                const signupChannel = await this.client.channels.fetch(game.signup_channel_id);
+                let signupMessage = null;
+                let lastMessageId = null;
+                let searchAttempts = 0;
+                const maxSearchAttempts = 50; // Prevent infinite loops (5000 messages max)
+                
+                // Keep searching through message history until we find a signup message
+                while (!signupMessage && searchAttempts < maxSearchAttempts) {
+                    const fetchOptions = { limit: 100 };
+                    if (lastMessageId) {
+                        fetchOptions.before = lastMessageId;
+                    }
+                    
+                    const messages = await signupChannel.messages.fetch(fetchOptions);
+                    if (messages.size === 0) {
+                        break; // No more messages to search
+                    }
+                    
+                    // Look for a bot message with embeds that contains signup title
+                    signupMessage = messages.find(msg => 
+                        msg.author.bot && 
+                        msg.embeds.length > 0 && 
+                        msg.embeds[0].title && 
+                        msg.embeds[0].title.includes('Werewolf Game Signups')
+                    );
+                    
+                    if (!signupMessage) {
+                        // Get the ID of the oldest message in this batch for the next iteration
+                        lastMessageId = messages.last().id;
+                        searchAttempts++;
+                    }
+                }
+                
+                if (!signupMessage) {
+                    console.error('Could not find signup message for game:', game.id);
+                    return;
+                }
+                
+                // Store the found message ID for future use
+                await this.db.query(
+                    'UPDATE games SET signup_message_id = $1 WHERE id = $2',
+                    [signupMessage.id, game.id]
+                );
+                game.signup_message_id = signupMessage.id;
             }
+
+            const signupChannel = await this.client.channels.fetch(game.signup_channel_id);
+            const signupMessage = await signupChannel.messages.fetch(game.signup_message_id);
+
+            if (!signupMessage) {
+                console.error('Signup message not found with ID:', game.signup_message_id);
+                return;
+            }
+
+            const playersResult = await this.db.query(
+                'SELECT username FROM players WHERE game_id = $1 ORDER BY signed_up_at',
+                [game.id]
+            );
+
+            const playersList = playersResult.rows.map((p, i) => `${i + 1}. ${p.username}`).join('\n') || 'No players signed up yet.';
+
+            const embed = new EmbedBuilder()
+                .setTitle('🐺 Werewolf Game Signups')
+                .setDescription('A new game is starting! Use `Wolf.in` to join or `Wolf.out` to leave.')
+                .addFields({ name: `Players (${playersResult.rows.length})`, value: playersList })
+                .setColor(0x3498DB);
+
+            await signupMessage.edit({ embeds: [embed] });
         } catch (error) {
             console.error('Error updating signup message:', error);
+            // If the stored message ID is invalid, clear it from the database
+            if (error.code === 10008) { // Unknown Message error
+                await this.db.query(
+                    'UPDATE games SET signup_message_id = NULL WHERE id = $1',
+                    [game.id]
+                );
+            }
         }
     }
 
