@@ -5,20 +5,19 @@ if (process.env.NODE_ENV !== 'production') {
     require('dotenv').config();
 }
 
-// Use connection string format for better Supabase compatibility
-const connectionString = process.env.DATABASE_URL || 
-    `postgresql://${process.env.PG_USER}:${process.env.PG_PASSWORD}@${process.env.PG_HOST}:${process.env.PG_PORT || 6543}/${process.env.PG_DATABASE}?sslmode=require`;
+// Validate required environment variable
+if (!process.env.DATABASE_URL) {
+    throw new Error('Missing required DATABASE_URL environment variable');
+}
+
+console.log('🔗 Using connection string for Supabase');
 
 const pool = new Pool({
-    connectionString: connectionString,
-    // Add connection pooling settings for Supabase
+    connectionString: process.env.DATABASE_URL,
+    // Connection pooling settings for Supabase
     max: 20, // Maximum connections in pool
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 2000,
-    // SSL configuration (redundant with sslmode=require in connection string, but kept for compatibility)
-    ssl: {
-        rejectUnauthorized: false
-    }
 });
 
 // Test the connection
