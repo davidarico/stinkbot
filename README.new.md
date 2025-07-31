@@ -23,9 +23,8 @@ A monorepo containing the StinkBot Discord bot, frontend web application, and da
 1. Clone the repository
 2. Install all dependencies:
    ```bash
-   npm install
+   npm run install:all
    ```
-   This will automatically install dependencies for all workspaces (bot, frontend, database)
 
 ## 📦 Individual Components
 
@@ -58,7 +57,7 @@ npm run db:migrate
 ## 🛠️ Available Scripts
 
 ### Global Scripts
-- `npm install` - Install dependencies for all workspaces
+- `npm run install:all` - Install dependencies for all components
 - `npm run bot:start` - Start the Discord bot
 - `npm run bot:dev` - Start bot in development mode
 - `npm run bot:test` - Run bot tests

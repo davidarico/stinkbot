@@ -1,0 +1,19 @@
+{
+  "name": "stinkbot-frontend",
+  "version": "1.0.0",
+  "description": "Frontend web application for StinkBot game management",
+  "private": true,
+  "scripts": {
+    "dev": "echo 'Frontend development server not yet implemented'",
+    "build": "echo 'Frontend build not yet implemented'",
+    "start": "echo 'Frontend start not yet implemented'"
+  },
+  "keywords": [
+    "werewolf",
+    "discord",
+    "frontend",
+    "web"
+  ],
+  "author": "",
+  "license": "MIT"
+}
