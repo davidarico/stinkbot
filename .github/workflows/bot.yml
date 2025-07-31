@@ -1,8 +1,11 @@
-name: Docker Image CI
+name: Bot CI/CD
 
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - 'bot/**'
+      - '.github/workflows/bot.yml'
 
 jobs:
   build-and-push:
@@ -27,7 +30,8 @@ jobs:
     - name: Build and push Docker image
       uses: docker/build-push-action@v4
       with:
-        context: .
+        context: ./bot
+        file: ./bot/Dockerfile
         push: true
         platforms: linux/amd64,linux/arm64
         tags: ghcr.io/davidarico/stinkbot:latest

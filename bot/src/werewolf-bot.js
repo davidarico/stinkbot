@@ -62,8 +62,8 @@ class WerewolfBot {
                 case 'refresh':
                     await this.handleRefresh(message);
                     break;
-                case 'roles':
-                    await this.handleRoles(message);
+                case 'server_roles':
+                    await this.handleServerRoles(message);
                     break;
                 case 'alive':
                     await this.handleAlive(message);
@@ -1859,7 +1859,7 @@ class WerewolfBot {
         }
     }
 
-    async handleRoles(message) {
+    async handleServerRoles(message) {
         const guild = message.guild;
 
         try {
@@ -1971,7 +1971,7 @@ class WerewolfBot {
                 { 
                     name: '⚙️ Setup & Game Management', 
                     value: '`Wolf.setup` - Initial server setup (prefix, starting number, game name)\n' +
-                           '`Wolf.roles` - 🎭 Create all game roles\n' +
+                           '`Wolf.server_roles` - 🎭 Create all game roles\n' +
                            '`Wolf.create` - Create a new game with signup channel\n' +
                            '`Wolf.start` - Start the game and create all channels\n' +
                            '`Wolf.settings` - View/change game and channel settings (votes_to_hang, messages)\n' +

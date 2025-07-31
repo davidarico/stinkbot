@@ -1,0 +1,41 @@
+name: Database CI
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'database/**'
+      - '.github/workflows/database.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'database/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: werewolf_bot_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Test database setup
+      working-directory: ./database
+      env:
+        PGPASSWORD: postgres
+      run: |
+        psql -h localhost -U postgres -d werewolf_bot_test -f database_setup.sql
+        echo "Database setup completed successfully"
