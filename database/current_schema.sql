@@ -1,5 +1,5 @@
 -- Werewolf Discord Bot Database Schema
--- Generated automatically on 2025-08-01T15:46:32.483Z
+-- Generated automatically on 2025-08-01T16:44:50.718Z
 -- This file shows the current database structure with table comments
 -- Run this after migrations to get the latest schema
 
@@ -54,6 +54,9 @@ CREATE TABLE games (
     phase_change_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    is_skinned BOOLEAN DEFAULT FALSE,
+    is_themed BOOLEAN DEFAULT FALSE,
+    theme_name VARCHAR(100) DEFAULT NULL,
     UNIQUE(game_number, server_id)
 );
 
@@ -79,6 +82,12 @@ CREATE TABLE players (
     role VARCHAR(100),
     is_wolf BOOLEAN DEFAULT FALSE,
     signed_up_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    role_id INTEGER REFERENCES roles(id),
+    skinned_role VARCHAR(100) DEFAULT NULL,
+    is_dead BOOLEAN DEFAULT FALSE,
+    is_framed BOOLEAN DEFAULT FALSE,
+    framed_night INTEGER,
+    charges_left INTEGER,
     UNIQUE(game_id, user_id)
 );
 
