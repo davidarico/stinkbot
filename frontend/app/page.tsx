@@ -10,6 +10,20 @@ export default function HomePage() {
           <p className="text-xl text-purple-200 mb-8">The Future of Werewolf Game Management</p>
         </div>
 
+        <div className="text-center space-y-4">
+          <div>
+            <Link href="/roles">
+              <Button
+                variant="outline"
+                size="lg"
+                className="border-purple-400 text-purple-200 hover:bg-purple-800/50 px-8 py-3 text-lg bg-transparent"
+              >
+                View All Roles
+              </Button>
+            </Link>
+          </div>
+        </div>
+
         <div className="max-w-4xl mx-auto bg-white/10 backdrop-blur-lg rounded-lg p-8 mb-8">
           <h2 className="text-3xl font-bold text-white mb-6">Welcome to Stinky Solutions LLC</h2>
           <p className="text-lg text-purple-100 leading-relaxed mb-6">
@@ -32,25 +46,6 @@ export default function HomePage() {
             With Stinkwolf, every game becomes a masterpiece of organized chaos, where technology meets tradition in
             perfect harmony.
           </p>
-        </div>
-
-        <div className="text-center space-y-4">
-          <Link href="/game/3">
-            <Button size="lg" className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 text-lg">
-              Access Test Game Management
-            </Button>
-          </Link>
-          <div>
-            <Link href="/roles">
-              <Button
-                variant="outline"
-                size="lg"
-                className="border-purple-400 text-purple-200 hover:bg-purple-800/50 px-8 py-3 text-lg bg-transparent"
-              >
-                View All Roles
-              </Button>
-            </Link>
-          </div>
         </div>
       </div>
     </div>
