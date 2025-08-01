@@ -10,10 +10,11 @@
     "migrate:rollback": "node migrate.js rollback",
     "migrate:status": "node migrate.js status",
     "migrate:create": "node migrate.js create",
-    "migrate:mark-initial": "node mark-initial-applied.js",
     "seed": "echo 'Database seeding not yet implemented'",
     "setup": "psql -f database_setup.sql",
-    "db:reset": "psql -c 'DROP DATABASE IF EXISTS stinkbot;' && psql -c 'CREATE DATABASE stinkbot;' && npm run migrate"
+    "db:reset": "psql -c 'DROP DATABASE IF EXISTS stinkbot;' && psql -c 'CREATE DATABASE stinkbot;' && npm run migrate",
+    "schema:generate": "node generate_schema.js",
+    "schema:current": "node generate_schema.js"
   },
   "dependencies": {
     "pg": "^8.11.3"
