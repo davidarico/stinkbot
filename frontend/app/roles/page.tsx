@@ -1,11 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Search, Filter } from "lucide-react"
+import { Search, Filter, Loader2, Star } from "lucide-react"
 import Link from "next/link"
 
 interface Role {
@@ -15,168 +15,54 @@ interface Role {
   description: string
   metadata?: string
   hasInfoFunction?: boolean
+  hasCharges?: boolean
+  defaultCharges?: number
+  inWolfChat?: boolean
+  isSpotlight?: boolean
+  targets?: string
+  moves?: boolean
+  standardResultsFlavor?: string
+  framerInteraction?: string
+  immunities?: string
+  specialProperties?: string
 }
 
 export default function RolesPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [alignmentFilter, setAlignmentFilter] = useState<string>("all")
+  const [showSpotlightOnly, setShowSpotlightOnly] = useState(false)
+  const [roles, setRoles] = useState<Role[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  // Mock roles data
-  const roles: Role[] = [
-    {
-      id: 1,
-      name: "Villager",
-      alignment: "town",
-      description:
-        "A regular townsperson with no special abilities. Their only power is their vote during the day phase. Villagers win when all threats to the town are eliminated.",
-    },
-    {
-      id: 2,
-      name: "Seer",
-      alignment: "town",
-      description:
-        "Each night, the Seer can investigate one player to learn their alignment (Town, Wolf, or Neutral). The Seer is a powerful information role that can help guide the town to victory.",
-      hasInfoFunction: true,
-    },
-    {
-      id: 3,
-      name: "Doctor",
-      alignment: "town",
-      description:
-        "Each night, the Doctor can choose one player to protect from attacks. If that player is targeted for elimination, they will survive. The Doctor cannot protect the same player two nights in a row.",
-    },
-    {
-      id: 4,
-      name: "Bodyguard",
-      alignment: "town",
-      description:
-        "The Bodyguard can protect one player each night. If the protected player is attacked, both the Bodyguard and the attacker die instead of the target.",
-    },
-    {
-      id: 5,
-      name: "Detective",
-      alignment: "town",
-      description:
-        "Each night, the Detective can investigate a player to learn their exact role. This is more specific than the Seer's alignment check.",
-      hasInfoFunction: true,
-    },
-    {
-      id: 6,
-      name: "Vigilante",
-      alignment: "town",
-      description:
-        "The Vigilante has the ability to eliminate one player during the night phase. They must be careful not to accidentally kill a fellow town member.",
-    },
-    {
-      id: 7,
-      name: "Mayor",
-      alignment: "town",
-      description:
-        "The Mayor's vote counts as two votes during the day phase. They are a powerful voice in town decisions but also a high-priority target for wolves.",
-    },
-    {
-      id: 8,
-      name: "Werewolf",
-      alignment: "wolf",
-      description:
-        "The basic wolf role. Each night, all wolves collectively choose one player to eliminate. Wolves win when they equal or outnumber the remaining town members.",
-    },
-    {
-      id: 9,
-      name: "Alpha Wolf",
-      alignment: "wolf",
-      description:
-        "The leader of the wolf pack. The Alpha Wolf has the final say in wolf decisions and may have additional abilities depending on the game setup.",
-    },
-    {
-      id: 10,
-      name: "Wolf Shaman",
-      alignment: "wolf",
-      description:
-        "A wolf with magical abilities. Can perform special actions in addition to the regular wolf kill. Often has protective or investigative powers for the wolf team.",
-    },
-    {
-      id: 11,
-      name: "Traitor",
-      alignment: "wolf",
-      description:
-        "Appears as Town to investigative roles but wins with the wolves. The Traitor doesn't know who the other wolves are and isn't in the wolf chat initially.",
-      metadata: "Not added to Wolf Chat initially",
-    },
-    {
-      id: 12,
-      name: "Turncoat",
-      alignment: "neutral",
-      description:
-        "The Turncoat can choose to join either the Town or Wolf team during the game. They win with whichever team they choose to support.",
-      metadata: "Not added to Wolf Chat",
-    },
-    {
-      id: 13,
-      name: "Serial Killer",
-      alignment: "neutral",
-      description:
-        "The Serial Killer kills one player each night and wins by being the last player alive. They are immune to wolf attacks and some other forms of elimination.",
-    },
-    {
-      id: 14,
-      name: "Jester",
-      alignment: "neutral",
-      description:
-        "The Jester wins if they are voted out during the day phase. They will try to act suspicious to get themselves eliminated while avoiding night kills.",
-    },
-    {
-      id: 15,
-      name: "Survivor",
-      alignment: "neutral",
-      description:
-        "The Survivor simply needs to survive until the end of the game. They win with whoever is victorious as long as they're still alive.",
-    },
-    {
-      id: 16,
-      name: "Sleepwalker",
-      alignment: "town",
-      description:
-        "Each night, the Sleepwalker randomly visits another player. They learn who they visited but not what happened. Other players may see the Sleepwalker's visit.",
-      hasInfoFunction: true,
-    },
-    {
-      id: 17,
-      name: "Bartender",
-      alignment: "town",
-      description:
-        "The Bartender can learn information about players by serving them drinks. They can discover roles and alignments through their investigations.",
-      hasInfoFunction: true,
-    },
-    {
-      id: 18,
-      name: "Medium",
-      alignment: "town",
-      description:
-        "The Medium can communicate with dead players and learn information from them. This role becomes more powerful as more players are eliminated.",
-    },
-    {
-      id: 19,
-      name: "Hunter",
-      alignment: "town",
-      description:
-        "When the Hunter dies, they can immediately eliminate another player of their choice. This creates a powerful deterrent against targeting the Hunter.",
-    },
-    {
-      id: 20,
-      name: "Witch",
-      alignment: "neutral",
-      description:
-        "The Witch has potions that can save or kill players. They typically have one healing potion and one poison potion to use during the game.",
-    },
-  ]
+  useEffect(() => {
+    const fetchRoles = async () => {
+      try {
+        setLoading(true)
+        const response = await fetch('/api/roles')
+        if (!response.ok) {
+          throw new Error('Failed to fetch roles')
+        }
+        const data = await response.json()
+        setRoles(data)
+      } catch (err) {
+        console.error('Error fetching roles:', err)
+        setError('Failed to load roles. Please try again later.')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchRoles()
+  }, [])
 
   const filteredRoles = roles.filter((role) => {
     const matchesSearch =
       role.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       role.description.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesAlignment = alignmentFilter === "all" || role.alignment === alignmentFilter
-    return matchesSearch && matchesAlignment
+    const matchesSpotlight = !showSpotlightOnly || role.isSpotlight
+    return matchesSearch && matchesAlignment && matchesSpotlight
   })
 
   const alignmentCounts = {
@@ -184,6 +70,32 @@ export default function RolesPage() {
     town: roles.filter((r) => r.alignment === "town").length,
     wolf: roles.filter((r) => r.alignment === "wolf").length,
     neutral: roles.filter((r) => r.alignment === "neutral").length,
+  }
+
+  const spotlightCount = roles.filter((r) => r.isSpotlight).length
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 text-white animate-spin mx-auto mb-4" />
+          <p className="text-white text-lg">Loading roles...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-300 text-lg mb-4">{error}</p>
+          <Button onClick={() => window.location.reload()} variant="outline">
+            Try Again
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -215,7 +127,7 @@ export default function RolesPage() {
                 className="pl-10 bg-white/20 border-white/30 text-white placeholder:text-gray-300"
               />
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <Button
                 variant={alignmentFilter === "all" ? "default" : "outline"}
                 onClick={() => setAlignmentFilter("all")}
@@ -245,6 +157,14 @@ export default function RolesPage() {
               >
                 Neutral ({alignmentCounts.neutral})
               </Button>
+              <Button
+                variant={showSpotlightOnly ? "default" : "outline"}
+                onClick={() => setShowSpotlightOnly(!showSpotlightOnly)}
+                className="border-white/30"
+              >
+                <Star className="w-4 h-4 mr-2" />
+                Spotlight ({spotlightCount})
+              </Button>
             </div>
           </div>
         </div>
@@ -259,26 +179,88 @@ export default function RolesPage() {
               <CardHeader>
                 <div className="flex justify-between items-start">
                   <CardTitle className="text-white text-xl">{role.name}</CardTitle>
-                  <Badge
-                    variant={
-                      role.alignment === "town" ? "default" : role.alignment === "wolf" ? "destructive" : "secondary"
-                    }
-                    className="ml-2"
-                  >
-                    {role.alignment}
-                  </Badge>
+                  <div className="flex gap-2">
+                    <Badge
+                      variant={
+                        role.alignment === "town" ? "default" : role.alignment === "wolf" ? "destructive" : "secondary"
+                      }
+                    >
+                      {role.alignment}
+                    </Badge>
+                    {role.isSpotlight && (
+                      <Badge variant="outline" className="border-yellow-400 text-yellow-300">
+                        <Star className="w-3 h-3 mr-1" />
+                        Spotlight
+                      </Badge>
+                    )}
+                  </div>
                 </div>
-                {role.metadata && (
-                  <p className="text-sm text-yellow-300 bg-yellow-900/20 px-2 py-1 rounded">{role.metadata}</p>
-                )}
-                {role.hasInfoFunction && (
-                  <Badge variant="outline" className="border-blue-400 text-blue-300 w-fit">
-                    Info Role
-                  </Badge>
-                )}
               </CardHeader>
-              <CardContent>
-                <p className="text-gray-200 leading-relaxed">{role.description}</p>
+              <CardContent className="space-y-3">
+                {role.targets && (
+                  <div>
+                    <span className="text-orange-300 font-medium">Targets:</span>
+                    <span className="text-gray-200 ml-2">{role.targets}</span>
+                  </div>
+                )}
+                
+                {role.moves && (
+                  <div>
+                    <span className="text-orange-300 font-medium">Moves:</span>
+                    <span className="text-gray-200 ml-2">Yes</span>
+                  </div>
+                )}
+                
+                {role.hasCharges && role.defaultCharges !== undefined && (
+                  <div>
+                    <span className="text-orange-300 font-medium">Default Charges:</span>
+                    <span className="text-gray-200 ml-2">{role.defaultCharges}</span>
+                  </div>
+                )}
+                
+                {role.description && (
+                  <div>
+                    <span className="text-orange-300 font-medium">Description:</span>
+                    <p className="text-gray-200 mt-1 leading-relaxed">{role.description}</p>
+                  </div>
+                )}
+                
+                {role.standardResultsFlavor && (
+                  <div>
+                    <span className="text-orange-300 font-medium">Standard Results Flavor:</span>
+                    <p className="text-gray-200 mt-1 leading-relaxed">{role.standardResultsFlavor}</p>
+                  </div>
+                )}
+                
+                {role.framerInteraction && (
+                  <div>
+                    <span className="text-orange-300 font-medium">Framer Interaction:</span>
+                    <p className="text-gray-200 mt-1 leading-relaxed">{role.framerInteraction}</p>
+                  </div>
+                )}
+                
+                {role.immunities && (
+                  <div>
+                    <span className="text-orange-300 font-medium">Immunities:</span>
+                    <p className="text-gray-200 mt-1 leading-relaxed">{role.immunities}</p>
+                  </div>
+                )}
+                
+                {role.specialProperties && (
+                  <div>
+                    <span className="text-orange-300 font-medium">Special Properties:</span>
+                    <p className="text-gray-200 mt-1 leading-relaxed">{role.specialProperties}</p>
+                  </div>
+                )}
+                
+                {/* Warning text for special roles */}
+                {(role.alignment === "wolf" && !role.inWolfChat) && (
+                  <div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-500/30 rounded">
+                    <p className="text-yellow-300 text-sm">
+                     This role is not added to the wolf chat.
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}
@@ -291,6 +273,7 @@ export default function RolesPage() {
               onClick={() => {
                 setSearchTerm("")
                 setAlignmentFilter("all")
+                setShowSpotlightOnly(false)
               }}
               className="mt-4"
               variant="outline"

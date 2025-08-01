@@ -132,7 +132,8 @@ export class DatabaseService {
             framer_interaction,
             in_wolf_chat,
             has_charges,
-            default_charges
+            default_charges,
+            is_spotlight
           FROM roles 
           ORDER BY name
         `)
@@ -142,19 +143,17 @@ export class DatabaseService {
           name: role.name,
           alignment: role.alignment,
           description: role.description,
-          metadata: [
-            role.targets && `Targets: ${role.targets}`,
-            role.moves && `Moves: Yes`,
-            role.standard_results_flavor && `Results: ${role.standard_results_flavor}`,
-            role.immunities && `Immunities: ${role.immunities}`,
-            role.special_properties && `Special: ${role.special_properties}`,
-            role.framer_interaction && `Framer: ${role.framer_interaction}`,
-            role.in_wolf_chat && `In Wolf Chat: Yes`
-          ].filter(Boolean).join(' | ') || undefined,
+          targets: role.targets,
+          moves: role.moves,
+          standardResultsFlavor: role.standard_results_flavor,
+          immunities: role.immunities,
+          specialProperties: role.special_properties,
+          framerInteraction: role.framer_interaction,
           hasInfoFunction: role.targets === 'Players' && role.moves,
           hasCharges: role.has_charges,
           defaultCharges: role.default_charges,
-          inWolfChat: role.in_wolf_chat
+          inWolfChat: role.in_wolf_chat,
+          isSpotlight: role.is_spotlight
         }))
       } finally {
         client.release()
