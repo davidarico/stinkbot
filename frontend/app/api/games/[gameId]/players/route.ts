@@ -25,6 +25,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       userId: player.user_id,
       isFramed: player.is_framed,
       isDead: player.is_dead,
+      charges: player.charges,
       displayRole: game?.is_skinned && player.skinned_role ? player.skinned_role : player.role
     })))
   } catch (error) {
@@ -48,11 +49,19 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         return NextResponse.json(result)
 
       case "updatePlayer":
-        if (!data?.playerId || !data?.status) {
-          return NextResponse.json({ error: "Player ID and status required" }, { status: 400 })
+        if (!data?.playerId) {
+          return NextResponse.json({ error: "Player ID required" }, { status: 400 })
         }
-        const updatedPlayer = await db.updatePlayerStatus(data.playerId, data.status)
-        return NextResponse.json(updatedPlayer)
+        
+        if (data.status) {
+          const updatedPlayer = await db.updatePlayerStatus(data.playerId, data.status)
+          return NextResponse.json(updatedPlayer)
+        } else if (data.charges !== undefined) {
+          const updatedPlayer = await db.updatePlayerCharges(data.playerId, data.charges)
+          return NextResponse.json(updatedPlayer)
+        } else {
+          return NextResponse.json({ error: "Status or charges required" }, { status: 400 })
+        }
 
       default:
         return NextResponse.json({ error: "Invalid action" }, { status: 400 })

@@ -1,5 +1,5 @@
 -- Werewolf Discord Bot Database Schema
--- Generated automatically on 2025-08-01T18:03:51.249Z
+-- Generated automatically on 2025-08-01T20:07:02.582Z
 -- This file shows the current database structure with table comments
 -- Run this after migrations to get the latest schema
 
@@ -20,7 +20,8 @@ CREATE TABLE game_role (
     game_id INTEGER NOT NULL PRIMARY KEY,
     role_id INTEGER NOT NULL PRIMARY KEY,
     role_count INTEGER NOT NULL DEFAULT 1,
-    custom_name TEXT
+    custom_name TEXT,
+    charges INTEGER NOT NULL DEFAULT 0
 );
 
 -- Table to store speed vote information
@@ -114,6 +115,8 @@ CREATE TABLE roles (
     in_wolf_chat BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     is_spotlight BOOLEAN DEFAULT FALSE,
+    has_charges BOOLEAN NOT NULL DEFAULT FALSE,
+    default_charges INTEGER NOT NULL DEFAULT 0,
     UNIQUE(name)
 );
 

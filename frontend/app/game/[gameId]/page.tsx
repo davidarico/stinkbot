@@ -23,6 +23,7 @@ interface Player {
   isFramed?: boolean
   isDead?: boolean
   actionNotes?: string
+  charges?: number
 }
 
 interface Role {
@@ -32,6 +33,9 @@ interface Role {
   description: string
   metadata?: string
   hasInfoFunction?: boolean
+  hasCharges?: boolean
+  defaultCharges?: number
+  inWolfChat?: boolean
 }
 
 interface GameData {
@@ -49,6 +53,7 @@ interface GameRole {
   roleName: string
   roleCount: number
   customName?: string
+  charges?: number
 }
 
 interface Vote {
@@ -77,6 +82,7 @@ export default function GameManagementPage() {
   const [selectedRoles, setSelectedRoles] = useState<Role[]>([])
   const [gameRoles, setGameRoles] = useState<GameRole[]>([])
   const [customRoleNames, setCustomRoleNames] = useState<Record<number, string>>({})
+  const [roleCharges, setRoleCharges] = useState<Record<number, number>>({})
   const [themeInput, setThemeInput] = useState("")
   const [roleSearch, setRoleSearch] = useState("")
   const [alignmentFilter, setAlignmentFilter] = useState<string>("all")
@@ -132,12 +138,17 @@ export default function GameManagementPage() {
         
         // Build custom role names map
         const customNames: Record<number, string> = {}
+        const charges: Record<number, number> = {}
         gameRolesData.forEach((gr: any) => {
           if (gr.custom_name) {
             customNames[gr.role_id] = gr.custom_name
           }
+          if (gr.charges !== undefined) {
+            charges[gr.role_id] = gr.charges
+          }
         })
         setCustomRoleNames(customNames)
+        setRoleCharges(charges)
         
         // Convert game roles to selected roles for display
         const rolesForSelection: Role[] = []
@@ -146,8 +157,11 @@ export default function GameManagementPage() {
             rolesForSelection.push({
               id: gr.role_id,
               name: gr.role_name,
-              alignment: gr.role_team || 'town', // Use the team from the database
-              description: ''
+              alignment: gr.team || 'town', // Use the team from the database
+              description: '',
+              hasCharges: gr.has_charges || false,
+              defaultCharges: gr.default_charges || 0,
+              inWolfChat: gr.in_wolf_chat || false
             })
           }
         })
@@ -165,7 +179,14 @@ export default function GameManagementPage() {
       const rolesResponse = await fetch(`/api/roles`)
       if (rolesResponse.ok) {
         const rolesData = await rolesResponse.json()
-        setAvailableRoles(rolesData)
+        const mappedRoles = rolesData.map((role: any) => ({
+          ...role,
+          alignment: role.team || 'town',
+          hasCharges: role.has_charges || false,
+          defaultCharges: role.default_charges || 0,
+          inWolfChat: role.in_wolf_chat || false
+        }))
+        setAvailableRoles(mappedRoles)
       }
 
     } catch (err) {
@@ -213,6 +234,14 @@ export default function GameManagementPage() {
   const addRoleToGame = (role: Role) => {
     // Always add the role, allowing duplicates
     setSelectedRoles([...selectedRoles, role])
+    
+    // Initialize charges if this role has charges and isn't already set
+    if (role.hasCharges && roleCharges[role.id] === undefined) {
+      setRoleCharges(prev => ({
+        ...prev,
+        [role.id]: role.defaultCharges || 0
+      }))
+    }
   }
 
   const removeRoleFromGame = (roleIndex: number) => {
@@ -326,6 +355,32 @@ export default function GameManagementPage() {
     setPlayers(players.map((player) => (player.id === playerId ? { ...player, actionNotes: notes } : player)))
   }
 
+  const updatePlayerCharges = async (playerId: number, charges: number) => {
+    try {
+      const response = await fetch(`/api/games/${gameId}/players`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'updatePlayer', 
+          data: { playerId, charges }
+        })
+      })
+
+      if (response.ok) {
+        setPlayers(
+          players.map((player) =>
+            player.id === playerId ? { ...player, charges } : player,
+          ),
+        )
+      } else {
+        alert('Failed to update player charges')
+      }
+    } catch (error) {
+      console.error('Error updating player charges:', error)
+      alert('Error updating player charges')
+    }
+  }
+
   const saveGameRoles = async () => {
     if (selectedRoles.length === 0) {
       alert('Please select some roles first')
@@ -338,11 +393,16 @@ export default function GameManagementPage() {
       roleCountMap[role.id] = (roleCountMap[role.id] || 0) + 1
     })
 
-    const gameRoleData = Object.entries(roleCountMap).map(([roleId, count]) => ({
-      roleId: parseInt(roleId),
-      roleCount: count,
-      customName: customRoleNames[parseInt(roleId)] || undefined
-    }))
+    const gameRoleData = Object.entries(roleCountMap).map(([roleId, count]) => {
+      const roleIdNum = parseInt(roleId)
+      const role = availableRoles.find(r => r.id === roleIdNum)
+      return {
+        roleId: roleIdNum,
+        roleCount: count,
+        customName: customRoleNames[roleIdNum] || undefined,
+        charges: roleCharges[roleIdNum] !== undefined ? roleCharges[roleIdNum] : (role?.defaultCharges || 0)
+      }
+    })
 
     try {
       const response = await fetch(`/api/games/${gameId}/roles`, {
@@ -461,6 +521,19 @@ export default function GameManagementPage() {
       ...prev,
       [roleId]: customName
     }))
+  }
+
+  const updateRoleCharges = (roleId: number, charges: number) => {
+    setRoleCharges(prev => ({
+      ...prev,
+      [roleId]: charges
+    }))
+  }
+
+  const roleHasCharges = (player: Player): boolean => {
+    if (!player.roleId) return false
+    const role = availableRoles.find(r => r.id === player.roleId)
+    return role?.hasCharges || false
   }
 
   const filteredRoles = availableRoles
@@ -848,6 +921,11 @@ export default function GameManagementPage() {
                               )}
                             </div>
                           </div>
+                          {!role.inWolfChat && role.alignment === "wolf" && (
+                            <p className={cn("text-xs italic mt-1", isDayPhase ? "text-orange-600" : "text-orange-300")}>
+                              * Not added to wolf chat
+                            </p>
+                          )}
                         </div>
                       )
                     })
@@ -953,6 +1031,57 @@ export default function GameManagementPage() {
                             onChange={(e) => updateCustomRoleName(parseInt(roleId), e.target.value)}
                             className="text-sm"
                           />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Role Charges Configuration */}
+                {selectedRoles.length > 0 && (
+                  <div className="pt-4 border-t border-white/20">
+                    <h4 className={cn("font-medium mb-3 text-sm", isDayPhase ? "text-gray-900" : "text-white")}>
+                      Role Charges
+                    </h4>
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {Object.entries(
+                        selectedRoles.reduce((acc, role) => {
+                          if (!acc[role.id]) {
+                            acc[role.id] = { role, count: 0 }
+                          }
+                          acc[role.id].count++
+                          return acc
+                        }, {} as Record<number, { role: Role; count: number }>)
+                      ).filter(([roleId, { role }]) => role.hasCharges).map(([roleId, { role, count }]) => (
+                        <div key={roleId} className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className={cn("text-xs font-medium", isDayPhase ? "text-gray-700" : "text-gray-300")}>
+                              {role.name} {count > 1 && `(x${count})`} - Default: {role.defaultCharges}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="number"
+                              placeholder={`Charges for ${role.name}...`}
+                              value={roleCharges[parseInt(roleId)] || role.defaultCharges || 0}
+                              onChange={(e) => updateRoleCharges(parseInt(roleId), parseInt(e.target.value) || 0)}
+                              className="text-sm flex-1"
+                              min="0"
+                            />
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => updateRoleCharges(parseInt(roleId), role.defaultCharges || 0)}
+                              className="px-2 py-1 h-8"
+                            >
+                              Reset
+                            </Button>
+                          </div>
+                          {!role.inWolfChat && role.alignment === "wolf" && (
+                            <p className={cn("text-xs italic", isDayPhase ? "text-orange-600" : "text-orange-300")}>
+                              * This role does not get added to wolf chat
+                            </p>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1102,15 +1231,24 @@ export default function GameManagementPage() {
                               isDayPhase ? "bg-blue-50 border-blue-200" : "bg-blue-900/20 border-blue-700",
                             )}
                           >
-                            <div className="flex justify-between items-start mb-2">
-                              <div>
+                            <div className="flex justify-between items-center mb-2">
+                              <div className="flex items-center gap-2 flex-1">
                                 <span className={cn("font-medium", isDayPhase ? "text-gray-900" : "text-white")}>
                                   {player.username} - {getDisplayRoleName(player)}
                                 </span>
                                 {player.isFramed && (
-                                  <Badge variant="destructive" className="ml-2">
+                                  <Badge variant="destructive">
                                     Framed
                                   </Badge>
+                                )}
+                                {/* Inline action notes only during night phase */}
+                                {!isDayPhase && (
+                                  <Input
+                                    placeholder="Action notes..."
+                                    value={player.actionNotes || ""}
+                                    onChange={(e) => updateActionNotes(player.id, e.target.value)}
+                                    className="text-xs h-6 px-2 max-w-32 flex-shrink-0"
+                                  />
                                 )}
                               </div>
                               <div className="space-x-2">
@@ -1122,12 +1260,37 @@ export default function GameManagementPage() {
                                 </Button>
                               </div>
                             </div>
-                            <Textarea
-                              placeholder="Action notes..."
-                              value={player.actionNotes || ""}
-                              onChange={(e) => updateActionNotes(player.id, e.target.value)}
-                              className="mt-2"
-                            />
+                            
+                            {/* Charges for roles that have them */}
+                            {roleHasCharges(player) && (
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className={cn("text-sm font-medium", isDayPhase ? "text-gray-700" : "text-gray-300")}>
+                                  Charges:
+                                </span>
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => updatePlayerCharges(player.id, Math.max(0, (player.charges || 0) - 1))}
+                                    disabled={(player.charges || 0) <= 0}
+                                    className="px-2 py-1 h-6"
+                                  >
+                                    -
+                                  </Button>
+                                  <span className={cn("px-2 text-sm font-mono", isDayPhase ? "text-gray-900" : "text-white")}>
+                                    {player.charges || 0}
+                                  </span>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => updatePlayerCharges(player.id, (player.charges || 0) + 1)}
+                                    className="px-2 py-1 h-6"
+                                  >
+                                    +
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         ))}
                     </CardContent>
@@ -1153,15 +1316,24 @@ export default function GameManagementPage() {
                               isDayPhase ? "bg-red-50 border-red-200" : "bg-red-900/20 border-red-700",
                             )}
                           >
-                            <div className="flex justify-between items-start mb-2">
-                              <div>
+                            <div className="flex justify-between items-center mb-2">
+                              <div className="flex items-center gap-2 flex-1">
                                 <span className={cn("font-medium", isDayPhase ? "text-gray-900" : "text-white")}>
                                   {player.username} - {getDisplayRoleName(player)}
                                 </span>
                                 {player.isFramed && (
-                                  <Badge variant="destructive" className="ml-2">
+                                  <Badge variant="destructive">
                                     Framed
                                   </Badge>
+                                )}
+                                {/* Inline action notes only during night phase */}
+                                {!isDayPhase && (
+                                  <Input
+                                    placeholder="Action notes..."
+                                    value={player.actionNotes || ""}
+                                    onChange={(e) => updateActionNotes(player.id, e.target.value)}
+                                    className="text-xs h-6 px-2 max-w-32 flex-shrink-0"
+                                  />
                                 )}
                               </div>
                               <div className="space-x-2">
@@ -1173,12 +1345,37 @@ export default function GameManagementPage() {
                                 </Button>
                               </div>
                             </div>
-                            <Textarea
-                              placeholder="Action notes..."
-                              value={player.actionNotes || ""}
-                              onChange={(e) => updateActionNotes(player.id, e.target.value)}
-                              className="mt-2"
-                            />
+                            
+                            {/* Charges for roles that have them */}
+                            {roleHasCharges(player) && (
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className={cn("text-sm font-medium", isDayPhase ? "text-gray-700" : "text-gray-300")}>
+                                  Charges:
+                                </span>
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => updatePlayerCharges(player.id, Math.max(0, (player.charges || 0) - 1))}
+                                    disabled={(player.charges || 0) <= 0}
+                                    className="px-2 py-1 h-6"
+                                  >
+                                    -
+                                  </Button>
+                                  <span className={cn("px-2 text-sm font-mono", isDayPhase ? "text-gray-900" : "text-white")}>
+                                    {player.charges || 0}
+                                  </span>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => updatePlayerCharges(player.id, (player.charges || 0) + 1)}
+                                    className="px-2 py-1 h-6"
+                                  >
+                                    +
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         ))}
                     </CardContent>
@@ -1204,15 +1401,24 @@ export default function GameManagementPage() {
                               isDayPhase ? "bg-yellow-50 border-yellow-200" : "bg-yellow-900/20 border-yellow-700",
                             )}
                           >
-                            <div className="flex justify-between items-start mb-2">
-                              <div>
+                            <div className="flex justify-between items-center mb-2">
+                              <div className="flex items-center gap-2 flex-1">
                                 <span className={cn("font-medium", isDayPhase ? "text-gray-900" : "text-white")}>
                                   {player.username} - {getDisplayRoleName(player)}
                                 </span>
                                 {player.isFramed && (
-                                  <Badge variant="destructive" className="ml-2">
+                                  <Badge variant="destructive">
                                     Framed
                                   </Badge>
+                                )}
+                                {/* Inline action notes only during night phase */}
+                                {!isDayPhase && (
+                                  <Input
+                                    placeholder="Action notes..."
+                                    value={player.actionNotes || ""}
+                                    onChange={(e) => updateActionNotes(player.id, e.target.value)}
+                                    className="text-xs h-6 px-2 max-w-32 flex-shrink-0"
+                                  />
                                 )}
                               </div>
                               <div className="space-x-2">
@@ -1224,12 +1430,37 @@ export default function GameManagementPage() {
                                 </Button>
                               </div>
                             </div>
-                            <Textarea
-                              placeholder="Action notes..."
-                              value={player.actionNotes || ""}
-                              onChange={(e) => updateActionNotes(player.id, e.target.value)}
-                              className="mt-2"
-                            />
+                            
+                            {/* Charges for roles that have them */}
+                            {roleHasCharges(player) && (
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className={cn("text-sm font-medium", isDayPhase ? "text-gray-700" : "text-gray-300")}>
+                                  Charges:
+                                </span>
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => updatePlayerCharges(player.id, Math.max(0, (player.charges || 0) - 1))}
+                                    disabled={(player.charges || 0) <= 0}
+                                    className="px-2 py-1 h-6"
+                                  >
+                                    -
+                                  </Button>
+                                  <span className={cn("px-2 text-sm font-mono", isDayPhase ? "text-gray-900" : "text-white")}>
+                                    {player.charges || 0}
+                                  </span>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => updatePlayerCharges(player.id, (player.charges || 0) + 1)}
+                                    className="px-2 py-1 h-6"
+                                  >
+                                    +
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         ))}
                     </CardContent>

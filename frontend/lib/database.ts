@@ -34,6 +34,7 @@ interface Player {
   is_dead: boolean
   is_framed: boolean
   signed_up_at: Date
+  charges?: number
   role?: string // This will be populated from the role join
 }
 
@@ -103,7 +104,8 @@ export class DatabaseService {
       )
       return result.rows.map(row => ({
         ...row,
-        role: row.role_name // Use role_name from join
+        role: row.role_name, // Use role_name from join
+        charges: row.charges_left // Map charges_left to charges
       }))
     } catch (error) {
       console.error('Error fetching players:', error)
@@ -128,7 +130,9 @@ export class DatabaseService {
             immunities,
             special_properties,
             framer_interaction,
-            in_wolf_chat
+            in_wolf_chat,
+            has_charges,
+            default_charges
           FROM roles 
           ORDER BY name
         `)
@@ -147,7 +151,10 @@ export class DatabaseService {
             role.framer_interaction && `Framer: ${role.framer_interaction}`,
             role.in_wolf_chat && `In Wolf Chat: Yes`
           ].filter(Boolean).join(' | ') || undefined,
-          hasInfoFunction: role.targets === 'Players' && role.moves
+          hasInfoFunction: role.targets === 'Players' && role.moves,
+          hasCharges: role.has_charges,
+          defaultCharges: role.default_charges,
+          inWolfChat: role.in_wolf_chat
         }))
       } finally {
         client.release()
@@ -212,6 +219,19 @@ export class DatabaseService {
     }
   }
 
+  async updatePlayerCharges(playerId: number, charges: number) {
+    try {
+      const result = await this.pool.query(
+        'UPDATE players SET charges_left = $1 WHERE id = $2 RETURNING *',
+        [charges, playerId]
+      )
+      return { success: true, player: result.rows[0] }
+    } catch (error) {
+      console.error('Error updating player charges:', error)
+      throw error
+    }
+  }
+
   async getVotes(gameId: string, dayNumber: number): Promise<Vote[]> {
     try {
       const result = await this.pool.query(
@@ -271,7 +291,7 @@ export class DatabaseService {
   async getGameRoles(gameId: string): Promise<GameRole[]> {
     try {
       const result = await this.pool.query(
-        `SELECT gr.*, r.name as role_name, r.team as role_team
+        `SELECT gr.*, r.name as role_name, r.team as role_team, r.has_charges, r.default_charges, r.in_wolf_chat
          FROM game_role gr 
          JOIN roles r ON gr.role_id = r.id 
          WHERE gr.game_id = $1`,
@@ -284,7 +304,7 @@ export class DatabaseService {
     }
   }
 
-  async saveGameRoles(gameId: string, gameRoles: Array<{roleId: number, roleCount: number, customName?: string}>) {
+  async saveGameRoles(gameId: string, gameRoles: Array<{roleId: number, roleCount: number, customName?: string, charges?: number}>) {
     try {
       const client = await this.pool.connect()
       
@@ -298,12 +318,13 @@ export class DatabaseService {
         for (const gameRole of gameRoles) {
           // Insert or update since we may have constraint issues
           await client.query(
-            `INSERT INTO game_role (game_id, role_id, role_count, custom_name) 
-             VALUES ($1, $2, $3, $4)
+            `INSERT INTO game_role (game_id, role_id, role_count, custom_name, charges) 
+             VALUES ($1, $2, $3, $4, $5)
              ON CONFLICT (game_id, role_id) DO UPDATE SET 
              role_count = EXCLUDED.role_count,
-             custom_name = EXCLUDED.custom_name`,
-            [parseInt(gameId), gameRole.roleId, gameRole.roleCount, gameRole.customName || null]
+             custom_name = EXCLUDED.custom_name,
+             charges = EXCLUDED.charges`,
+            [parseInt(gameId), gameRole.roleId, gameRole.roleCount, gameRole.customName || null, gameRole.charges || null]
           )
         }
         
@@ -322,7 +343,7 @@ export class DatabaseService {
     }
   }
 
-  private async saveGameRolesIndividually(gameId: string, gameRoles: Array<{roleId: number, roleCount: number, customName?: string}>) {
+  private async saveGameRolesIndividually(gameId: string, gameRoles: Array<{roleId: number, roleCount: number, customName?: string, charges?: number}>) {
     try {
       const client = await this.pool.connect()
       
@@ -336,8 +357,8 @@ export class DatabaseService {
         for (const gameRole of gameRoles) {
           try {
             await client.query(
-              'INSERT INTO game_role (game_id, role_id, role_count, custom_name) VALUES ($1, $2, $3, $4)',
-              [parseInt(gameId), gameRole.roleId, gameRole.roleCount, gameRole.customName || null]
+              'INSERT INTO game_role (game_id, role_id, role_count, custom_name, charges) VALUES ($1, $2, $3, $4, $5)',
+              [parseInt(gameId), gameRole.roleId, gameRole.roleCount, gameRole.customName || null, gameRole.charges || null]
             )
           } catch (insertError) {
             console.warn('Failed to insert game role:', insertError)
