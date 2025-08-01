@@ -5,7 +5,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
       <div className="container mx-auto px-4 py-16">
-        <div className="text-center mb-16">
+        <div className="text-center mb-8">
           <h1 className="text-6xl font-bold text-white mb-6">Stinkwolf</h1>
           <p className="text-xl text-purple-200 mb-8">The Future of Werewolf Game Management</p>
         </div>
@@ -16,7 +16,7 @@ export default function HomePage() {
               <Button
                 variant="outline"
                 size="lg"
-                className="border-purple-400 text-purple-200 hover:bg-purple-800/50 px-8 py-3 text-lg bg-transparent"
+                className="border-purple-400 text-purple-200 hover:bg-purple-800/50 px-8 py-3 text-lg bg-transparent mb-4"
               >
                 View All Roles
               </Button>
