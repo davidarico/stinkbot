@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Search, Users, Shuffle, Moon, Sun, Filter } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useToast } from "@/hooks/use-toast"
 
 interface Player {
   id: number
@@ -64,6 +65,7 @@ interface Vote {
 export default function GameManagementPage() {
   const params = useParams()
   const gameId = params.gameId as string
+  const { toast } = useToast()
 
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [password, setPassword] = useState("")
@@ -157,7 +159,7 @@ export default function GameManagementPage() {
             rolesForSelection.push({
               id: gr.role_id,
               name: gr.role_name,
-              alignment: gr.team || 'town', // Use the team from the database
+              alignment: gr.role_team || gr.team || 'town', // Try both role_team and team
               description: '',
               hasCharges: gr.has_charges || false,
               defaultCharges: gr.default_charges || 0,
@@ -181,10 +183,10 @@ export default function GameManagementPage() {
         const rolesData = await rolesResponse.json()
         const mappedRoles = rolesData.map((role: any) => ({
           ...role,
-          alignment: role.team || 'town',
-          hasCharges: role.has_charges || false,
-          defaultCharges: role.default_charges || 0,
-          inWolfChat: role.in_wolf_chat || false
+          alignment: role.alignment || 'town', // The API already returns alignment
+          hasCharges: role.hasCharges || false,
+          defaultCharges: role.defaultCharges || 0,
+          inWolfChat: role.inWolfChat || false
         }))
         setAvailableRoles(mappedRoles)
       }
@@ -199,7 +201,11 @@ export default function GameManagementPage() {
 
   const handleLogin = async () => {
     if (!password.trim()) {
-      alert("Please enter a password")
+      toast({
+        title: "Password Required",
+        description: "Please enter a password",
+        variant: "destructive",
+      })
       return
     }
     
@@ -221,10 +227,18 @@ export default function GameManagementPage() {
         document.cookie = `game_${gameId}_auth=true; path=/; max-age=86400`
         await loadGameData()
       } else {
-        alert("Incorrect password. Please use the category ID from Discord.")
+        toast({
+          title: "Authentication Failed",
+          description: "Incorrect password. Please use the category ID from Discord.",
+          variant: "destructive",
+        })
       }
     } catch (err) {
-      alert("Error verifying password")
+      toast({
+        title: "Login Error",
+        description: "Error verifying password",
+        variant: "destructive",
+      })
       console.error('Login error:', err)
     } finally {
       setLoginLoading(false)
@@ -250,7 +264,11 @@ export default function GameManagementPage() {
 
   const assignRoles = async () => {
     if (selectedRoles.length !== players.length) {
-      alert(`Need exactly ${players.length} roles for ${players.length} players`)
+      toast({
+        title: "Role Count Mismatch",
+        description: `Need exactly ${players.length} roles for ${players.length} players`,
+        variant: "destructive",
+      })
       return
     }
 
@@ -282,11 +300,19 @@ export default function GameManagementPage() {
           setPlayers(playersData)
         }
       } else {
-        alert('Failed to assign roles')
+        toast({
+          title: "Assignment Failed",
+          description: "Failed to assign roles",
+          variant: "destructive",
+        })
       }
     } catch (error) {
       console.error('Error assigning roles:', error)
-      alert('Error assigning roles')
+      toast({
+        title: "Assignment Error",
+        description: "Error assigning roles",
+        variant: "destructive",
+      })
     }
   }
 
@@ -339,11 +365,19 @@ export default function GameManagementPage() {
           ),
         )
       } else {
-        alert('Failed to update player status')
+        toast({
+          title: "Update Failed",
+          description: "Failed to update player status",
+          variant: "destructive",
+        })
       }
     } catch (error) {
       console.error('Error updating player status:', error)
-      alert('Error updating player status')
+      toast({
+        title: "Update Error",
+        description: "Error updating player status",
+        variant: "destructive",
+      })
     }
   }
 
@@ -373,17 +407,29 @@ export default function GameManagementPage() {
           ),
         )
       } else {
-        alert('Failed to update player charges')
+        toast({
+          title: "Update Failed",
+          description: "Failed to update player charges",
+          variant: "destructive",
+        })
       }
     } catch (error) {
       console.error('Error updating player charges:', error)
-      alert('Error updating player charges')
+      toast({
+        title: "Update Error",
+        description: "Error updating player charges",
+        variant: "destructive",
+      })
     }
   }
 
   const saveGameRoles = async () => {
     if (selectedRoles.length === 0) {
-      alert('Please select some roles first')
+      toast({
+        title: "No Roles Selected",
+        description: "Please select some roles first",
+        variant: "destructive",
+      })
       return
     }
 
@@ -412,20 +458,40 @@ export default function GameManagementPage() {
       })
 
       if (response.ok) {
-        alert('Role configuration saved successfully!')
-        await loadGameData() // Refresh data
+        toast({
+          title: "Success",
+          description: "Role configuration saved successfully!",
+        })
+        // Don't reload all data - just update the game roles state
+        const gameRolesResponse = await fetch(`/api/games/${gameId}/roles`)
+        if (gameRolesResponse.ok) {
+          const gameRolesData = await gameRolesResponse.json()
+          setGameRoles(gameRolesData)
+        }
       } else {
-        alert('Failed to save game roles')
+        toast({
+          title: "Save Failed",
+          description: "Failed to save game roles",
+          variant: "destructive",
+        })
       }
     } catch (error) {
       console.error('Error saving game roles:', error)
-      alert('Error saving game roles')
+      toast({
+        title: "Save Error",
+        description: "Error saving game roles",
+        variant: "destructive",
+      })
     }
   }
 
   const saveThemeSettings = async () => {
     if (gameData.isThemed && !themeInput.trim()) {
-      alert('Please enter a theme name')
+      toast({
+        title: "Theme Name Required",
+        description: "Please enter a theme name",
+        variant: "destructive",
+      })
       return
     }
 
@@ -442,17 +508,28 @@ export default function GameManagementPage() {
       })
 
       if (response.ok) {
-        alert('Theme settings saved successfully!')
+        toast({
+          title: "Success",
+          description: "Theme settings saved successfully!",
+        })
         setGameData(prev => ({
           ...prev,
           themeName: gameData.isThemed ? themeInput.trim() : undefined
         }))
       } else {
-        alert('Failed to save theme settings')
+        toast({
+          title: "Save Failed",
+          description: "Failed to save theme settings",
+          variant: "destructive",
+        })
       }
     } catch (error) {
       console.error('Error saving theme settings:', error)
-      alert('Error saving theme settings')
+      toast({
+        title: "Save Error",
+        description: "Error saving theme settings",
+        variant: "destructive",
+      })
     }
   }
 
@@ -470,7 +547,10 @@ export default function GameManagementPage() {
       })
 
       if (response.ok) {
-        alert('Theme settings reset successfully!')
+        toast({
+          title: "Success",
+          description: "Theme settings reset successfully!",
+        })
         setGameData(prev => ({
           ...prev,
           isThemed: false,
@@ -480,11 +560,19 @@ export default function GameManagementPage() {
         setThemeInput("")
         setCustomRoleNames({})
       } else {
-        alert('Failed to reset theme settings')
+        toast({
+          title: "Reset Failed",
+          description: "Failed to reset theme settings",
+          variant: "destructive",
+        })
       }
     } catch (error) {
       console.error('Error resetting theme settings:', error)
-      alert('Error resetting theme settings')
+      toast({
+        title: "Reset Error",
+        description: "Error resetting theme settings",
+        variant: "destructive",
+      })
     }
   }
 
@@ -952,48 +1040,81 @@ export default function GameManagementPage() {
                     <div
                       key={roleName}
                       className={cn(
-                        "p-2 rounded border flex justify-between items-center",
+                        "p-2 rounded border",
                         isDayPhase ? "bg-green-50 border-green-200" : "bg-green-900/20 border-green-700",
                       )}
                     >
-                      <div className="flex items-center gap-2">
-                        <span className={cn(isDayPhase ? "text-gray-900" : "text-white")}>{role.name}</span>
-                        <Badge
-                          variant={
-                            role.alignment === "town"
-                              ? "default"
-                              : role.alignment === "wolf"
-                                ? "destructive"
-                                : "secondary"
-                          }
-                          className="text-xs"
-                        >
-                          {role.alignment}
-                        </Badge>
-                        {count > 1 && (
-                          <Badge variant="outline" className="text-xs">
-                            x{count}
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                          <span className={cn(isDayPhase ? "text-gray-900" : "text-white")}>{role.name}</span>
+                          <Badge
+                            variant={
+                              role.alignment === "town"
+                                ? "default"
+                                : role.alignment === "wolf"
+                                  ? "destructive"
+                                  : "secondary"
+                            }
+                            className="text-xs"
+                          >
+                            {role.alignment}
                           </Badge>
-                        )}
+                          {count > 1 && (
+                            <Badge variant="outline" className="text-xs">
+                              x{count}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            onClick={() => addRoleToGame(role)}
+                            className="px-2 py-1 h-6"
+                          >
+                            +
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="destructive" 
+                            onClick={() => removeRoleFromGame(indices[indices.length - 1])}
+                            className="px-2 py-1 h-6"
+                          >
+                            -
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          onClick={() => addRoleToGame(role)}
-                          className="px-2 py-1 h-6"
-                        >
-                          +
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="destructive" 
-                          onClick={() => removeRoleFromGame(indices[indices.length - 1])}
-                          className="px-2 py-1 h-6"
-                        >
-                          -
-                        </Button>
-                      </div>
+                      {/* Charge counter for roles with charges */}
+                      {role.hasCharges && (
+                        <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                          <div className="flex items-center justify-between">
+                            <span className={cn("text-xs font-medium", isDayPhase ? "text-gray-700" : "text-gray-300")}>
+                              Charges: {roleCharges[role.id] || role.defaultCharges || 0}
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                onClick={() => updateRoleCharges(role.id, (roleCharges[role.id] || role.defaultCharges || 0) + 1)}
+                                className="px-2 py-1 h-5 text-xs"
+                                disabled={(roleCharges[role.id] || role.defaultCharges || 0) >= 10}
+                              >
+                                +
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="destructive" 
+                                onClick={() => updateRoleCharges(role.id, Math.max(0, (roleCharges[role.id] || role.defaultCharges || 0) - 1))}
+                                className="px-2 py-1 h-5 text-xs"
+                                disabled={(roleCharges[role.id] || role.defaultCharges || 0) <= 0}
+                              >
+                                -
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                     </div>
                   ))}
                   {selectedRoles.length === 0 && (
@@ -1031,57 +1152,6 @@ export default function GameManagementPage() {
                             onChange={(e) => updateCustomRoleName(parseInt(roleId), e.target.value)}
                             className="text-sm"
                           />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Role Charges Configuration */}
-                {selectedRoles.length > 0 && (
-                  <div className="pt-4 border-t border-white/20">
-                    <h4 className={cn("font-medium mb-3 text-sm", isDayPhase ? "text-gray-900" : "text-white")}>
-                      Role Charges
-                    </h4>
-                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                      {Object.entries(
-                        selectedRoles.reduce((acc, role) => {
-                          if (!acc[role.id]) {
-                            acc[role.id] = { role, count: 0 }
-                          }
-                          acc[role.id].count++
-                          return acc
-                        }, {} as Record<number, { role: Role; count: number }>)
-                      ).filter(([roleId, { role }]) => role.hasCharges).map(([roleId, { role, count }]) => (
-                        <div key={roleId} className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className={cn("text-xs font-medium", isDayPhase ? "text-gray-700" : "text-gray-300")}>
-                              {role.name} {count > 1 && `(x${count})`} - Default: {role.defaultCharges}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              placeholder={`Charges for ${role.name}...`}
-                              value={roleCharges[parseInt(roleId)] || role.defaultCharges || 0}
-                              onChange={(e) => updateRoleCharges(parseInt(roleId), parseInt(e.target.value) || 0)}
-                              className="text-sm flex-1"
-                              min="0"
-                            />
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => updateRoleCharges(parseInt(roleId), role.defaultCharges || 0)}
-                              className="px-2 py-1 h-8"
-                            >
-                              Reset
-                            </Button>
-                          </div>
-                          {!role.inWolfChat && role.alignment === "wolf" && (
-                            <p className={cn("text-xs italic", isDayPhase ? "text-orange-600" : "text-orange-300")}>
-                              * This role does not get added to wolf chat
-                            </p>
-                          )}
                         </div>
                       ))}
                     </div>

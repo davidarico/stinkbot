@@ -1,0 +1,12 @@
+---
+alwaysApply: true
+---
+
+- This application supports running games of Werewolf (mafia-like social deception game)
+- This is a monorepo with three parts: 
+    - discord bot for managing sign ups, voting, and day changes
+    - frontend next app for mod management
+    - database migrations
+
+- Reference database/current_schema.sql for current database structure
+- Assume migrations are ran and this file is up to date
