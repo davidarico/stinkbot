@@ -117,10 +117,20 @@ Each game is protected by a password system where the password is the category I
 
 ## API Endpoints
 
-- `GET /api/database?action=getGame&gameId={id}` - Retrieve game information
-- `GET /api/database?action=getPlayers&gameId={id}` - Get players for a game
-- `GET /api/database?action=getRoles` - Get available roles
-- `POST /api/database` - Update game state, assign roles, or modify players
+### Games
+- `GET /api/games/[gameId]` - Retrieve game information
+- `POST /api/games/[gameId]` - Verify game password
+
+### Players
+- `GET /api/games/[gameId]/players` - Get players for a game
+- `POST /api/games/[gameId]/players` - Assign roles or update player status
+
+### Votes
+- `GET /api/games/[gameId]/votes?dayNumber={day}` - Get votes for a specific day
+- `POST /api/games/[gameId]/votes` - Add a vote
+
+### Roles
+- `GET /api/roles` - Get available roles
 
 ## Contributing
 

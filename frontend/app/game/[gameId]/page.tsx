@@ -54,52 +54,8 @@ export default function GameManagementPage() {
     votesToHang: 4,
   })
 
-  // Mock data
-  const [players, setPlayers] = useState<Player[]>([
-    { id: 1, username: "Alice", status: "alive" },
-    { id: 2, username: "Bob", status: "alive" },
-    { id: 3, username: "Charlie", status: "alive" },
-    { id: 4, username: "Diana", status: "alive" },
-    { id: 5, username: "Eve", status: "alive" },
-    { id: 6, username: "Frank", status: "alive" },
-    { id: 7, username: "Grace", status: "alive" },
-    { id: 8, username: "Henry", status: "alive" },
-  ])
-
-  const [availableRoles, setAvailableRoles] = useState<Role[]>([
-    { id: 1, name: "Villager", alignment: "town", description: "A regular townsperson with no special abilities." },
-    {
-      id: 2,
-      name: "Seer",
-      alignment: "town",
-      description: "Can investigate one player each night.",
-      hasInfoFunction: true,
-    },
-    { id: 3, name: "Doctor", alignment: "town", description: "Can protect one player each night." },
-    { id: 4, name: "Werewolf", alignment: "wolf", description: "Kills townspeople at night." },
-    { id: 5, name: "Alpha Wolf", alignment: "wolf", description: "Leader of the wolf pack." },
-    {
-      id: 6,
-      name: "Turncoat",
-      alignment: "neutral",
-      description: "Wins with either side.",
-      metadata: "Not added to Wolf Chat",
-    },
-    {
-      id: 7,
-      name: "Sleepwalker",
-      alignment: "town",
-      description: "Visits random players at night.",
-      hasInfoFunction: true,
-    },
-    {
-      id: 8,
-      name: "Bartender",
-      alignment: "town",
-      description: "Can learn about player roles.",
-      hasInfoFunction: true,
-    },
-  ])
+  const [players, setPlayers] = useState<Player[]>([])
+  const [availableRoles, setAvailableRoles] = useState<Role[]>([])
 
   const [selectedRoles, setSelectedRoles] = useState<Role[]>([])
   const [roleSearch, setRoleSearch] = useState("")
@@ -125,7 +81,7 @@ export default function GameManagementPage() {
       setLoading(true)
       
       // Load game info
-      const gameResponse = await fetch(`/api/database?action=getGame&gameId=${gameId}`)
+      const gameResponse = await fetch(`/api/games/${gameId}`)
       if (gameResponse.ok) {
         const game = await gameResponse.json()
         setGameData({
@@ -137,21 +93,21 @@ export default function GameManagementPage() {
       }
 
       // Load players
-      const playersResponse = await fetch(`/api/database?action=getPlayers&gameId=${gameId}`)
+      const playersResponse = await fetch(`/api/games/${gameId}/players`)
       if (playersResponse.ok) {
         const playersData = await playersResponse.json()
         setPlayers(playersData)
       }
 
       // Load votes for current day
-      const votesResponse = await fetch(`/api/database?action=getVotes&gameId=${gameId}&dayNumber=${gameData.dayNumber}`)
+      const votesResponse = await fetch(`/api/games/${gameId}/votes?dayNumber=${gameData.dayNumber}`)
       if (votesResponse.ok) {
         const votesData = await votesResponse.json()
         setVotes(votesData)
       }
 
       // Load roles
-      const rolesResponse = await fetch(`/api/database?action=getRoles`)
+      const rolesResponse = await fetch(`/api/roles`)
       if (rolesResponse.ok) {
         const rolesData = await rolesResponse.json()
         setAvailableRoles(rolesData)
@@ -173,7 +129,14 @@ export default function GameManagementPage() {
     
     try {
       setLoginLoading(true)
-      const response = await fetch(`/api/database?action=verifyPassword&gameId=${gameId}&password=${password}`)
+      const response = await fetch(`/api/games/${gameId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'verifyPassword',
+          password
+        })
+      })
       const result = await response.json()
       
       if (result.valid) {
@@ -193,13 +156,12 @@ export default function GameManagementPage() {
   }
 
   const addRoleToGame = (role: Role) => {
-    if (!selectedRoles.find((r) => r.id === role.id)) {
-      setSelectedRoles([...selectedRoles, role])
-    }
+    // Always add the role, allowing duplicates
+    setSelectedRoles([...selectedRoles, role])
   }
 
-  const removeRoleFromGame = (roleId: number) => {
-    setSelectedRoles(selectedRoles.filter((r) => r.id !== roleId))
+  const removeRoleFromGame = (roleIndex: number) => {
+    setSelectedRoles(selectedRoles.filter((_, index) => index !== roleIndex))
   }
 
   const assignRoles = async () => {
@@ -218,12 +180,11 @@ export default function GameManagementPage() {
     }))
 
     try {
-      const response = await fetch('/api/database', {
+      const response = await fetch(`/api/games/${gameId}/players`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'assignRoles',
-          gameId,
           data: { assignments }
         })
       })
@@ -236,7 +197,6 @@ export default function GameManagementPage() {
           alignment: shuffledRoles[index].alignment,
         }))
         setPlayers(updatedPlayers)
-        alert('Roles assigned successfully!')
       } else {
         alert('Failed to assign roles')
       }
@@ -253,12 +213,11 @@ export default function GameManagementPage() {
     const newStatus = player.status === "alive" ? "dead" : "alive"
 
     try {
-      const response = await fetch('/api/database', {
+      const response = await fetch(`/api/games/${gameId}/players`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'updatePlayer', 
-          gameId,
           data: { playerId, status: newStatus }
         })
       })
@@ -450,60 +409,115 @@ export default function GameManagementPage() {
                 </div>
 
                 <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {filteredRoles.map((role) => (
-                    <div
-                      key={role.id}
-                      className={cn(
-                        "p-2 rounded border cursor-pointer hover:bg-opacity-80",
-                        isDayPhase
-                          ? "bg-white border-gray-200 hover:bg-gray-50"
-                          : "bg-white/5 border-white/20 hover:bg-white/10",
-                      )}
-                      onClick={() => addRoleToGame(role)}
-                    >
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <span className={cn("font-medium", isDayPhase ? "text-gray-900" : "text-white")}>
-                            {role.name}
-                          </span>
-                          <Badge
-                            variant={
-                              role.alignment === "town"
-                                ? "default"
-                                : role.alignment === "wolf"
-                                  ? "destructive"
-                                  : "secondary"
-                            }
-                            className="ml-2"
-                          >
-                            {role.alignment}
-                          </Badge>
-                          {role.metadata && (
-                            <p className={cn("text-xs mt-1", isDayPhase ? "text-gray-600" : "text-gray-300")}>
-                              {role.metadata}
-                            </p>
-                          )}
+                  {filteredRoles.map((role) => {
+                    const selectedCount = selectedRoles.filter(r => r.id === role.id).length
+                    return (
+                      <div
+                        key={role.id}
+                        className={cn(
+                          "p-2 rounded border cursor-pointer hover:bg-opacity-80 transition-colors",
+                          isDayPhase
+                            ? "bg-white border-gray-200 hover:bg-gray-50"
+                            : "bg-white/5 border-white/20 hover:bg-white/10",
+                          selectedCount > 0 && (isDayPhase ? "ring-2 ring-blue-200" : "ring-2 ring-blue-500/30")
+                        )}
+                        onClick={() => addRoleToGame(role)}
+                      >
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className={cn("font-medium", isDayPhase ? "text-gray-900" : "text-white")}>
+                                {role.name}
+                              </span>
+                              <Badge
+                                variant={
+                                  role.alignment === "town"
+                                    ? "default"
+                                    : role.alignment === "wolf"
+                                      ? "destructive"
+                                      : "secondary"
+                                }
+                                className="text-xs"
+                              >
+                                {role.alignment}
+                              </Badge>
+                              {selectedCount > 0 && (
+                                <Badge variant="outline" className="text-xs bg-blue-50">
+                                  {selectedCount} selected
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
 
                 <div className="space-y-2">
-                  {selectedRoles.map((role) => (
+                  {/* Group selected roles by name and show counts */}
+                  {Object.entries(
+                    selectedRoles.reduce((acc, role, index) => {
+                      if (!acc[role.name]) {
+                        acc[role.name] = { role, count: 0, indices: [] }
+                      }
+                      acc[role.name].count++
+                      acc[role.name].indices.push(index)
+                      return acc
+                    }, {} as Record<string, { role: Role; count: number; indices: number[] }>)
+                  ).map(([roleName, { role, count, indices }]) => (
                     <div
-                      key={role.id}
+                      key={roleName}
                       className={cn(
                         "p-2 rounded border flex justify-between items-center",
                         isDayPhase ? "bg-green-50 border-green-200" : "bg-green-900/20 border-green-700",
                       )}
                     >
-                      <span className={cn(isDayPhase ? "text-gray-900" : "text-white")}>{role.name}</span>
-                      <Button size="sm" variant="destructive" onClick={() => removeRoleFromGame(role.id)}>
-                        Remove
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <span className={cn(isDayPhase ? "text-gray-900" : "text-white")}>{role.name}</span>
+                        <Badge
+                          variant={
+                            role.alignment === "town"
+                              ? "default"
+                              : role.alignment === "wolf"
+                                ? "destructive"
+                                : "secondary"
+                          }
+                          className="text-xs"
+                        >
+                          {role.alignment}
+                        </Badge>
+                        {count > 1 && (
+                          <Badge variant="outline" className="text-xs">
+                            x{count}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          onClick={() => addRoleToGame(role)}
+                          className="px-2 py-1 h-6"
+                        >
+                          +
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="destructive" 
+                          onClick={() => removeRoleFromGame(indices[indices.length - 1])}
+                          className="px-2 py-1 h-6"
+                        >
+                          -
+                        </Button>
+                      </div>
                     </div>
                   ))}
+                  {selectedRoles.length === 0 && (
+                    <p className={cn("text-center py-4", isDayPhase ? "text-gray-500" : "text-gray-300")}>
+                      No roles selected. Click on roles above to add them.
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>

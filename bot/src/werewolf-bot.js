@@ -363,12 +363,14 @@ class WerewolfBot {
             parent: category.id,
         });
 
-        // Save game to database first
-        await this.db.query(
+        // Save game to database first and get the game ID
+        const gameResult = await this.db.query(
             `INSERT INTO games (server_id, game_number, game_name, signup_channel_id, category_id, mod_chat_channel_id)
-             VALUES ($1, $2, $3, $4, $5, $6)`,
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
             [serverId, config.game_counter, config.game_name, signupChannel.id, category.id, modChat.id]
         );
+        
+        const gameId = gameResult.rows[0].id;
 
         // Update server config counter
         await this.db.query(
@@ -376,12 +378,22 @@ class WerewolfBot {
             [serverId]
         );
 
+        // Build website management URL if WEBSITE_URL is configured
+        const websiteUrl = process.env.WEBSITE_URL;
+        let managementUrl = 'Not configured (WEBSITE_URL env variable missing)';
+        if (websiteUrl) {
+            managementUrl = `${websiteUrl}/game/${gameId}`;
+        }
+
         const embed = new EmbedBuilder()
             .setTitle('🎮 New Game Created!')
             .setDescription(`Game ${config.game_counter} has been created.`)
             .addFields(
                 { name: 'Category', value: categoryName, inline: true },
-                { name: 'Signup Channel', value: `<#${signupChannel.id}>`, inline: true }
+                { name: 'Signup Channel', value: `<#${signupChannel.id}>`, inline: true },
+                { name: '🌐 Management URL', value: managementUrl, inline: false },
+                { name: '🔑 Password', value: `\`${category.id}\``, inline: true },
+                { name: '🆔 Game ID', value: `\`${gameId}\``, inline: true }
             )
             .setColor(0x00AE86);
 
@@ -405,8 +417,8 @@ class WerewolfBot {
         
         // Store the signup message ID in the database
         await this.db.query(
-            'UPDATE games SET signup_message_id = $1 WHERE server_id = $2 AND game_number = $3',
-            [signupMessage.id, serverId, config.game_counter]
+            'UPDATE games SET signup_message_id = $1 WHERE id = $2',
+            [signupMessage.id, gameId]
         );
     }
 

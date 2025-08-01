@@ -77,41 +77,63 @@ export class DatabaseService {
   }
 
   async getRoles() {
-    // Return static role definitions since roles are game logic, not database entities
-    return [
-      { id: 1, name: "Villager", alignment: "town", description: "A regular townsperson with no special abilities." },
-      {
-        id: 2,
-        name: "Seer",
-        alignment: "town",
-        description: "Can investigate one player each night.",
-        hasInfoFunction: true,
-      },
-      { id: 3, name: "Doctor", alignment: "town", description: "Can protect one player each night." },
-      { id: 4, name: "Werewolf", alignment: "wolf", description: "Kills townspeople at night." },
-      { id: 5, name: "Alpha Wolf", alignment: "wolf", description: "Leader of the wolf pack." },
-      {
-        id: 6,
-        name: "Turncoat", 
-        alignment: "neutral",
-        description: "Wins with either side.",
-        metadata: "Not added to Wolf Chat",
-      },
-      {
-        id: 7,
-        name: "Sleepwalker",
-        alignment: "town",
-        description: "Visits random players at night.",
-        hasInfoFunction: true,
-      },
-      {
-        id: 8,
-        name: "Bartender",
-        alignment: "town", 
-        description: "Can learn about player roles.",
-        hasInfoFunction: true,
-      },
-    ]
+    try {
+      const client = await this.pool.connect()
+      
+      try {
+        const result = await client.query(`
+          SELECT 
+            id,
+            name,
+            team as alignment,
+            description,
+            targets,
+            moves,
+            standard_results_flavor,
+            immunities,
+            special_properties,
+            framer_interaction,
+            in_wolf_chat
+          FROM roles 
+          ORDER BY name
+        `)
+        
+        return result.rows.map(role => ({
+          id: role.id,
+          name: role.name,
+          alignment: role.alignment,
+          description: role.description,
+          metadata: [
+            role.targets && `Targets: ${role.targets}`,
+            role.moves && `Moves: Yes`,
+            role.standard_results_flavor && `Results: ${role.standard_results_flavor}`,
+            role.immunities && `Immunities: ${role.immunities}`,
+            role.special_properties && `Special: ${role.special_properties}`,
+            role.framer_interaction && `Framer: ${role.framer_interaction}`,
+            role.in_wolf_chat && `In Wolf Chat: Yes`
+          ].filter(Boolean).join(' | ') || undefined,
+          hasInfoFunction: role.targets === 'Players' && role.moves
+        }))
+      } finally {
+        client.release()
+      }
+    } catch (error) {
+      console.error('Error fetching roles:', error)
+      // Return fallback static data if database fails
+      return [
+        { id: 1, name: "Villager", alignment: "town", description: "A regular townsperson with no special abilities." },
+        {
+          id: 2,
+          name: "Seer",
+          alignment: "town",
+          description: "Can investigate one player each night.",
+          hasInfoFunction: true,
+        },
+        { id: 3, name: "Doctor", alignment: "town", description: "Can protect one player each night." },
+        { id: 4, name: "Werewolf", alignment: "wolf", description: "Kills townspeople at night." },
+        { id: 5, name: "Alpha Wolf", alignment: "wolf", description: "Leader of the wolf pack." },
+      ]
+    }
   }
 
   async assignRoles(gameId: string, assignments: Array<{playerId: number, role: string, isWolf: boolean}>) {
