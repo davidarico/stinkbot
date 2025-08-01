@@ -1,5 +1,5 @@
 -- Werewolf Discord Bot Database Schema
--- Generated automatically on 2025-08-01T17:35:29.379Z
+-- Generated automatically on 2025-08-01T18:03:51.249Z
 -- This file shows the current database structure with table comments
 -- Run this after migrations to get the latest schema
 

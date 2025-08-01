@@ -21,7 +21,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       dayNumber: game.day_number,
       votesToHang: game.votes_to_hang,
       gameName: game.game_name,
-      categoryId: game.category_id
+      categoryId: game.category_id,
+      isThemed: game.is_themed,
+      isSkinned: game.is_skinned,
+      themeName: game.theme_name
     })
   } catch (error) {
     console.error("Database error:", error)
@@ -32,7 +35,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   const { gameId } = await params
   const body = await request.json()
-  const { action, password } = body
+  const { action, password, isThemed, isSkinned, themeName } = body
 
   try {
     switch (action) {
@@ -42,6 +45,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         }
         const isValid = await db.verifyGamePassword(gameId, password)
         return NextResponse.json({ valid: isValid })
+
+      case "updateTheme":
+        const result = await db.updateGameTheme(gameId, isThemed, isSkinned, themeName)
+        return NextResponse.json(result)
 
       default:
         return NextResponse.json({ error: "Invalid action" }, { status: 400 })

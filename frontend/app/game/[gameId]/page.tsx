@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Search, Users, Shuffle, Moon, Sun, Filter } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -15,8 +16,12 @@ interface Player {
   username: string
   status: "alive" | "dead"
   role?: string
+  roleId?: number
+  skinnedRole?: string
+  displayRole?: string
   alignment?: string
   isFramed?: boolean
+  isDead?: boolean
   actionNotes?: string
 }
 
@@ -34,6 +39,16 @@ interface GameData {
   phase: "signup" | "night" | "day"
   dayNumber: number
   votesToHang: number
+  isThemed: boolean
+  isSkinned: boolean
+  themeName?: string
+}
+
+interface GameRole {
+  roleId: number
+  roleName: string
+  roleCount: number
+  customName?: string
 }
 
 interface Vote {
@@ -52,12 +67,17 @@ export default function GameManagementPage() {
     phase: "signup",
     dayNumber: 1,
     votesToHang: 4,
+    isThemed: false,
+    isSkinned: false,
   })
 
   const [players, setPlayers] = useState<Player[]>([])
   const [availableRoles, setAvailableRoles] = useState<Role[]>([])
 
   const [selectedRoles, setSelectedRoles] = useState<Role[]>([])
+  const [gameRoles, setGameRoles] = useState<GameRole[]>([])
+  const [customRoleNames, setCustomRoleNames] = useState<Record<number, string>>({})
+  const [themeInput, setThemeInput] = useState("")
   const [roleSearch, setRoleSearch] = useState("")
   const [alignmentFilter, setAlignmentFilter] = useState<string>("all")
   const [votes, setVotes] = useState<Vote[]>([])
@@ -90,7 +110,11 @@ export default function GameManagementPage() {
           phase: game.phase,
           dayNumber: game.dayNumber,
           votesToHang: game.votesToHang,
+          isThemed: game.isThemed || false,
+          isSkinned: game.isSkinned || false,
+          themeName: game.themeName,
         })
+        setThemeInput(game.themeName || "")
       }
 
       // Load players
@@ -98,6 +122,36 @@ export default function GameManagementPage() {
       if (playersResponse.ok) {
         const playersData = await playersResponse.json()
         setPlayers(playersData)
+      }
+
+      // Load game roles
+      const gameRolesResponse = await fetch(`/api/games/${gameId}/roles`)
+      if (gameRolesResponse.ok) {
+        const gameRolesData = await gameRolesResponse.json()
+        setGameRoles(gameRolesData)
+        
+        // Build custom role names map
+        const customNames: Record<number, string> = {}
+        gameRolesData.forEach((gr: any) => {
+          if (gr.custom_name) {
+            customNames[gr.role_id] = gr.custom_name
+          }
+        })
+        setCustomRoleNames(customNames)
+        
+        // Convert game roles to selected roles for display
+        const rolesForSelection: Role[] = []
+        gameRolesData.forEach((gr: any) => {
+          for (let i = 0; i < gr.role_count; i++) {
+            rolesForSelection.push({
+              id: gr.role_id,
+              name: gr.role_name,
+              alignment: gr.role_team || 'town', // Use the team from the database
+              description: ''
+            })
+          }
+        })
+        setSelectedRoles(rolesForSelection)
       }
 
       // Load votes for current day
@@ -176,8 +230,9 @@ export default function GameManagementPage() {
 
     const assignments = shuffledPlayers.map((player, index) => ({
       playerId: player.id,
-      role: shuffledRoles[index].name,
-      isWolf: shuffledRoles[index].alignment === "wolf"
+      roleId: shuffledRoles[index].id,
+      isWolf: shuffledRoles[index].alignment === "wolf",
+      skinnedRole: gameData.isSkinned ? generateSkinnedRole(shuffledRoles[index]) : undefined
     }))
 
     try {
@@ -191,13 +246,12 @@ export default function GameManagementPage() {
       })
 
       if (response.ok) {
-        // Update local state
-        const updatedPlayers = shuffledPlayers.map((player, index) => ({
-          ...player,
-          role: shuffledRoles[index].name,
-          alignment: shuffledRoles[index].alignment,
-        }))
-        setPlayers(updatedPlayers)
+        // Reload players to get updated data
+        const playersResponse = await fetch(`/api/games/${gameId}/players`)
+        if (playersResponse.ok) {
+          const playersData = await playersResponse.json()
+          setPlayers(playersData)
+        }
       } else {
         alert('Failed to assign roles')
       }
@@ -205,6 +259,32 @@ export default function GameManagementPage() {
       console.error('Error assigning roles:', error)
       alert('Error assigning roles')
     }
+  }
+
+  const generateSkinnedRole = (role: Role): string => {
+    // Simple role skinning logic - you can expand this
+    const theme = gameData.themeName?.toLowerCase() || 'themed'
+    const capitalizedTheme = theme.charAt(0).toUpperCase() + theme.slice(1)
+    
+    const roleNames: Record<string, string> = {
+      'villager': `${capitalizedTheme} Citizen`,
+      'seer': `${capitalizedTheme} Oracle`,
+      'doctor': `${capitalizedTheme} Healer`,
+      'bodyguard': `${capitalizedTheme} Guardian`,
+      'detective': `${capitalizedTheme} Investigator`,
+      'vigilante': `${capitalizedTheme} Avenger`,
+      'mayor': `${capitalizedTheme} Leader`,
+      'werewolf': `${capitalizedTheme} Monster`,
+      'alpha wolf': `${capitalizedTheme} Beast Leader`,
+      'wolf shaman': `${capitalizedTheme} Dark Mystic`,
+      'traitor': `${capitalizedTheme} Betrayer`,
+      'serial killer': `${capitalizedTheme} Stalker`,
+      'jester': `${capitalizedTheme} Fool`,
+      'survivor': `${capitalizedTheme} Wanderer`,
+      'witch': `${capitalizedTheme} Enchanter`,
+    }
+    
+    return roleNames[role.name.toLowerCase()] || `${capitalizedTheme} ${role.name}`
   }
 
   const togglePlayerStatus = async (playerId: number) => {
@@ -244,6 +324,143 @@ export default function GameManagementPage() {
 
   const updateActionNotes = (playerId: number, notes: string) => {
     setPlayers(players.map((player) => (player.id === playerId ? { ...player, actionNotes: notes } : player)))
+  }
+
+  const saveGameRoles = async () => {
+    if (selectedRoles.length === 0) {
+      alert('Please select some roles first')
+      return
+    }
+
+    // Convert selected roles to game roles format
+    const roleCountMap: Record<number, number> = {}
+    selectedRoles.forEach(role => {
+      roleCountMap[role.id] = (roleCountMap[role.id] || 0) + 1
+    })
+
+    const gameRoleData = Object.entries(roleCountMap).map(([roleId, count]) => ({
+      roleId: parseInt(roleId),
+      roleCount: count,
+      customName: customRoleNames[parseInt(roleId)] || undefined
+    }))
+
+    try {
+      const response = await fetch(`/api/games/${gameId}/roles`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameRoles: gameRoleData })
+      })
+
+      if (response.ok) {
+        alert('Role configuration saved successfully!')
+        await loadGameData() // Refresh data
+      } else {
+        alert('Failed to save game roles')
+      }
+    } catch (error) {
+      console.error('Error saving game roles:', error)
+      alert('Error saving game roles')
+    }
+  }
+
+  const saveThemeSettings = async () => {
+    if (gameData.isThemed && !themeInput.trim()) {
+      alert('Please enter a theme name')
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/games/${gameId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'updateTheme',
+          isThemed: gameData.isThemed,
+          isSkinned: gameData.isSkinned,
+          themeName: gameData.isThemed ? themeInput.trim() : null
+        })
+      })
+
+      if (response.ok) {
+        alert('Theme settings saved successfully!')
+        setGameData(prev => ({
+          ...prev,
+          themeName: gameData.isThemed ? themeInput.trim() : undefined
+        }))
+      } else {
+        alert('Failed to save theme settings')
+      }
+    } catch (error) {
+      console.error('Error saving theme settings:', error)
+      alert('Error saving theme settings')
+    }
+  }
+
+  const resetThemeSettings = async () => {
+    try {
+      const response = await fetch(`/api/games/${gameId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'updateTheme',
+          isThemed: false,
+          isSkinned: false,
+          themeName: null
+        })
+      })
+
+      if (response.ok) {
+        alert('Theme settings reset successfully!')
+        setGameData(prev => ({
+          ...prev,
+          isThemed: false,
+          isSkinned: false,
+          themeName: undefined
+        }))
+        setThemeInput("")
+        setCustomRoleNames({})
+      } else {
+        alert('Failed to reset theme settings')
+      }
+    } catch (error) {
+      console.error('Error resetting theme settings:', error)
+      alert('Error resetting theme settings')
+    }
+  }
+
+  const toggleThemed = (enabled: boolean) => {
+    setGameData(prev => ({
+      ...prev,
+      isThemed: enabled,
+      isSkinned: enabled ? prev.isSkinned : false
+    }))
+  }
+
+  const toggleSkinned = (enabled: boolean) => {
+    setGameData(prev => ({
+      ...prev,
+      isSkinned: enabled
+    }))
+  }
+
+  const getDisplayRoleName = (player: Player): string => {
+    if (gameData.isSkinned && player.skinnedRole) {
+      return player.skinnedRole
+    }
+    
+    if (gameData.isThemed && player.roleId && customRoleNames[player.roleId]) {
+      const actualRoleName = player.role || 'Unknown'
+      return `${customRoleNames[player.roleId]} (${actualRoleName})`
+    }
+    
+    return player.role || 'Unknown'
+  }
+
+  const updateCustomRoleName = (roleId: number, customName: string) => {
+    setCustomRoleNames(prev => ({
+      ...prev,
+      [roleId]: customName
+    }))
   }
 
   const filteredRoles = availableRoles
@@ -405,6 +622,64 @@ export default function GameManagementPage() {
                 <CardTitle className={cn(isDayPhase ? "text-gray-900" : "text-white")}>
                   Selected Roles ({selectedRoles.length})
                 </CardTitle>
+                
+                {/* Theme Settings */}
+                <div className="space-y-4 pt-4 border-t border-white/20">
+                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox 
+                        id="themed"
+                        checked={gameData.isThemed}
+                        onCheckedChange={toggleThemed}
+                      />
+                      <label htmlFor="themed" className={cn("text-sm font-medium", isDayPhase ? "text-gray-900" : "text-white")}>
+                        Themed
+                      </label>
+                    </div>
+                    
+                    <div className="flex items-center space-x-2">
+                      <Checkbox 
+                        id="skinned"
+                        checked={gameData.isSkinned}
+                        disabled={!gameData.isThemed}
+                        onCheckedChange={toggleSkinned}
+                      />
+                      <label htmlFor="skinned" className={cn("text-sm font-medium", isDayPhase ? "text-gray-900" : "text-white", !gameData.isThemed && "opacity-50")}>
+                        Skinned
+                      </label>
+                    </div>
+                  </div>
+                  
+                  {gameData.isThemed && (
+                    <div className="space-y-2">
+                      <Input
+                        placeholder="Enter theme name..."
+                        value={themeInput}
+                        onChange={(e) => setThemeInput(e.target.value)}
+                        className="text-sm"
+                      />
+                      <div className="flex gap-2">
+                        <Button 
+                          onClick={saveThemeSettings}
+                          size="sm" 
+                          disabled={!themeInput.trim()}
+                          className="flex-1"
+                        >
+                          Save Theme Settings
+                        </Button>
+                        <Button 
+                          onClick={resetThemeSettings}
+                          size="sm" 
+                          variant="destructive"
+                          className="flex-1"
+                        >
+                          Reset Theme Settings
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
                 <div className="flex gap-4 text-sm">
                   <span className={cn("text-blue-600", isDayPhase ? "" : "text-blue-300")}>Town: {roleCount.town}</span>
                   <span className={cn("text-red-600", isDayPhase ? "" : "text-red-300")}>Wolves: {roleCount.wolf}</span>
@@ -649,6 +924,51 @@ export default function GameManagementPage() {
                     </p>
                   )}
                 </div>
+                
+                {/* Custom Role Names (when themed) */}
+                {gameData.isThemed && selectedRoles.length > 0 && (
+                  <div className="pt-4 border-t border-white/20">
+                    <h4 className={cn("font-medium mb-3 text-sm", isDayPhase ? "text-gray-900" : "text-white")}>
+                      Custom Role Names
+                    </h4>
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {Object.entries(
+                        selectedRoles.reduce((acc, role) => {
+                          if (!acc[role.id]) {
+                            acc[role.id] = { role, count: 0 }
+                          }
+                          acc[role.id].count++
+                          return acc
+                        }, {} as Record<number, { role: Role; count: number }>)
+                      ).map(([roleId, { role, count }]) => (
+                        <div key={roleId} className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className={cn("text-xs font-medium", isDayPhase ? "text-gray-700" : "text-gray-300")}>
+                              {role.name} {count > 1 && `(x${count})`}
+                            </span>
+                          </div>
+                          <Input
+                            placeholder={`Custom name for ${role.name}...`}
+                            value={customRoleNames[parseInt(roleId)] || ""}
+                            onChange={(e) => updateCustomRoleName(parseInt(roleId), e.target.value)}
+                            className="text-sm"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Save Game Roles Button */}
+                <div className="pt-4 border-t border-white/20">
+                  <Button 
+                    onClick={saveGameRoles}
+                    className="w-full"
+                    disabled={selectedRoles.length === 0}
+                  >
+                    Save Role Configuration
+                  </Button>
+                </div>
               </CardContent>
             </Card>
 
@@ -697,7 +1017,7 @@ export default function GameManagementPage() {
                                 className={cn("p-2 rounded text-sm", isDayPhase ? "bg-blue-50" : "bg-blue-900/20")}
                               >
                                 <span className={cn(isDayPhase ? "text-gray-900" : "text-white")}>
-                                  {player.username} - {player.role}
+                                  {player.username} - {getDisplayRoleName(player)}
                                 </span>
                               </div>
                             ))}
@@ -720,7 +1040,7 @@ export default function GameManagementPage() {
                                 className={cn("p-2 rounded text-sm", isDayPhase ? "bg-red-50" : "bg-red-900/20")}
                               >
                                 <span className={cn(isDayPhase ? "text-gray-900" : "text-white")}>
-                                  {player.username} - {player.role}
+                                  {player.username} - {getDisplayRoleName(player)}
                                 </span>
                               </div>
                             ))}
@@ -743,7 +1063,7 @@ export default function GameManagementPage() {
                                 className={cn("p-2 rounded text-sm", isDayPhase ? "bg-yellow-50" : "bg-yellow-900/20")}
                               >
                                 <span className={cn(isDayPhase ? "text-gray-900" : "text-white")}>
-                                  {player.username} - {player.role}
+                                  {player.username} - {getDisplayRoleName(player)}
                                 </span>
                               </div>
                             ))}
@@ -785,7 +1105,7 @@ export default function GameManagementPage() {
                             <div className="flex justify-between items-start mb-2">
                               <div>
                                 <span className={cn("font-medium", isDayPhase ? "text-gray-900" : "text-white")}>
-                                  {player.username} - {player.role}
+                                  {player.username} - {getDisplayRoleName(player)}
                                 </span>
                                 {player.isFramed && (
                                   <Badge variant="destructive" className="ml-2">
@@ -836,7 +1156,7 @@ export default function GameManagementPage() {
                             <div className="flex justify-between items-start mb-2">
                               <div>
                                 <span className={cn("font-medium", isDayPhase ? "text-gray-900" : "text-white")}>
-                                  {player.username} - {player.role}
+                                  {player.username} - {getDisplayRoleName(player)}
                                 </span>
                                 {player.isFramed && (
                                   <Badge variant="destructive" className="ml-2">
@@ -887,7 +1207,7 @@ export default function GameManagementPage() {
                             <div className="flex justify-between items-start mb-2">
                               <div>
                                 <span className={cn("font-medium", isDayPhase ? "text-gray-900" : "text-white")}>
-                                  {player.username} - {player.role}
+                                  {player.username} - {getDisplayRoleName(player)}
                                 </span>
                                 {player.isFramed && (
                                   <Badge variant="destructive" className="ml-2">
@@ -936,7 +1256,7 @@ export default function GameManagementPage() {
                             )}
                           >
                             <span className={cn("text-sm", isDayPhase ? "text-gray-700" : "text-gray-300")}>
-                              {player.username} - {player.role}
+                              {player.username} - {getDisplayRoleName(player)}
                             </span>
                             <Button size="sm" variant="outline" onClick={() => togglePlayerStatus(player.id)}>
                               Revive

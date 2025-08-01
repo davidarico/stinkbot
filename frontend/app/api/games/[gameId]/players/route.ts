@@ -10,13 +10,22 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   try {
     const players = await db.getPlayers(gameId)
+    const game = await db.getGame(gameId)
+    
     return NextResponse.json(players.map(player => ({
       id: player.id,
       username: player.username,
       status: player.status,
       role: player.role,
-      alignment: player.is_wolf ? "wolf" : player.role?.toLowerCase().includes("wolf") ? "wolf" : "town", // Simplified alignment logic
-      userId: player.user_id
+      roleId: player.role_id,
+      skinnedRole: player.skinned_role,
+      alignment: player.is_wolf ? "wolf" : 
+                 (player as any).role_team === 'wolf' ? "wolf" : 
+                 (player as any).role_team === 'neutral' ? "neutral" : "town",
+      userId: player.user_id,
+      isFramed: player.is_framed,
+      isDead: player.is_dead,
+      displayRole: game?.is_skinned && player.skinned_role ? player.skinned_role : player.role
     })))
   } catch (error) {
     console.error("Database error:", error)
