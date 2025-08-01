@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
-import { Search, Users, Shuffle, Moon, Sun } from "lucide-react"
+import { Search, Users, Shuffle, Moon, Sun, Filter } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface Player {
@@ -59,6 +59,7 @@ export default function GameManagementPage() {
 
   const [selectedRoles, setSelectedRoles] = useState<Role[]>([])
   const [roleSearch, setRoleSearch] = useState("")
+  const [alignmentFilter, setAlignmentFilter] = useState<string>("all")
   const [votes, setVotes] = useState<Vote[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -245,7 +246,22 @@ export default function GameManagementPage() {
     setPlayers(players.map((player) => (player.id === playerId ? { ...player, actionNotes: notes } : player)))
   }
 
-  const filteredRoles = availableRoles.filter((role) => role.name.toLowerCase().includes(roleSearch.toLowerCase()))
+  const filteredRoles = availableRoles
+    .filter((role) => role.name.toLowerCase().includes(roleSearch.toLowerCase()))
+    .filter((role) => alignmentFilter === "all" || role.alignment === alignmentFilter)
+    .sort((a, b) => {
+      // Sort by alignment priority: town, wolf, neutral
+      const alignmentOrder = { town: 1, wolf: 2, neutral: 3 }
+      const aOrder = alignmentOrder[a.alignment] || 4
+      const bOrder = alignmentOrder[b.alignment] || 4
+      
+      if (aOrder !== bOrder) {
+        return aOrder - bOrder
+      }
+      
+      // Then sort alphabetically by name within each alignment
+      return a.name.localeCompare(b.name)
+    })
 
   const roleCount = {
     town: selectedRoles.filter((r) => r.alignment === "town").length,
@@ -408,23 +424,132 @@ export default function GameManagementPage() {
                   />
                 </div>
 
+                {/* Alignment Filter */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Filter className="w-4 h-4 text-gray-400" />
+                    <span className={cn("text-sm font-medium", isDayPhase ? "text-gray-700" : "text-gray-300")}>
+                      Filter by alignment:
+                    </span>
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    <Button
+                      size="sm"
+                      variant={alignmentFilter === "all" ? "default" : "outline"}
+                      onClick={() => setAlignmentFilter("all")}
+                      className="text-xs"
+                    >
+                      All
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={alignmentFilter === "town" ? "default" : "outline"}
+                      onClick={() => setAlignmentFilter("town")}
+                      className="text-xs"
+                    >
+                      Town
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={alignmentFilter === "wolf" ? "destructive" : "outline"}
+                      onClick={() => setAlignmentFilter("wolf")}
+                      className="text-xs"
+                    >
+                      Wolf
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={alignmentFilter === "neutral" ? "secondary" : "outline"}
+                      onClick={() => setAlignmentFilter("neutral")}
+                      className="text-xs"
+                    >
+                      Neutral
+                    </Button>
+                  </div>
+                </div>
+
                 <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {filteredRoles.map((role) => {
-                    const selectedCount = selectedRoles.filter(r => r.id === role.id).length
-                    return (
-                      <div
-                        key={role.id}
-                        className={cn(
-                          "p-2 rounded border cursor-pointer hover:bg-opacity-80 transition-colors",
-                          isDayPhase
-                            ? "bg-white border-gray-200 hover:bg-gray-50"
-                            : "bg-white/5 border-white/20 hover:bg-white/10",
-                          selectedCount > 0 && (isDayPhase ? "ring-2 ring-blue-200" : "ring-2 ring-blue-500/30")
-                        )}
-                        onClick={() => addRoleToGame(role)}
-                      >
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
+                  {alignmentFilter === "all" ? (
+                    // Group by alignment when showing all
+                    ["town", "wolf", "neutral"].map((alignment) => {
+                      const rolesInAlignment = filteredRoles.filter(role => role.alignment === alignment)
+                      if (rolesInAlignment.length === 0) return null
+                      
+                      return (
+                        <div key={alignment} className="space-y-2">
+                          <div className={cn("text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded", 
+                            alignment === "town" ? "text-blue-600 bg-blue-100/50" :
+                            alignment === "wolf" ? "text-red-600 bg-red-100/50" :
+                            "text-yellow-600 bg-yellow-100/50",
+                            !isDayPhase && (
+                              alignment === "town" ? "text-blue-300 bg-blue-900/20" :
+                              alignment === "wolf" ? "text-red-300 bg-red-900/20" :
+                              "text-yellow-300 bg-yellow-900/20"
+                            )
+                          )}>
+                            {alignment} ({rolesInAlignment.length})
+                          </div>
+                          {rolesInAlignment.map((role) => {
+                            const selectedCount = selectedRoles.filter(r => r.id === role.id).length
+                            return (
+                              <div
+                                key={role.id}
+                                className={cn(
+                                  "p-2 rounded border cursor-pointer hover:bg-opacity-80 transition-colors ml-4",
+                                  isDayPhase
+                                    ? "bg-white border-gray-200 hover:bg-gray-50"
+                                    : "bg-white/5 border-white/20 hover:bg-white/10",
+                                  selectedCount > 0 && (isDayPhase ? "ring-2 ring-blue-200" : "ring-2 ring-blue-500/30")
+                                )}
+                                onClick={() => addRoleToGame(role)}
+                              >
+                                <div className="flex justify-between items-center">
+                                  <div className="flex items-center gap-2">
+                                    <span className={cn("font-medium", isDayPhase ? "text-gray-900" : "text-white")}>
+                                      {role.name}
+                                    </span>
+                                    <Badge
+                                      variant={
+                                        role.alignment === "town"
+                                          ? "default"
+                                          : role.alignment === "wolf"
+                                            ? "destructive"
+                                            : "secondary"
+                                      }
+                                      className="text-xs"
+                                    >
+                                      {role.alignment}
+                                    </Badge>
+                                    {selectedCount > 0 && (
+                                      <Badge variant="outline" className="text-xs bg-blue-50">
+                                        {selectedCount} selected
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )
+                    })
+                  ) : (
+                    // Show flat list when filtering by specific alignment
+                    filteredRoles.map((role) => {
+                      const selectedCount = selectedRoles.filter(r => r.id === role.id).length
+                      return (
+                        <div
+                          key={role.id}
+                          className={cn(
+                            "p-2 rounded border cursor-pointer hover:bg-opacity-80 transition-colors",
+                            isDayPhase
+                              ? "bg-white border-gray-200 hover:bg-gray-50"
+                              : "bg-white/5 border-white/20 hover:bg-white/10",
+                            selectedCount > 0 && (isDayPhase ? "ring-2 ring-blue-200" : "ring-2 ring-blue-500/30")
+                          )}
+                          onClick={() => addRoleToGame(role)}
+                        >
+                          <div className="flex justify-between items-center">
                             <div className="flex items-center gap-2">
                               <span className={cn("font-medium", isDayPhase ? "text-gray-900" : "text-white")}>
                                 {role.name}
@@ -449,9 +574,14 @@ export default function GameManagementPage() {
                             </div>
                           </div>
                         </div>
-                      </div>
-                    )
-                  })}
+                      )
+                    })
+                  )}
+                  {filteredRoles.length === 0 && (
+                    <p className={cn("text-center py-4 text-sm", isDayPhase ? "text-gray-500" : "text-gray-300")}>
+                      No roles found matching your search criteria.
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
