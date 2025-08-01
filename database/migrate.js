@@ -88,14 +88,9 @@ class MigrationRunner {
         try {
             await this.client.query('BEGIN');
             
-            // Split by semicolon and execute each statement
-            const statements = sql.split(';').filter(stmt => stmt.trim());
-            
-            for (const statement of statements) {
-                if (statement.trim()) {
-                    await this.client.query(statement);
-                }
-            }
+            // Execute the entire file as one statement to avoid issues with
+            // semicolons inside string literals
+            await this.client.query(sql);
             
             // Record the migration as applied
             const version = filename.replace('.sql', '');

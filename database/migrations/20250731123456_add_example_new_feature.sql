@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS roles (
     standard_results_flavor TEXT,
     immunities TEXT,
     special_properties TEXT,
-    framer_interaction BOOLEAN DEFAULT FALSE,
+    framer_interaction TEXT,
     -- Can be 'wolf', 'town', 'neutral'
     team VARCHAR(50),
     in_wolf_chat BOOLEAN DEFAULT FALSE,
