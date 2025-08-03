@@ -310,26 +310,40 @@ export class DatabaseService {
       try {
         await client.query('BEGIN')
         
+        // Verify game exists
+        const gameCheck = await client.query('SELECT id FROM games WHERE id = $1', [parseInt(gameId)])
+        if (gameCheck.rows.length === 0) {
+          throw new Error(`Game with ID ${gameId} does not exist`)
+        }
+        
+        // Verify all roles exist
+        for (const gameRole of gameRoles) {
+          const roleCheck = await client.query('SELECT id FROM roles WHERE id = $1', [gameRole.roleId])
+          if (roleCheck.rows.length === 0) {
+            throw new Error(`Role with ID ${gameRole.roleId} does not exist`)
+          }
+        }
+        
         // Clear existing game roles
         await client.query('DELETE FROM game_role WHERE game_id = $1', [parseInt(gameId)])
         
         // Insert new game roles
         for (const gameRole of gameRoles) {
-          // Insert or update since we may have constraint issues
-          await client.query(
-            `INSERT INTO game_role (game_id, role_id, role_count, custom_name, charges) 
-             VALUES ($1, $2, $3, $4, $5)
-             ON CONFLICT (game_id, role_id) DO UPDATE SET 
-             role_count = EXCLUDED.role_count,
-             custom_name = EXCLUDED.custom_name,
-             charges = EXCLUDED.charges`,
-            [parseInt(gameId), gameRole.roleId, gameRole.roleCount, gameRole.customName || null, gameRole.charges || null]
-          )
+          try {
+            await client.query(
+              'INSERT INTO game_role (game_id, role_id, role_count, custom_name, charges) VALUES ($1, $2, $3, $4, $5)',
+              [parseInt(gameId), gameRole.roleId, gameRole.roleCount, gameRole.customName || null, gameRole.charges ?? 0]
+            )
+          } catch (insertError) {
+            console.error('Failed to insert game role:', insertError)
+            throw insertError
+          }
         }
         
         await client.query('COMMIT')
         return { success: true }
       } catch (error) {
+        console.error('Transaction failed, rolling back:', error)
         await client.query('ROLLBACK')
         throw error
       } finally {
@@ -357,7 +371,7 @@ export class DatabaseService {
           try {
             await client.query(
               'INSERT INTO game_role (game_id, role_id, role_count, custom_name, charges) VALUES ($1, $2, $3, $4, $5)',
-              [parseInt(gameId), gameRole.roleId, gameRole.roleCount, gameRole.customName || null, gameRole.charges || null]
+              [parseInt(gameId), gameRole.roleId, gameRole.roleCount, gameRole.customName || null, gameRole.charges ?? 0]
             )
           } catch (insertError) {
             console.warn('Failed to insert game role:', insertError)

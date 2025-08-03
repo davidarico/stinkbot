@@ -27,6 +27,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json(result)
   } catch (error) {
     console.error("Database error:", error)
-    return NextResponse.json({ error: "Database error" }, { status: 500 })
+    let details = "Unknown error"
+    if (error instanceof Error) {
+      details = error.message
+    }
+    return NextResponse.json({ error: "Database error", details }, { status: 500 })
   }
 }

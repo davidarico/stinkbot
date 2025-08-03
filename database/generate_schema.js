@@ -80,10 +80,19 @@ class SchemaGenerator {
                 END as constraint_type,
                 fk.foreign_table_name,
                 fk.foreign_column_name,
-                fk.delete_rule
+                fk.delete_rule,
+                pk.is_part_of_composite_pk
             FROM information_schema.columns c
             LEFT JOIN (
-                SELECT ku.column_name
+                SELECT 
+                    ku.column_name,
+                    CASE 
+                        WHEN tc.constraint_type = 'PRIMARY KEY' AND 
+                             (SELECT COUNT(*) FROM information_schema.key_column_usage 
+                              WHERE constraint_name = tc.constraint_name) > 1 
+                        THEN true 
+                        ELSE false 
+                    END as is_part_of_composite_pk
                 FROM information_schema.table_constraints tc
                 JOIN information_schema.key_column_usage ku
                     ON tc.constraint_name = ku.constraint_name
@@ -238,7 +247,7 @@ class SchemaGenerator {
                 
                 // Add constraint info (except for serial primary keys which are already handled)
                 if (column.constraint_type && !columnDef.includes('SERIAL PRIMARY KEY')) {
-                    if (column.constraint_type === 'PRIMARY KEY') {
+                    if (column.constraint_type === 'PRIMARY KEY' && !column.is_part_of_composite_pk) {
                         columnDef += ' PRIMARY KEY';
                     } else if (column.constraint_type === 'FOREIGN KEY') {
                         columnDef += ` REFERENCES ${column.foreign_table_name}(${column.foreign_column_name})`;
@@ -256,6 +265,15 @@ class SchemaGenerator {
             // Add table-level constraints
             const constraints = await this.getTableConstraints(table_name);
             const addedConstraints = new Set();
+            
+            // Check for composite primary keys
+            const compositePkColumns = columns
+                .filter(col => col.constraint_type === 'PRIMARY KEY' && col.is_part_of_composite_pk)
+                .map(col => col.column_name);
+            
+            if (compositePkColumns.length > 0) {
+                schema += `,\n    PRIMARY KEY (${compositePkColumns.join(', ')})`;
+            }
             
             for (const constraint of constraints) {
                 if (constraint.constraint_type === 'UNIQUE' && !addedConstraints.has(constraint.columns)) {

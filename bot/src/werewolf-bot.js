@@ -74,8 +74,8 @@ class WerewolfBot {
                 case 'add_channel':
                     await this.handleAddChannel(message, args);
                     break;
-                case 'issues':
-                    await this.handleIssues(message);
+                case 'todo':
+                    await this.handleTodo(message);
                     break;
                 case 'recovery':
                     await this.handleRecovery(message);
@@ -97,9 +97,6 @@ class WerewolfBot {
                     break;
                 case 'server':
                     await this.handleServer(message);
-                    break;
-                case 'role_assign':
-                    await this.handleRoleAssign(message, args);
                     break;
                 case 'roles_list':
                     await this.handleRolesList(message);
@@ -2186,7 +2183,7 @@ class WerewolfBot {
                 { 
                     name: '🔄 Recovery & Maintenance', 
                     value: '`Wolf.recovery` - Migration from manual to bot control\n' +
-                           '`Wolf.issues` - 🐛 Display current known issues\n' +
+                           '`Wolf.todo` - 🐛 Display todo list\n' +
                            '`Wolf.refresh` - Reset server (testing only!)', 
                     inline: false 
                 }
@@ -2403,10 +2400,10 @@ class WerewolfBot {
         }
     }
 
-    async handleIssues(message) {
+    async handleTodo(message) {
         const embed = new EmbedBuilder()
             .setTitle('🐛 Issues and Bugs')
-            .setDescription(fs.readFileSync('./ISSUE_TRACKING.md', 'utf-8'))
+            .setDescription(fs.readFileSync('./TODO.md', 'utf-8'))
 
         await message.reply({ embeds: [embed] });
     }
@@ -2883,7 +2880,7 @@ class WerewolfBot {
         );
 
         if (!gameResult.rows.length) {
-            return message.reply('❌ No active game found.');
+            return message.reply('❌ No games found. Please create a game first.');
         }
 
         const game = gameResult.rows[0];
@@ -3876,278 +3873,6 @@ class WerewolfBot {
         }
     }
 
-    async handleRoleAssign(message, args) {
-        const serverId = message.guild.id;
-
-        // Get active game in signup or active phase
-        const gameResult = await this.db.query(
-            'SELECT * FROM games WHERE server_id = $1 AND status IN ($2, $3) ORDER BY id DESC LIMIT 1',
-            [serverId, 'signup', 'active']
-        );
-
-        if (!gameResult.rows.length) {
-            return message.reply('❌ No active game found.');
-        }
-
-        const game = gameResult.rows[0];
-
-        // Get all players in the game
-        const playersResult = await this.db.query(
-            'SELECT user_id, username FROM players WHERE game_id = $1 ORDER BY username',
-            [game.id]
-        );
-
-        if (playersResult.rows.length === 0) {
-            return message.reply('❌ No players found in the current game.');
-        }
-
-        // Check if roles were provided in the command
-        if (args.length === 0) {
-            const embed = new EmbedBuilder()
-                .setTitle('🎭 Role Assignment')
-                .setDescription('Please provide a list of roles to assign. Roles should be organized in three blocks separated by blank lines.')
-                .addFields(
-                    { name: 'Format', value: '```Villager\nSeer\nDoctor\n\nWerewolf\nWerewolf\n\nTanner\nJester```', inline: false },
-                    { name: 'Blocks', value: '• **First block**: Village roles\n• **Second block**: Wolf roles\n• **Third block**: Neutral roles', inline: false },
-                    { name: 'Current Players', value: playersResult.rows.map((p, i) => `${i + 1}. ${p.username}`).join('\n'), inline: false },
-                    { name: 'Player Count', value: `${playersResult.rows.length} players signed up`, inline: true }
-                )
-                .setColor(0x9B59B6)
-                .setFooter({ text: 'Please respond with your role list in the format above' });
-
-            await message.reply({ embeds: [embed] });
-
-            // Wait for the role list
-            const filter = (m) => m.author.id === message.author.id && !m.author.bot;
-            const collected = await message.channel.awaitMessages({ filter, max: 1, time: 120000 });
-
-            if (!collected.size) {
-                return message.reply('⏰ Role assignment timed out. Please try again.');
-            }
-
-            const roleText = collected.first().content.trim();
-            return this.parseAndAssignRoles(message, game, playersResult.rows, roleText);
-        } else {
-            // Roles provided directly in the command
-            const roleText = args.join(' ');
-            return this.parseAndAssignRoles(message, game, playersResult.rows, roleText);
-        }
-    }
-
-    async parseAndAssignRoles(message, game, players, roleText) {
-        try {
-            // Split by double newlines to get the three blocks
-            const blocks = roleText.split(/\n\s*\n/).map(block => block.trim()).filter(block => block.length > 0);
-            
-            if (blocks.length !== 3) {
-                const embed = new EmbedBuilder()
-                    .setTitle('❌ Invalid Format')
-                    .setDescription('Please provide exactly three blocks of roles separated by blank lines.')
-                    .addFields(
-                        { name: 'Expected Format', value: '```Village roles\n\nWolf roles\n\nNeutral roles```', inline: false },
-                        { name: 'Your Input', value: `Found ${blocks.length} blocks, expected 3`, inline: false }
-                    )
-                    .setColor(0xE74C3C);
-
-                return message.reply({ embeds: [embed] });
-            }
-
-            // Parse each block
-            const villageRoles = blocks[0].split('\n').map(role => role.trim()).filter(role => role.length > 0);
-            const wolfRoles = blocks[1].split('\n').map(role => role.trim()).filter(role => role.length > 0);
-            const neutralRoles = blocks[2].split('\n').map(role => role.trim()).filter(role => role.length > 0);
-
-            // Combine all roles with their categories
-            const allRoles = [
-                ...villageRoles.map(role => ({ role, isWolf: false, category: 'Village' })),
-                ...wolfRoles.map(role => ({ role, isWolf: true, category: 'Wolf' })),
-                ...neutralRoles.map(role => ({ role, isWolf: false, category: 'Neutral' }))
-            ];
-
-            return this.assignRoles(message, game, players, allRoles);
-        } catch (error) {
-            console.error('Error parsing roles:', error);
-            await message.reply('❌ An error occurred while parsing the roles. Please check your format and try again.');
-        }
-    }
-
-    async assignRoles(message, game, players, roleData) {
-        try {
-            // Validate role count with special testing exception
-            const isTestingMode = roleData.length === 3 && players.length === 1;
-            
-            if (roleData.length !== players.length && !isTestingMode) {
-                const embed = new EmbedBuilder()
-                    .setTitle('❌ Role Count Mismatch')
-                    .setDescription(`The number of roles (${roleData.length}) does not match the number of players (${players.length}).`)
-                    .addFields(
-                        { name: 'Players', value: `${players.length} players`, inline: true },
-                        { name: 'Roles', value: `${roleData.length} roles`, inline: true },
-                        { name: 'Role Breakdown', value: this.getRoleBreakdown(roleData), inline: false }
-                    )
-                    .setColor(0xE74C3C);
-
-                return message.reply({ embeds: [embed] });
-            }
-
-            // If in testing mode, only assign the first role to the single player
-            const effectiveRoleData = isTestingMode ? [roleData[0]] : roleData;
-
-            // Get role IDs from the database for the role names
-            const roleNames = effectiveRoleData.map(r => r.role);
-            const roleIdsResult = await this.db.query(
-                'SELECT id, name, team, in_wolf_chat FROM roles WHERE name = ANY($1)',
-                [roleNames]
-            );
-
-            // Create a map of role names to role IDs
-            const roleNameToId = {};
-            const roleIdToInfo = {};
-            for (const role of roleIdsResult.rows) {
-                roleNameToId[role.name] = role.id;
-                roleIdToInfo[role.id] = role;
-            }
-
-            // Check if all roles exist in the database
-            const missingRoles = roleNames.filter(name => !roleNameToId[name]);
-            if (missingRoles.length > 0) {
-                const embed = new EmbedBuilder()
-                    .setTitle('❌ Unknown Roles')
-                    .setDescription(`The following roles were not found in the database:\n\n${missingRoles.map(role => `• ${role}`).join('\n')}`)
-                    .setColor(0xE74C3C);
-
-                return message.reply({ embeds: [embed] });
-            }
-
-            // Create a copy of players array for shuffling (preserve role order)
-            const shuffledPlayers = [...players];
-
-            // Shuffle only the players array using Fisher-Yates algorithm
-            for (let i = shuffledPlayers.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [shuffledPlayers[i], shuffledPlayers[j]] = [shuffledPlayers[j], shuffledPlayers[i]];
-            }
-
-            // Create role assignments (roles maintain their original order)
-            const assignments = [];
-            for (let i = 0; i < shuffledPlayers.length; i++) {
-                const roleName = effectiveRoleData[i].role;
-                const roleId = roleNameToId[roleName];
-                const roleInfo = roleIdToInfo[roleId];
-                
-                assignments.push({
-                    player: shuffledPlayers[i].username,
-                    roleName: roleName,
-                    roleId: roleId,
-                    isWolf: effectiveRoleData[i].isWolf,
-                    category: effectiveRoleData[i].category,
-                    userId: shuffledPlayers[i].user_id,
-                    roleIndex: i,
-                    inWolfChat: roleInfo.in_wolf_chat,
-                    team: roleInfo.team
-                });
-            }
-
-            // Save role assignments to database using role_id
-            for (const assignment of assignments) {
-                await this.db.query(
-                    'UPDATE players SET role_id = $1, is_wolf = $2 WHERE game_id = $3 AND user_id = $4',
-                    [assignment.roleId, assignment.isWolf, game.id, assignment.userId]
-                );
-            }
-
-            // Create the assignment list organized by category
-            const villageAssignments = assignments.filter(a => a.category === 'Village');
-            const wolfAssignments = assignments.filter(a => a.category === 'Wolf');
-            const neutralAssignments = assignments.filter(a => a.category === 'Neutral');
-
-            let assignmentText = '';
-            
-            if (villageAssignments.length > 0) {
-                assignmentText += '**🏘️ Town:**\n';
-                assignmentText += villageAssignments.map(a => `• **${a.roleName}** - ${a.player}`).join('\n');
-            }
-            
-            if (wolfAssignments.length > 0) {
-                if (assignmentText) assignmentText += '\n\n';
-                assignmentText += '**🐺 Wolves:**\n';
-                assignmentText += wolfAssignments.map(a => `• **${a.roleName}** - ${a.player}`).join('\n');
-            }
-            
-            if (neutralAssignments.length > 0) {
-                if (assignmentText) assignmentText += '\n\n';
-                assignmentText += '**⚖️ Neutrals:**\n';
-                assignmentText += neutralAssignments.map(a => `• **${a.roleName}** - ${a.player}`).join('\n');
-            }
-
-            // Count role occurrences for summary
-            const roleCounts = {};
-            roleData.forEach(roleInfo => {
-                roleCounts[roleInfo.role] = (roleCounts[roleInfo.role] || 0) + 1;
-            });
-
-            const roleSummary = Object.entries(roleCounts)
-                .map(([role, count]) => count > 1 ? `${role} (${count})` : role)
-                .join(', ');
-
-            const embed = new EmbedBuilder()
-                .setTitle('🎭 Role Assignment Complete')
-                .setDescription(isTestingMode ? 
-                    'Testing mode: Assigned first role from the list to the single player!' : 
-                    'Roles have been randomly assigned to all players!')
-                .addFields(
-                    { name: 'Team Assignments', value: assignmentText, inline: false },
-                    { name: 'Role Summary', value: roleSummary, inline: false },
-                    { name: 'Team Counts', value: `🏘️ Town: ${villageAssignments.length} | 🐺 Wolves: ${wolfAssignments.length} | ⚖️ Neutrals: ${neutralAssignments.length}`, inline: false },
-                    { name: 'Game Info', value: `${game.game_name ? `${game.game_name} ` : ''}Game ${game.game_number}`, inline: true },
-                    { name: 'Total Players', value: `${assignments.length}`, inline: true }
-                )
-                .setColor(isTestingMode ? 0xF39C12 : 0x00AE86)
-                .setTimestamp()
-                .setFooter({ text: isTestingMode ? 
-                    'Testing Mode: Only first role assigned' : 
-                    'Assignments are randomized each time this command is run' });
-
-            // Add testing mode info if applicable
-            if (isTestingMode) {
-                embed.addFields({
-                    name: '🧪 Testing Mode',
-                    value: `Provided ${roleData.length} roles but only assigned the first one (${effectiveRoleData[0].role}) to test the system.`,
-                    inline: false
-                });
-            }
-
-            await message.reply({ embeds: [embed] });
-
-            // Send a confirmation message
-            const confirmEmbed = new EmbedBuilder()
-                .setTitle('✅ Assignment Summary')
-                .setDescription(isTestingMode ? 
-                    `Testing mode: Assigned 1 role to 1 player (provided ${roleData.length} roles for testing).` :
-                    `Successfully assigned ${roleData.length} roles to ${players.length} players with wolf flags set.`)
-                .setColor(0x2ECC71);
-
-            await message.reply({ embeds: [confirmEmbed] });
-
-        } catch (error) {
-            console.error('Error assigning roles:', error);
-            await message.reply('❌ An error occurred while assigning roles.');
-        }
-    }
-
-    getRoleBreakdown(roleData) {
-        const village = roleData.filter(r => r.category === 'Village').map(r => r.role);
-        const wolves = roleData.filter(r => r.category === 'Wolf').map(r => r.role);
-        const neutrals = roleData.filter(r => r.category === 'Neutral').map(r => r.role);
-        
-        let breakdown = '';
-        if (village.length > 0) breakdown += `**Village (${village.length}):** ${village.join(', ')}\n`;
-        if (wolves.length > 0) breakdown += `**Wolves (${wolves.length}):** ${wolves.join(', ')}\n`;
-        if (neutrals.length > 0) breakdown += `**Neutrals (${neutrals.length}):** ${neutrals.join(', ')}`;
-        
-        return breakdown || 'No roles provided';
-    }
-
     async handleRolesList(message) {
         const serverId = message.guild.id;
 
@@ -4163,7 +3888,6 @@ class WerewolfBot {
 
         const game = gameResult.rows[0];
 
-        // Get all players with their roles using the new role_id system
         const playersResult = await this.db.query(
             `SELECT p.user_id, p.username, p.role_id, p.status, p.is_wolf,
                     r.name as role_name, r.team, r.in_wolf_chat,

@@ -1,5 +1,5 @@
 -- Werewolf Discord Bot Database Schema
--- Generated automatically on 2025-08-01T20:07:02.582Z
+-- Generated automatically on 2025-08-03T05:13:05.846Z
 -- This file shows the current database structure with table comments
 -- Run this after migrations to get the latest schema
 
@@ -17,11 +17,12 @@ CREATE TABLE game_channels (
 
 -- Table to store roles assigned to games, allowing for custom names and theme overrides
 CREATE TABLE game_role (
-    game_id INTEGER NOT NULL PRIMARY KEY,
-    role_id INTEGER NOT NULL PRIMARY KEY,
+    game_id INTEGER NOT NULL,
+    role_id INTEGER NOT NULL,
     role_count INTEGER NOT NULL DEFAULT 1,
     custom_name TEXT,
-    charges INTEGER NOT NULL DEFAULT 0
+    charges INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (game_id, role_id)
 );
 
 -- Table to store speed vote information

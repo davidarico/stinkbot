@@ -446,7 +446,7 @@ export default function GameManagementPage() {
         roleId: roleIdNum,
         roleCount: count,
         customName: customRoleNames[roleIdNum] || undefined,
-        charges: roleCharges[roleIdNum] !== undefined ? roleCharges[roleIdNum] : (role?.defaultCharges || 0)
+        charges: roleCharges[roleIdNum] !== undefined ? roleCharges[roleIdNum] : (role?.hasCharges ? role.defaultCharges : undefined)
       }
     })
 
@@ -1317,7 +1317,7 @@ export default function GameManagementPage() {
                                     placeholder="Action notes..."
                                     value={player.actionNotes || ""}
                                     onChange={(e) => updateActionNotes(player.id, e.target.value)}
-                                    className="text-xs h-6 px-2 max-w-32 flex-shrink-0"
+                                    className="text-xs h-6 px-2 max-w-32 flex-shrink-0 text-white"
                                   />
                                 )}
                               </div>
@@ -1402,7 +1402,7 @@ export default function GameManagementPage() {
                                     placeholder="Action notes..."
                                     value={player.actionNotes || ""}
                                     onChange={(e) => updateActionNotes(player.id, e.target.value)}
-                                    className="text-xs h-6 px-2 max-w-32 flex-shrink-0"
+                                    className="text-xs h-6 px-2 max-w-32 flex-shrink-0 text-white"
                                   />
                                 )}
                               </div>
@@ -1487,7 +1487,7 @@ export default function GameManagementPage() {
                                     placeholder="Action notes..."
                                     value={player.actionNotes || ""}
                                     onChange={(e) => updateActionNotes(player.id, e.target.value)}
-                                    className="text-xs h-6 px-2 max-w-32 flex-shrink-0"
+                                    className="text-xs h-6 px-2 max-w-32 flex-shrink-0 text-white"
                                   />
                                 )}
                               </div>
