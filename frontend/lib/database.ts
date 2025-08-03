@@ -406,6 +406,54 @@ export class DatabaseService {
     }
   }
 
+  async getNightActions(gameId: string, nightNumber: number) {
+    try {
+      console.log('Database: Fetching night actions for game', gameId, 'night', nightNumber)
+      const result = await this.pool.query(
+        'SELECT player_id, action FROM night_action WHERE game_id = $1 AND night_number = $2',
+        [parseInt(gameId), nightNumber]
+      )
+      console.log('Database: Found night actions:', result.rows)
+      return result.rows
+    } catch (error) {
+      console.error('Error fetching night actions:', error)
+      throw error
+    }
+  }
+
+  async saveNightAction(gameId: string, playerId: number, action: string, nightNumber: number) {
+    try {
+      const client = await this.pool.connect()
+      
+      try {
+        await client.query('BEGIN')
+        
+        // First, delete any existing action for this player and night
+        await client.query(
+          'DELETE FROM night_action WHERE game_id = $1 AND player_id = $2 AND night_number = $3',
+          [parseInt(gameId), playerId, nightNumber]
+        )
+        
+        // Then insert the new action
+        await client.query(
+          'INSERT INTO night_action (game_id, player_id, action, night_number) VALUES ($1, $2, $3, $4)',
+          [parseInt(gameId), playerId, action, nightNumber]
+        )
+        
+        await client.query('COMMIT')
+        return { success: true }
+      } catch (error) {
+        await client.query('ROLLBACK')
+        throw error
+      } finally {
+        client.release()
+      }
+    } catch (error) {
+      console.error('Error saving night action:', error)
+      throw error
+    }
+  }
+
   // Cleanup method to close the pool
   async close() {
     await this.pool.end()
