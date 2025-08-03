@@ -880,10 +880,18 @@ class WerewolfBot {
             .setColor(0x2C3E50);
 
         // Add journal notification summary if there were any issues
-        if (journalNotificationResults.failed > 0 || journalNotificationResults.sent > 0) {
+        if (journalNotificationResults.failed > 0 || journalNotificationResults.sent > 0 || journalNotificationResults.wolvesAddedToChat > 0) {
+            let notificationSummary = `• ${journalNotificationResults.sent} players notified in journals`;
+            if (journalNotificationResults.wolvesAddedToChat > 0) {
+                notificationSummary += `\n• ${journalNotificationResults.wolvesAddedToChat} wolves added to wolf chat`;
+            }
+            if (journalNotificationResults.failed > 0) {
+                notificationSummary += `\n• ${journalNotificationResults.failed} players failed to notify (no journal or no role assigned)`;
+            }
+            
             embed.addFields({
                 name: '📔 Role Notifications',
-                value: `• ${journalNotificationResults.sent} players notified in journals\n• ${journalNotificationResults.failed} players failed to notify${journalNotificationResults.failed > 0 ? ' (no journal or no role assigned)' : ''}`,
+                value: notificationSummary,
                 inline: false
             });
         }
@@ -1090,21 +1098,114 @@ class WerewolfBot {
     async sendRoleNotificationsToJournals(gameId, serverId) {
         let sent = 0;
         let failed = 0;
+        let wolvesAddedToChat = 0;
+        let wolfChatMessage = '';
 
         try {
-            // Get all players in the game with their roles
-            const playersResult = await this.db.query(
-                'SELECT user_id, username, role FROM players WHERE game_id = $1',
+            // Get game information including theme flags
+            const gameResult = await this.db.query(
+                'SELECT is_skinned, is_themed, wolf_chat_channel_id FROM games WHERE id = $1',
                 [gameId]
             );
+
+            if (!gameResult.rows.length) {
+                console.error('Game not found:', gameId);
+                return { sent, failed };
+            }
+
+            const game = gameResult.rows[0];
+
+            // Get all players in the game with their role information
+            const playersResult = await this.db.query(
+                `SELECT p.user_id, p.username, p.role_id, p.is_wolf, 
+                        r.name as role_name, r.in_wolf_chat, r.team,
+                        gr.custom_name
+                 FROM players p
+                 LEFT JOIN roles r ON p.role_id = r.id
+                 LEFT JOIN game_role gr ON p.game_id = gr.game_id AND p.role_id = gr.role_id
+                 WHERE p.game_id = $1`,
+                [gameId]
+            );
+
+            // Collect wolf team information for wolf chat message
+            const wolfTeam = [];
+            const wolfRolesNotInChat = [];
+
+            console.log(`[DEBUG] Processing ${playersResult.rows.length} players for role notifications`);
 
             for (const player of playersResult.rows) {
                 try {
                     // Skip players without assigned roles
-                    if (!player.role) {
+                    if (!player.role_id) {
                         failed++;
                         console.log(`Skipping ${player.username} - no role assigned`);
                         continue;
+                    }
+
+                    console.log(`[DEBUG] Processing ${player.username}: role=${player.role_name}, is_wolf=${player.is_wolf}, in_wolf_chat=${player.in_wolf_chat}`);
+
+                    // Determine what role name to display based on theme flags
+                    let displayRoleName = player.role_name;
+                    let fullRoleDescription = player.role_name;
+
+                    if (game.is_themed && player.custom_name) {
+                        // Themed mode: only show custom name
+                        displayRoleName = player.custom_name;
+                        fullRoleDescription = player.custom_name;
+                    } else if (game.is_skinned && player.custom_name) {
+                        // Skinned mode: show custom name with actual role in parens
+                        displayRoleName = `${player.custom_name} (${player.role_name})`;
+                        fullRoleDescription = `${player.custom_name} (${player.role_name})`;
+                    } else {
+                        // Normal mode: show actual role name
+                        displayRoleName = player.role_name;
+                        fullRoleDescription = player.role_name;
+                    }
+
+                    // Check if this is a wolf role that should be added to wolf chat
+                    if (player.is_wolf && player.in_wolf_chat) {
+                        console.log(`[DEBUG] Adding ${player.username} to wolf chat as ${displayRoleName}`);
+                        
+                        // Add to wolf team list for wolf chat message
+                        wolfTeam.push({
+                            username: player.username,
+                            roleName: displayRoleName,
+                            fullRoleDescription: fullRoleDescription
+                        });
+
+                        // Add player to wolf chat channel
+                        if (game.wolf_chat_channel_id) {
+                            try {
+                                const wolfChannel = await this.client.channels.fetch(game.wolf_chat_channel_id);
+                                if (wolfChannel) {
+                                    // Add the player to the wolf chat channel
+                                    const member = await this.client.guilds.cache.first().members.fetch(player.user_id);
+                                    if (member) {
+                                        await wolfChannel.permissionOverwrites.edit(member.id, {
+                                            ViewChannel: true,
+                                            SendMessages: true
+                                        });
+                                        wolvesAddedToChat++;
+                                        console.log(`[DEBUG] Successfully added ${player.username} to wolf chat`);
+                                    }
+                                }
+                            } catch (error) {
+                                console.error(`Error adding ${player.username} to wolf chat:`, error);
+                            }
+                        }
+
+                        // Skip sending role notification to journal since they're in wolf chat
+                        console.log(`Skipping role notification for ${player.username} - added to wolf chat`);
+                        continue;
+                    }
+
+                    // Check if this is a wolf role that's NOT in wolf chat
+                    if (player.is_wolf && !player.in_wolf_chat) {
+                        console.log(`[DEBUG] Found wolf role not in chat: ${player.username} as ${displayRoleName}`);
+                        wolfRolesNotInChat.push({
+                            roleName: displayRoleName,
+                            fullRoleDescription: fullRoleDescription
+                        });
                     }
 
                     // Check if player has a journal
@@ -1137,7 +1238,7 @@ class WerewolfBot {
                     // Create role notification embed
                     const roleEmbed = new EmbedBuilder()
                         .setTitle('🎭 Your Role Assignment')
-                        .setDescription(`The game has started! You have been assigned the role of **${player.role}**.`)
+                        .setDescription(`**${displayRoleName}**!`)
                         .setColor(0x9B59B6)
                         .setTimestamp()
                         .setFooter({ text: 'Good luck and have fun!' });
@@ -1149,7 +1250,7 @@ class WerewolfBot {
                     });
 
                     sent++;
-                    console.log(`Sent role notification to ${player.username}: ${player.role}`);
+                    console.log(`Sent role notification to ${player.username}: ${displayRoleName}`);
 
                 } catch (error) {
                     console.error(`Error sending role notification to ${player.username}:`, error);
@@ -1157,11 +1258,74 @@ class WerewolfBot {
                 }
             }
 
+            console.log(`[DEBUG] Wolf team: ${wolfTeam.length} players, Wolf roles not in chat: ${wolfRolesNotInChat.length} roles`);
+
+            // Send wolf team information to wolf chat if there are wolves
+            if (wolfTeam.length > 0 && game.wolf_chat_channel_id) {
+                try {
+                    const wolfChannel = await this.client.channels.fetch(game.wolf_chat_channel_id);
+                    if (wolfChannel) {
+                        // Create wolf team list message
+                        const wolfTeamList = wolfTeam.map(wolf => 
+                            `• **${wolf.roleName}** - ${wolf.username}`
+                        ).join('\n');
+
+                        const wolfEmbed = new EmbedBuilder()
+                            .setTitle('🐺 Wolf Team')
+                            .setDescription(`Hope you wanted to be a wolf! Here are your fellow wolves:\n\n${wolfTeamList}`)
+                            .setColor(0xE74C3C)
+                            .setTimestamp();
+
+                        await wolfChannel.send({ embeds: [wolfEmbed] });
+
+                        // If there are wolf roles not in chat, alert the team
+                        if (wolfRolesNotInChat.length > 0) {
+                            const notInChatList = wolfRolesNotInChat.map(role => 
+                                `• **${role.roleName}**`
+                            ).join('\n');
+
+                            const alertEmbed = new EmbedBuilder()
+                                .setTitle('⚠️ Major Wolf Alert!')
+                                .setDescription(`You appear to have some helpers working in the shadows:\n\n${notInChatList}`)
+                                .setColor(0xF39C12)
+                                .setTimestamp();
+
+                            await wolfChannel.send({ embeds: [alertEmbed] });
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error sending wolf team message to wolf chat:', error);
+                }
+            }
+
+            // Send alert about wolf roles not in chat even if there are no wolves in chat
+            if (wolfRolesNotInChat.length > 0 && game.wolf_chat_channel_id) {
+                try {
+                    const wolfChannel = await this.client.channels.fetch(game.wolf_chat_channel_id);
+                    if (wolfChannel) {
+                        const notInChatList = wolfRolesNotInChat.map(role => 
+                            `• **${role.roleName}**`
+                        ).join('\n');
+
+                        const alertEmbed = new EmbedBuilder()
+                            .setTitle('⚠️ Major Wolf Alert!')
+                            .setDescription(`You appear to have some helpers working in the shadows:\n\n${notInChatList}`)
+                            .setColor(0xF39C12)
+                            .setTimestamp();
+
+                        await wolfChannel.send({ embeds: [alertEmbed] });
+                        console.log(`[DEBUG] Sent alert about ${wolfRolesNotInChat.length} wolf roles not in chat`);
+                    }
+                } catch (error) {
+                    console.error('Error sending wolf roles not in chat alert:', error);
+                }
+            }
+
         } catch (error) {
             console.error('Error in sendRoleNotificationsToJournals:', error);
         }
 
-        return { sent, failed };
+        return { sent, failed, wolvesAddedToChat };
     }
 
     async handleVote(message, args) {
@@ -3829,6 +3993,32 @@ class WerewolfBot {
             // If in testing mode, only assign the first role to the single player
             const effectiveRoleData = isTestingMode ? [roleData[0]] : roleData;
 
+            // Get role IDs from the database for the role names
+            const roleNames = effectiveRoleData.map(r => r.role);
+            const roleIdsResult = await this.db.query(
+                'SELECT id, name, team, in_wolf_chat FROM roles WHERE name = ANY($1)',
+                [roleNames]
+            );
+
+            // Create a map of role names to role IDs
+            const roleNameToId = {};
+            const roleIdToInfo = {};
+            for (const role of roleIdsResult.rows) {
+                roleNameToId[role.name] = role.id;
+                roleIdToInfo[role.id] = role;
+            }
+
+            // Check if all roles exist in the database
+            const missingRoles = roleNames.filter(name => !roleNameToId[name]);
+            if (missingRoles.length > 0) {
+                const embed = new EmbedBuilder()
+                    .setTitle('❌ Unknown Roles')
+                    .setDescription(`The following roles were not found in the database:\n\n${missingRoles.map(role => `• ${role}`).join('\n')}`)
+                    .setColor(0xE74C3C);
+
+                return message.reply({ embeds: [embed] });
+            }
+
             // Create a copy of players array for shuffling (preserve role order)
             const shuffledPlayers = [...players];
 
@@ -3841,21 +4031,28 @@ class WerewolfBot {
             // Create role assignments (roles maintain their original order)
             const assignments = [];
             for (let i = 0; i < shuffledPlayers.length; i++) {
+                const roleName = effectiveRoleData[i].role;
+                const roleId = roleNameToId[roleName];
+                const roleInfo = roleIdToInfo[roleId];
+                
                 assignments.push({
                     player: shuffledPlayers[i].username,
-                    role: effectiveRoleData[i].role,
+                    roleName: roleName,
+                    roleId: roleId,
                     isWolf: effectiveRoleData[i].isWolf,
                     category: effectiveRoleData[i].category,
                     userId: shuffledPlayers[i].user_id,
-                    roleIndex: i
+                    roleIndex: i,
+                    inWolfChat: roleInfo.in_wolf_chat,
+                    team: roleInfo.team
                 });
             }
 
-            // Save role assignments to database
+            // Save role assignments to database using role_id
             for (const assignment of assignments) {
                 await this.db.query(
-                    'UPDATE players SET role = $1, is_wolf = $2 WHERE game_id = $3 AND user_id = $4',
-                    [assignment.role, assignment.isWolf, game.id, assignment.userId]
+                    'UPDATE players SET role_id = $1, is_wolf = $2 WHERE game_id = $3 AND user_id = $4',
+                    [assignment.roleId, assignment.isWolf, game.id, assignment.userId]
                 );
             }
 
@@ -3868,19 +4065,19 @@ class WerewolfBot {
             
             if (villageAssignments.length > 0) {
                 assignmentText += '**🏘️ Town:**\n';
-                assignmentText += villageAssignments.map(a => `• **${a.role}** - ${a.player}`).join('\n');
+                assignmentText += villageAssignments.map(a => `• **${a.roleName}** - ${a.player}`).join('\n');
             }
             
             if (wolfAssignments.length > 0) {
                 if (assignmentText) assignmentText += '\n\n';
                 assignmentText += '**🐺 Wolves:**\n';
-                assignmentText += wolfAssignments.map(a => `• **${a.role}** - ${a.player}`).join('\n');
+                assignmentText += wolfAssignments.map(a => `• **${a.roleName}** - ${a.player}`).join('\n');
             }
             
             if (neutralAssignments.length > 0) {
                 if (assignmentText) assignmentText += '\n\n';
                 assignmentText += '**⚖️ Neutrals:**\n';
-                assignmentText += neutralAssignments.map(a => `• **${a.role}** - ${a.player}`).join('\n');
+                assignmentText += neutralAssignments.map(a => `• **${a.roleName}** - ${a.player}`).join('\n');
             }
 
             // Count role occurrences for summary
@@ -3966,9 +4163,15 @@ class WerewolfBot {
 
         const game = gameResult.rows[0];
 
-        // Get all players with their roles
+        // Get all players with their roles using the new role_id system
         const playersResult = await this.db.query(
-            'SELECT user_id, username, role, status FROM players WHERE game_id = $1 ORDER BY username',
+            `SELECT p.user_id, p.username, p.role_id, p.status, p.is_wolf,
+                    r.name as role_name, r.team, r.in_wolf_chat,
+                    gr.custom_name
+             FROM players p
+             LEFT JOIN roles r ON p.role_id = r.id
+             LEFT JOIN game_role gr ON p.game_id = gr.game_id AND p.role_id = gr.role_id
+             WHERE p.game_id = $1 ORDER BY p.username`,
             [game.id]
         );
 
@@ -3977,7 +4180,7 @@ class WerewolfBot {
         }
 
         // Check if any roles have been assigned
-        const playersWithRoles = playersResult.rows.filter(player => player.role !== null);
+        const playersWithRoles = playersResult.rows.filter(player => player.role_id !== null);
         
         if (playersWithRoles.length === 0) {
             const embed = new EmbedBuilder()
@@ -3993,24 +4196,60 @@ class WerewolfBot {
             return message.reply({ embeds: [embed] });
         }
 
+        // Get game theme flags
+        const gameThemeResult = await this.db.query(
+            'SELECT is_skinned, is_themed FROM games WHERE id = $1',
+            [game.id]
+        );
+        const gameTheme = gameThemeResult.rows[0] || { is_skinned: false, is_themed: false };
+
         // Sort players by role assignment order (if they were assigned in order)
         // Players without roles will be at the end
         const sortedPlayers = [
             ...playersWithRoles,
-            ...playersResult.rows.filter(player => player.role === null)
+            ...playersResult.rows.filter(player => player.role_id === null)
         ];
 
-        // Create role list
+        // Create role list with theme handling
         const rolesList = sortedPlayers.map((player, index) => {
             const statusIcon = player.status === 'alive' ? '💚' : '💀';
-            const roleText = player.role ? `**${player.role}**` : '_No role assigned_';
+            let roleText = '_No role assigned_';
+            
+            if (player.role_id) {
+                let displayRoleName = player.role_name;
+                
+                if (gameTheme.is_themed && player.custom_name) {
+                    // Themed mode: only show custom name
+                    displayRoleName = player.custom_name;
+                } else if (gameTheme.is_skinned && player.custom_name) {
+                    // Skinned mode: show custom name with actual role in parens
+                    displayRoleName = `${player.custom_name} (${player.role_name})`;
+                } else {
+                    // Normal mode: show actual role name
+                    displayRoleName = player.role_name;
+                }
+                
+                roleText = `**${displayRoleName}**`;
+                
+                // Add wolf chat indicator
+                if (player.is_wolf && player.in_wolf_chat) {
+                    roleText += ' 🐺';
+                }
+            }
+            
             return `${statusIcon} ${roleText} - ${player.username}`;
         }).join('\n');
 
         // Count role occurrences
         const roleCounts = {};
         playersWithRoles.forEach(player => {
-            roleCounts[player.role] = (roleCounts[player.role] || 0) + 1;
+            let roleName = player.role_name;
+            if (gameTheme.is_themed && player.custom_name) {
+                roleName = player.custom_name;
+            } else if (gameTheme.is_skinned && player.custom_name) {
+                roleName = `${player.custom_name} (${player.role_name})`;
+            }
+            roleCounts[roleName] = (roleCounts[roleName] || 0) + 1;
         });
 
         const roleSummary = Object.entries(roleCounts)
