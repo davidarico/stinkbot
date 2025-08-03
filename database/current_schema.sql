@@ -1,5 +1,5 @@
 -- Werewolf Discord Bot Database Schema
--- Generated automatically on 2025-08-03T05:13:05.846Z
+-- Generated automatically on 2025-08-03T18:20:07.130Z
 -- This file shows the current database structure with table comments
 -- Run this after migrations to get the latest schema
 
@@ -21,7 +21,7 @@ CREATE TABLE game_role (
     role_id INTEGER NOT NULL,
     role_count INTEGER NOT NULL DEFAULT 1,
     custom_name TEXT,
-    charges INTEGER NOT NULL DEFAULT 0,
+    charges INTEGER DEFAULT 0,
     PRIMARY KEY (game_id, role_id)
 );
 
@@ -70,6 +70,14 @@ CREATE TABLE games (
     UNIQUE(game_number, server_id)
 );
 
+CREATE TABLE night_action (
+    id SERIAL PRIMARY KEY,
+    game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    player_id INTEGER NOT NULL,
+    action TEXT NOT NULL,
+    night_number INTEGER NOT NULL
+);
+
 -- Table to store player journals for personal notes
 CREATE TABLE player_journals (
     id SERIAL PRIMARY KEY,
@@ -89,7 +97,6 @@ CREATE TABLE players (
     user_id VARCHAR(20) NOT NULL,
     username VARCHAR(100) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'alive',
-    role VARCHAR(100),
     is_wolf BOOLEAN DEFAULT FALSE,
     signed_up_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     role_id INTEGER REFERENCES roles(id),
