@@ -33,6 +33,7 @@ CREATE TABLE game_speed (
     channel_id VARCHAR(20) NOT NULL,
     target_reactions INTEGER NOT NULL,
     current_reactions INTEGER NOT NULL DEFAULT 0,
+    emoji VARCHAR(50) DEFAULT '⚡',
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(game_id)
 );

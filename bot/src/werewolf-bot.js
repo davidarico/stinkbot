@@ -2177,7 +2177,7 @@ class WerewolfBot {
                     name: '📊 Analysis & Utilities', 
                     value: '`Wolf.server` - 🖥️ Display detailed server information\n' +
                            '`Wolf.ia <YYYY-MM-DD HH:MM>` - Message count per player since date (EST)\n' +
-                           '`Wolf.speed <number>` - ⚡ Start speed vote with reaction target', 
+                           '`Wolf.speed <number> [emoji]` - ⚡ Start speed vote with reaction target (optional custom emoji)', 
                     inline: false 
                 },
                 { 
@@ -3359,13 +3359,26 @@ class WerewolfBot {
 
         // Check if speed target is provided
         if (!args.length || isNaN(parseInt(args[0]))) {
-            return message.reply('❌ Please provide a valid speed target number. Usage: `Wolf.speed <number>` or `Wolf.speed abort`');
+            return message.reply('❌ Please provide a valid speed target number. Usage: `Wolf.speed <number> [emoji]` or `Wolf.speed abort`');
         }
 
         const speedTarget = parseInt(args[0]);
 
         if (speedTarget < 1) {
             return message.reply('❌ Speed target must be at least 1.');
+        }
+
+        // Parse emoji from args (optional second parameter)
+        let customEmoji = '⚡'; // Default to lightning bolt
+        if (args.length > 1) {
+            const emojiArg = args[1];
+            // Check if it's a valid emoji (starts with : and ends with :)
+            if (emojiArg.startsWith(':') && emojiArg.endsWith(':')) {
+                customEmoji = emojiArg;
+            } else {
+                // If it's not in the :emoji: format, treat it as a raw emoji
+                customEmoji = emojiArg;
+            }
         }
 
         // Check if there's already an active speed vote
@@ -3394,7 +3407,7 @@ class WerewolfBot {
             // Create the speed vote embed
             const embed = new EmbedBuilder()
                 .setTitle('⚡ Speed Vote!')
-                .setDescription(`Bunch of impatient players want to speed up the game! React with ⚡ if you agree!`)
+                .setDescription(`Bunch of impatient players want to speed up the game! React with ${customEmoji} if you agree!`)
                 .addFields(
                     { name: 'Target', value: speedTarget.toString(), inline: true },
                     { name: 'Status', value: 'Waiting for reactions...', inline: true }
@@ -3408,19 +3421,47 @@ class WerewolfBot {
                 embeds: [embed]
             });
 
-            // Add the lightning bolt reaction
-            await speedMessage.react('⚡');
+            // Try to add the custom emoji reaction, fallback to default if it fails
+            let finalEmoji = customEmoji;
+            try {
+                await speedMessage.react(customEmoji);
+            } catch (error) {
+                if (error.code === 10014) { // Unknown Emoji error
+                    console.log(`Unknown emoji "${customEmoji}" provided, falling back to default ⚡`);
+                    finalEmoji = '⚡';
+                    await speedMessage.react(finalEmoji);
+                    
+                    // Update the embed description to use the default emoji
+                    const updatedEmbed = new EmbedBuilder()
+                        .setTitle('⚡ Speed Vote!')
+                        .setDescription(`Bunch of impatient players want to speed up the game! React with ${finalEmoji} if you agree!`)
+                        .addFields(
+                            { name: 'Target', value: speedTarget.toString(), inline: true },
+                            { name: 'Status', value: 'Waiting for reactions...', inline: true }
+                        )
+                        .setColor(0xFFD700)
+                        .setTimestamp();
+                    
+                    await speedMessage.edit({ embeds: [updatedEmbed] });
+                    
+                    // Notify the user about the fallback
+                    await message.reply(`⚠️ Unknown emoji "${customEmoji}" provided. Using default emoji ⚡ instead.`);
+                } else {
+                    // Re-throw other errors
+                    throw error;
+                }
+            }
 
-            // Store the speed vote in the database
+            // Store the speed vote in the database with the final emoji
             await this.db.query(
-                'INSERT INTO game_speed (game_id, message_id, channel_id, target_reactions, current_reactions) VALUES ($1, $2, $3, $4, $5)',
-                [game.id, speedMessage.id, resultsChannel.id, speedTarget, 0]
+                'INSERT INTO game_speed (game_id, message_id, channel_id, target_reactions, current_reactions, emoji) VALUES ($1, $2, $3, $4, $5, $6)',
+                [game.id, speedMessage.id, resultsChannel.id, speedTarget, 0, finalEmoji]
             );
 
-            console.log(`Speed vote created: target=${speedTarget}, message_id=${speedMessage.id}, channel=${resultsChannel.name}`);
+            console.log(`Speed vote created: target=${speedTarget}, emoji=${finalEmoji}, message_id=${speedMessage.id}, channel=${resultsChannel.name}`);
 
             // Reply to the mod who initiated the command
-            await message.reply(`✅ Speed vote created in ${resultsChannel}! Target: ${speedTarget} reactions.`);
+            await message.reply(`✅ Speed vote created in ${resultsChannel}! Target: ${speedTarget} reactions with ${finalEmoji} emoji.`);
 
             // Set up reaction event listener
             this.setupSpeedReactionListener(speedMessage, game, speedTarget);
@@ -3491,25 +3532,28 @@ class WerewolfBot {
                     return;
                 }
 
+                const speedData = speedCheck.rows[0];
+                const customEmoji = speedData.emoji || '⚡'; // Use stored emoji or default to lightning bolt
+
                 // Fetch the latest message to get current reactions
                 const channel = await this.client.channels.fetch(speedMessage.channel.id);
                 const message = await channel.messages.fetch(speedMessage.id);
                 
-                // Find the lightning bolt reaction
-                const lightningReaction = message.reactions.cache.get('⚡');
+                // Find the custom emoji reaction
+                const emojiReaction = message.reactions.cache.get(customEmoji);
                 
-                if (lightningReaction) {
+                if (emojiReaction) {
                     // Count non-bot reactions
-                    const users = await lightningReaction.users.fetch();
+                    const users = await emojiReaction.users.fetch();
                     const currentReactions = users.filter(user => !user.bot).size;
                     
                     // Get the stored reaction count from database
-                    const storedCount = speedCheck.rows[0].current_reactions;
+                    const storedCount = speedData.current_reactions;
                     
                     // Only update if the count has changed
                     if (currentReactions !== storedCount) {
                         console.log(`Speed vote reaction count changed: ${storedCount} -> ${currentReactions}`);
-                        await this.updateSpeedVote(speedMessage, game, speedTarget, currentReactions);
+                        await this.updateSpeedVote(speedMessage, game, speedTarget, currentReactions, customEmoji);
                     }
                 }
             } catch (error) {
@@ -3525,7 +3569,7 @@ class WerewolfBot {
         setTimeout(checkReactions, 1000);
     }
 
-    async updateSpeedVote(speedMessage, game, speedTarget, currentReactions) {
+    async updateSpeedVote(speedMessage, game, speedTarget, currentReactions, customEmoji = '⚡') {
         try {
             // Update database
             await this.db.query(
@@ -3536,7 +3580,7 @@ class WerewolfBot {
             // Update the embed
             const embed = new EmbedBuilder()
                 .setTitle('⚡ Speed Vote!')
-                .setDescription(`Bunch of impatient players want to speed up the game! React with ⚡ if you agree!`)
+                .setDescription(`Bunch of impatient players want to speed up the game! React with ${customEmoji} if you agree!`)
                 .addFields(
                     { name: 'Target', value: speedTarget.toString(), inline: true },
                     { name: 'Status', value: currentReactions >= speedTarget ? 'Target reached!' : 'Waiting for reactions...', inline: true }
@@ -3558,6 +3602,11 @@ class WerewolfBot {
 
     async completeSpeedVote(game, speedMessage) {
         try {
+            if (game.mod_chat_channel_id === null) {
+                console.error('Mod chat channel not set');
+                return;
+            }
+
             // Get mod chat channel
             const modChatChannel = await this.client.channels.fetch(game.mod_chat_channel_id);
             if (!modChatChannel) {
@@ -3612,9 +3661,6 @@ class WerewolfBot {
 
     async handleReaction(reaction, user) {
         try {
-            // Only handle lightning bolt reactions
-            if (reaction.emoji.name !== '⚡') return;
-
             // Check if this is a speed vote message
             const speedVote = await this.db.query(
                 'SELECT * FROM game_speed WHERE message_id = $1',
@@ -3623,11 +3669,17 @@ class WerewolfBot {
 
             if (speedVote.rows.length === 0) return;
 
+            const speedData = speedVote.rows[0];
+            const customEmoji = speedData.emoji || '⚡'; // Use stored emoji or default to lightning bolt
+
+            // Only handle reactions with the custom emoji for this speed vote
+            if (reaction.emoji.name !== customEmoji && reaction.emoji.toString() !== customEmoji) return;
+
             // Remove the bot's initial reaction to keep the count clean
             // The bot's reaction doesn't count toward the target but helps users react
             await reaction.users.remove(this.client.user.id);
             
-            console.log(`Removed bot reaction from speed vote message ${reaction.message.id} after ${user.tag} reacted`);
+            console.log(`Removed bot reaction from speed vote message ${reaction.message.id} after ${user.tag} reacted with ${customEmoji}`);
 
         } catch (error) {
             console.error('Error handling reaction:', error);
