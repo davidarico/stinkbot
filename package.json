@@ -27,5 +27,8 @@
   "license": "MIT",
   "devDependencies": {
     "npm": "^10.0.0"
+  },
+  "dependencies": {
+    "openai": "^5.11.0"
   }
 }

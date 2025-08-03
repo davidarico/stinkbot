@@ -95,6 +95,10 @@ export default function GameManagementPage() {
   const [nightActions, setNightActions] = useState<Record<number, string>>({})
   const [saveTimeouts, setSaveTimeouts] = useState<Record<number, NodeJS.Timeout>>({})
   const [savedActions, setSavedActions] = useState<Set<number>>(new Set())
+  // Add state for calculation results near other useState hooks
+  const [calcLoading, setCalcLoading] = useState(false);
+  const [calcResult, setCalcResult] = useState<any>(null);
+  const [calcError, setCalcError] = useState<string | null>(null);
 
   useEffect(() => {
     // Check if user is already authenticated for this game
@@ -303,7 +307,7 @@ export default function GameManagementPage() {
       playerId: player.id,
       roleId: shuffledRoles[index].id,
       isWolf: shuffledRoles[index].alignment === "wolf",
-      skinnedRole: gameData.isSkinned ? generateSkinnedRole(shuffledRoles[index]) : undefined
+      skinnedRole: gameData.isSkinned ? shuffledRoles[index].name : undefined
     }))
 
     try {
@@ -338,32 +342,6 @@ export default function GameManagementPage() {
         variant: "destructive",
       })
     }
-  }
-
-  const generateSkinnedRole = (role: Role): string => {
-    // Simple role skinning logic - you can expand this
-    const theme = gameData.themeName?.toLowerCase() || 'themed'
-    const capitalizedTheme = theme.charAt(0).toUpperCase() + theme.slice(1)
-    
-    const roleNames: Record<string, string> = {
-      'villager': `${capitalizedTheme} Citizen`,
-      'seer': `${capitalizedTheme} Oracle`,
-      'doctor': `${capitalizedTheme} Healer`,
-      'bodyguard': `${capitalizedTheme} Guardian`,
-      'detective': `${capitalizedTheme} Investigator`,
-      'vigilante': `${capitalizedTheme} Avenger`,
-      'mayor': `${capitalizedTheme} Leader`,
-      'werewolf': `${capitalizedTheme} Monster`,
-      'alpha wolf': `${capitalizedTheme} Beast Leader`,
-      'wolf shaman': `${capitalizedTheme} Dark Mystic`,
-      'traitor': `${capitalizedTheme} Betrayer`,
-      'serial killer': `${capitalizedTheme} Stalker`,
-      'jester': `${capitalizedTheme} Fool`,
-      'survivor': `${capitalizedTheme} Wanderer`,
-      'witch': `${capitalizedTheme} Enchanter`,
-    }
-    
-    return roleNames[role.name.toLowerCase()] || `${capitalizedTheme} ${role.name}`
   }
 
   const togglePlayerStatus = async (playerId: number) => {
@@ -1403,6 +1381,65 @@ export default function GameManagementPage() {
             <div className="lg:col-span-2 space-y-6">
               {/* Living Players */}
               <div className="space-y-4">
+                {gameData.phase === "night" && (
+                  <div className="flex flex-col gap-2 mb-4">
+                    <div className="flex justify-end">
+                      <Button
+                        variant="secondary"
+                        onClick={async () => {
+                          setCalcLoading(true);
+                          setCalcError(null);
+                          setCalcResult(null);
+                          try {
+                            const res = await fetch(`/api/games/${gameId}/calculate-night-actions`, { method: "POST" });
+                            const data = await res.json();
+                            if (!res.ok) throw new Error(data.error || "Unknown error");
+                            setCalcResult(data);
+                          } catch (err: any) {
+                            setCalcError(err.message || "Failed to calculate night actions");
+                          } finally {
+                            setCalcLoading(false);
+                          }
+                        }}
+                        disabled={calcLoading}
+                      >
+                        {calcLoading ? "Calculating..." : "Calculate Night Actions"}
+                      </Button>
+                    </div>
+                    {calcError && (
+                      <div className="text-red-500 mt-2">{calcError}</div>
+                    )}
+                    {calcResult && (
+                      <div className="mt-4 p-4 bg-gray-100 rounded">
+                        <h4 className="font-bold mb-2">Night Action Results</h4>
+                        <div>
+                          <strong>Deaths:</strong>
+                          <ul>
+                            {calcResult.deaths?.map((d: any, i: number) => (
+                              <li key={i}>{d.player} — {d.cause}</li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div>
+                          <strong>Info Results:</strong>
+                          <ul>
+                            {calcResult.infoResults?.map((info: any, i: number) => (
+                              <li key={i}>{info.player}: {info.result}</li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div>
+                          <strong>Other Events:</strong>
+                          <ul>
+                            {calcResult.otherEvents?.map((ev: string, i: number) => (
+                              <li key={i}>{ev}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {/* Town */}
                 {players.filter((p) => p.alignment === "town" && p.status === "alive").length > 0 && (
                   <Card className={isDayPhase ? "bg-white/90" : "bg-white/10"}>

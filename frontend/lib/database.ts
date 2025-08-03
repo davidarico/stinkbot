@@ -33,6 +33,8 @@ interface Player {
   is_wolf: boolean
   is_dead: boolean
   is_framed: boolean
+  framed_night?: number
+  charges_left?: number
   signed_up_at: Date
   charges?: number
   role?: string // This will be populated from the role join
@@ -52,6 +54,7 @@ interface GameRole {
   role_id: number
   role_count: number
   custom_name?: string
+  charges?: number
 }
 
 interface Role {
