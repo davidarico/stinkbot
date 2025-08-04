@@ -1421,21 +1421,19 @@ export default function GameManagementPage() {
                           </ul>
                         </div>
                         <div>
-                          <strong>Info Results:</strong>
+                          <strong>Results:</strong>
                           <ul>
-                            {calcResult.infoResults?.map((info: any, i: number) => (
-                              <li key={i}>{info.player}: {info.result}</li>
+                            {calcResult.results?.map((result: any, i: number) => (
+                              <li key={i}>{result.player}: {result.resultMessage}</li>
                             ))}
                           </ul>
                         </div>
-                        <div>
-                          <strong>Other Events:</strong>
-                          <ul>
-                            {calcResult.otherEvents?.map((ev: string, i: number) => (
-                              <li key={i}>{ev}</li>
-                            ))}
-                          </ul>
-                        </div>
+                        {calcResult.explanation && (
+                          <div>
+                            <strong>Explanation:</strong>
+                            <p className="mt-2 text-sm text-gray-600">{calcResult.explanation}</p>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

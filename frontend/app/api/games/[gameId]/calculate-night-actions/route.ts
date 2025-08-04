@@ -4,6 +4,43 @@ import fs from "fs/promises";
 import path from "path";
 import { db } from "@/lib/database";
 
+// Define the tool schema for function calling
+const tools = {
+  type: "function" as const,
+  function: {
+    name: "process_night_actions",
+    description: "Apply the Werewolf night-action rules and return structured results",
+    parameters: {
+      type: "object",
+      properties: {
+        deaths: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              player: { type: "string" },
+              cause:  { type: "string" }
+            },
+            required: ["player", "cause"]
+          }
+        },
+        results: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              player: { type: "string" },
+              resultMessage: { type: "string" }
+            },
+            required: ["player", "resultMessage"]
+          }
+        }
+      },
+      required: ["deaths", "results"]
+    }
+  }
+};
+
 async function getGameData(gameId: string, nightNumber: number) {
   try {
     // Get game information
@@ -121,7 +158,7 @@ export async function POST(req: NextRequest, { params }: { params: { gameId: str
     const gameData = await getGameData(gameId, nightNumber);
 
     // 2. Read the prompt template
-    const promptPath = path.join(process.cwd(), "frontend", "NIGHT_ACTION_PROMPT.txt");
+    const promptPath = path.join(process.cwd(), "NIGHT_ACTION_PROMPT.txt");
     const promptTemplate = await fs.readFile(promptPath, "utf8");
 
     // 3. Format roles with all relevant information for the prompt
@@ -170,7 +207,7 @@ export async function POST(req: NextRequest, { params }: { params: { gameId: str
         
         // Add framing information
         if (p.isFramed) {
-          playerText += ` [framed night ${p.framedNight}]`;
+          playerText += ` [framed:${!!p.isFramed}]`;
         }
         
         // Add role information
@@ -195,41 +232,59 @@ export async function POST(req: NextRequest, { params }: { params: { gameId: str
       })
       .join("\n");
 
-    // 5. Add JSON output instructions
-    const jsonInstructions = `\nRespond ONLY in the following JSON format:\n{\n  "deaths": [ { "player": "Name", "cause": "string" } ],\n  "infoResults": [ { "player": "Name", "result": "string" } ],\n  "otherEvents": [ "string", ... ]\n}\nDo not include any text outside the JSON.\n`;
-
-    // 6. Fill in the prompt
+    // 5. Fill in the prompt
     const prompt = promptTemplate
       .replace("{roles}", rolesText)
-      .replace("{players}", playersText)
-      + "\n" + jsonInstructions;
+      .replace("{players}", playersText);
 
-    // 7. Call OpenAI
+    // 6. Call OpenAI with function calling
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    let aiText = "";
+    
     try {
       const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.2,
-        max_tokens: 800,
+        model: "o4-mini-2025-04-16",
+        messages: [
+          { role: "system", content: "You are the Werewolf moderator. Process the night actions according to the rules and return the results using the provided function." },
+          { role: "user", content: prompt }
+        ],
+        tools: [tools]
       });
-      aiText = completion.choices[0].message.content?.trim() || "";
+
+      // 7. Parse the function call response
+      const message = completion.choices[0].message;
+      
+      if (message.tool_calls?.length) {
+        const call = message.tool_calls[0];
+        const result = JSON.parse(call.function.arguments);
+        
+        // Transform the result to match the expected frontend format
+        return NextResponse.json({
+          deaths: result.deaths || [],
+          results: result.results || [],
+          explanation: result.explanation || ""
+        });
+      } else {
+        // Fallback: try to parse JSON from content if function call failed
+        const content = message.content || "";
+        const jsonStart = content.indexOf("{");
+        const jsonEnd = content.lastIndexOf("}");
+        
+        if (jsonStart !== -1 && jsonEnd !== -1) {
+          const jsonStr = content.slice(jsonStart, jsonEnd + 1);
+          const result = JSON.parse(jsonStr);
+          
+          return NextResponse.json({
+            deaths: result.deaths || [],
+            results: result.results || [],
+            explanation: result.explanation || ""
+          });
+        } else {
+          throw new Error("No valid response format received from AI");
+        }
+      }
     } catch (e) {
       return NextResponse.json({ error: "OpenAI API error", details: String(e) }, { status: 500 });
     }
-
-    // 8. Parse and return the JSON result
-    let result;
-    try {
-      const jsonStart = aiText.indexOf("{");
-      const jsonEnd = aiText.lastIndexOf("}");
-      result = JSON.parse(aiText.slice(jsonStart, jsonEnd + 1));
-    } catch (e) {
-      return NextResponse.json({ error: "Failed to parse AI response", aiText }, { status: 500 });
-    }
-
-    return NextResponse.json(result);
   } catch (error) {
     console.error('Error in calculate night actions:', error);
     return NextResponse.json({ error: "Failed to calculate night actions", details: String(error) }, { status: 500 });
