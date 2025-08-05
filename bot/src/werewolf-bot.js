@@ -96,6 +96,7 @@ class WerewolfBot {
             } else {
                 await message.reply('❓ Unknown command bozo. (Or you fuckers used up all the tokens)');
             }
+            return;
         }
 
         try {
