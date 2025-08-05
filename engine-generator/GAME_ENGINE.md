@@ -1,5 +1,7 @@
 # Werewolf Game Engine
 
+Act as a senior software architect
+
 This repo is meant to provide a moderator with tools to manage a game of Werewolf (A social deception game like mafia)
 This directory will power the frontends ability to calculate night actions
 Right now we leverage calling OpenAI to process the night actions for a game. This is an issue for multiple reasons:
@@ -27,3 +29,5 @@ If you need to just set up the architecture of calculating night actions, have m
 Only use roles that are explicitly stated exist, do not assume any other roles are possible.
 
 Leverage any database call or query you think is fit to accomplish your task
+
+Create a rules.json and roles.json file with consistant logic across all data that the AI regenerate step can understand and make adjustments while also providing consistant game flow management

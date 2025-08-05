@@ -1,0 +1,109 @@
+{
+  "orderOfOperations": [
+    {
+      "name": "Arson (Lighting)",
+      "description": "Arsonist lighting action precedes all other actions",
+      "roles": ["Arsonist"],
+      "action": "light"
+    },
+    {
+      "name": "Misc First Moves",
+      "description": "Information and movement roles that act early",
+      "roles": ["Lookout", "Veteran", "Stalker", "Locksmith", "Patrolman", "Housewatcher", "Sleepwalker", "Orphan"],
+      "action": "info_and_movement"
+    },
+    {
+      "name": "Blocking Roles",
+      "description": "Roles that prevent other actions",
+      "roles": ["Jailkeeper", "Escort", "Consort"],
+      "action": "block"
+    },
+    {
+      "name": "Info Roles",
+      "description": "Roles that gather information",
+      "roles": ["Framer", "Seer", "Bartender", "Gravedigger", "Graverobber", "Clairvoyant", "Bloodhound"],
+      "action": "info"
+    },
+    {
+      "name": "Killing Roles",
+      "description": "Roles that can kill other players",
+      "roles": ["Hypnotist", "Hunter", "Vigilante", "Arsonist", "Plague Bringer", "Serial Killer", "Glutton", "Alpha Wolf"],
+      "action": "kill"
+    },
+    {
+      "name": "Last but Not Least",
+      "description": "Healing roles that act last",
+      "roles": ["Doctor"],
+      "action": "heal"
+    }
+  ],
+  "rampageMechanics": {
+    "rampageableRoles": ["Escort", "Sleepwalker", "Orphan", "Lone Wolf"],
+    "nonRampageableRoles": ["Consort"],
+    "rampageRules": {
+      "targetDiesAtOwnHome": true,
+      "rampagedDiesAtTargetHome": true,
+      "escortEdgeCase": "Escort can be killed at either target's home or own home"
+    }
+  },
+  "homeTargeting": {
+    "cannotBeTargetedAtHome": ["Sleepwalker", "Orphan", "Lone Wolf"],
+    "framerException": "Can frame Sleepwalker & Orphan even though they're away"
+  },
+  "framingEffects": {
+    "Seer": "Sees the framed player as a random Wolf role from game start",
+    "Lookout": "Sees the framed player traveling to the Night Kill target",
+    "Bartender": "Visits framed player → receives three lies",
+    "Patrolman": "Sees opposite movement (visits framed home instead)",
+    "Matchmaker": "Matches framed as Neutral/Wolf rather than Town",
+    "Gravedigger": "Upon digging (if still framed) → sees them as Wolf"
+  },
+  "blockNotifications": {
+    "movingRolesOnly": ["Escort", "Consort", "Locksmith"],
+    "allPlayers": ["Jailkeeper"],
+    "exceptions": {
+      "Sleepwalker": "Not notified by Locksmith"
+    }
+  },
+  "blockEffects": {
+    "movementBased": ["Escort", "Consort", "Locksmith"],
+    "allActionsExceptSeer": ["Jailkeeper"]
+  },
+  "bodyPlacement": {
+    "defaultLocation": "inside victim's own house",
+    "rampagedBodies": "inside their target's home",
+    "blockedKillerBodies": "blocker's body in Town Square if they block SK/Murderer",
+    "killFlavors": {
+      "Alpha": "blood & fur",
+      "Stalker": "on their porch",
+      "Patrolman": "both parties outside target's door",
+      "Serial Killer": "stabbed wounds",
+      "Murderer": "axe wounds",
+      "Arsonist": "burned",
+      "Hypnotist": "improvised weapon",
+      "Hunter": "bullet holes",
+      "Vigilante": "bullet holes",
+      "Veteran": "vanished"
+    }
+  },
+  "reTargetingSamePlayer": {
+    "allowedFor": ["Alpha Wolf", "Plague Bringer"],
+    "allowedWhen": "Player was prevented from leaving home (e.g. blocked before moving)"
+  },
+  "bartenderResultPool": {
+    "includes": "roles in the actual game at start",
+    "excludes": ["Sleepwalker", "Orphan", "Lone Wolf", "Heir"],
+    "bartenderCanAppear": "only if there was a second Bartender",
+    "repeatVisits": "each visit yields a fresh, random pool"
+  },
+  "conversionRoles": {
+    "convertAtDayStart": true,
+    "chargeInheritance": "if new role uses charges, receive full set",
+    "killCountRoles": "new win-count = original player's count",
+    "digInheritances": {
+      "Arsonist": "inherits douses",
+      "Plague Bringer": "inherits infections + carrier count"
+    },
+    "themeSwap": "in themed games, conversion role adopts new theme"
+  }
+} 

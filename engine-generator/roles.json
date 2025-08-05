@@ -1,0 +1,671 @@
+{
+  "roles": [
+    {
+      "id": 1,
+      "name": "Bartender",
+      "team": "Town",
+      "targets": "Players",
+      "moves": true,
+      "description": "The Bartender visits one player per night. They receive three roles that were in the game at the beginning — the targeted player's true role and two lies. One role must be town. One role must be wolf. The final role must either be town or neutral.",
+      "framerInteraction": "If the Bartender's target is framed, the Bartender will receive three lies.",
+      "specialProperties": [
+        "Roles that cannot be targeted (such as Sleepwalker or Orphan) cannot appear in Bartender information",
+        "Roles that appear as other roles in info (such as Heir or Rivals) cannot appear in Bartender information",
+        "The Bartender will fail if their target is untargetable at home (UTAH)",
+        "If the Bartender visits a player they have already visited, the information received will be rerandomized"
+      ],
+      "inputRequirements": {
+        "type": "player_dropdown",
+        "description": "Select a player to visit",
+        "validation": "Target must be alive and targetable at home"
+      }
+    },
+    {
+      "id": 2,
+      "name": "Couple",
+      "team": "Town",
+      "targets": "N/A",
+      "moves": false,
+      "description": "The Couple can communicate privately with other members of the Couple at night.",
+      "specialProperties": [
+        "The Couple has access to couple chat, which is only open at night",
+        "The Couple starts with exactly two members, but conversion roles who turn into the Couple join the couple chat"
+      ],
+      "inputRequirements": {
+        "type": "none",
+        "description": "No input required"
+      }
+    },
+    {
+      "id": 3,
+      "name": "Doctor",
+      "team": "Town",
+      "targets": "Players",
+      "moves": true,
+      "healFlavor": "Bandages",
+      "description": "Each night, the Doctor may choose to heal a player from any death, ensuring their survival to the next day. This action works on all players including UTAH roles.",
+      "specialProperties": [
+        "The doctor can save (target) themselves"
+      ],
+      "inputRequirements": {
+        "type": "player_dropdown",
+        "description": "Select a player to heal",
+        "validation": "Target must be alive"
+      }
+    },
+    {
+      "id": 4,
+      "name": "Escort",
+      "team": "Town",
+      "targets": "Players",
+      "moves": true,
+      "description": "The Escort may choose to visit a player each night. This prevents a moving role on a night they choose to move from performing their action that night.",
+      "specialProperties": [
+        "The Escort is a rampageable role",
+        "The Escort dies if they travel to a Serial Killer or a Murderer",
+        "When this happens, the body will appear in townsquare in the morning with the neutral killer's respective kill flavor, and the killer will not successfully kill their target that night",
+        "The Escort will fail if their target is untargetable at home (UTAH)"
+      ],
+      "inputRequirements": {
+        "type": "player_dropdown",
+        "description": "Select a player to block",
+        "validation": "Target must be alive and targetable at home"
+      }
+    },
+    {
+      "id": 5,
+      "name": "Gravedigger",
+      "team": "Town",
+      "targets": "Dead players in the graveyard",
+      "moves": true,
+      "description": "Each night, the Gravedigger may choose to travel to the graveyard and learn the role of a player who has already died.",
+      "framerInteraction": "If the Gravedigger's target was framed, they will appear as a random wolf role in the game.",
+      "specialProperties": [
+        "The Gravedigger cannot act without a dead player in the graveyard",
+        "The Gravedigger cannot target a player who has \"disappeared\""
+      ],
+      "inputRequirements": {
+        "type": "dead_player_dropdown",
+        "description": "Select a dead player to investigate",
+        "validation": "Target must be dead and not disappeared"
+      }
+    },
+    {
+      "id": 6,
+      "name": "Hunter",
+      "team": "Town",
+      "targets": "Players",
+      "moves": true,
+      "hasCharges": true,
+      "defaultCharges": 3,
+      "description": "The Hunter may shoot and kill any other player (X) number of times (\"X\" is variable at mod discretion and game size, but is typically 3).",
+      "standardResultsFlavor": "Successful Hunter targets will show as being shot.",
+      "specialProperties": [
+        "The Hunter may not shoot on the first game night",
+        "If the Hunter's shot results in multiple deaths, only one bullet is expended",
+        "If the Hunter's shot fails for any reason, they do not lose a bullet",
+        "The Hunter will fail if their target is untargetable at home (UTAH)",
+        "The Hunter will always win a 1-1 tie against a wolf, regardless of remaining bullets"
+      ],
+      "inputRequirements": {
+        "type": "player_dropdown",
+        "description": "Select a player to shoot",
+        "validation": "Target must be alive, targetable at home, and Hunter must have charges remaining"
+      }
+    },
+    {
+      "id": 7,
+      "name": "Jailkeeper",
+      "team": "Town",
+      "targets": "Players",
+      "moves": true,
+      "description": "Each night, the Jailkeeper may choose to put another player in jail. This will prevent the target from performing their action and protect them from any moving player targets.",
+      "framerInteraction": "A jailed player may still be framed.",
+      "specialProperties": [
+        "The Housewatcher will see a the Jailkeeper visit and the jailed player leave their house",
+        "The Lookout will see a jailed player go to jail",
+        "The Lookout will only see the Jailkeeper travel to their target, not to jail",
+        "The Jailkeeper dies if they travel to the Serial Killer or the Murderer",
+        "Their dead body will be found in townsquare the next morning with the killer's respective kill flavor",
+        "The killer will not kill their target that night"
+      ],
+      "inputRequirements": {
+        "type": "player_dropdown",
+        "description": "Select a player to jail",
+        "validation": "Target must be alive and targetable at home"
+      }
+    },
+    {
+      "id": 8,
+      "name": "Knight",
+      "team": "Town",
+      "targets": "N/A",
+      "moves": false,
+      "description": "The Knight has two lives, represented by a suit of armor.",
+      "standardResultsFlavor": "Following first death of any kind, moderator-revealed loss of armor.",
+      "specialProperties": [
+        "The Knight dies if attacked twice in one night but is still revealed as the Knight in results"
+      ],
+      "inputRequirements": {
+        "type": "none",
+        "description": "No input required"
+      }
+    },
+    {
+      "id": 9,
+      "name": "Locksmith",
+      "team": "Town",
+      "targets": "Houses",
+      "moves": true,
+      "description": "Every other night the Locksmith may choose to lock another player's house, preventing moving roles from performing their action and protecting them from being targeted by a moving player. The Locksmith spends the alternating nights making a lock.",
+      "framerInteraction": "A locked player may not be framed. If a locked player is targeted, the Framer will receive \"Failed\".",
+      "specialProperties": [
+        "Making a lock is a passive action that cannot be blocked by any means",
+        "The Locksmith starts the game with a lock",
+        "The Locksmith dies if they travel to the Serial Killer or the Murderer",
+        "Their dead body will be found in townsquare the next morning with the killer's respective kill flavor",
+        "The killer will not kill their target that night"
+      ],
+      "inputRequirements": {
+        "type": "player_dropdown",
+        "description": "Select a player's house to lock",
+        "validation": "Target must be alive and Locksmith must be on a lock night"
+      }
+    },
+    {
+      "id": 10,
+      "name": "Lookout",
+      "team": "Town",
+      "targets": "Players",
+      "moves": false,
+      "description": "Every night the Lookout may choose to track a player's movements. The Lookout will see which house their target traveled to that night, but not if they returned.",
+      "framerInteraction": "The Lookout will see their target travel to the alpha target, even if no such kill appears in results.",
+      "specialProperties": [
+        "The Lookout will see players travel to jail or the graveyard if applicable",
+        "The Lookout will only see one destination per target"
+      ],
+      "inputRequirements": {
+        "type": "player_dropdown",
+        "description": "Select a player to watch",
+        "validation": "Target must be alive"
+      }
+    },
+    {
+      "id": 11,
+      "name": "Matchmaker",
+      "team": "Town",
+      "targets": "Players",
+      "moves": true,
+      "description": "Every night, the Matchmaker may choose two other players. They will be told \"MATCH\" if both players have the same alignment and \"NO MATCH\" if not.",
+      "framerInteraction": "If either target is framed the Matchmaker will receive opposite of normal results.",
+      "specialProperties": [
+        "The Matchmaker only travels to the first name listed",
+        "The Matchmaker will fail if the first target they visit is UTAH"
+      ],
+      "inputRequirements": {
+        "type": "two_player_dropdown",
+        "description": "Select two players to match",
+        "validation": "Both targets must be alive and first target must be targetable at home"
+      }
+    },
+    {
+      "id": 12,
+      "name": "Mayor",
+      "team": "Town",
+      "targets": "N/A",
+      "moves": false,
+      "description": "Once per game, the Mayor can choose to pardon any player who is about to hang. When a Mayor pardons a player, the player with the second highest amount of votes hangs - provided that player is over the vote threshold. A pardon is made in a player's journal. Once per game, the Mayor can publicly announce that they are stuffing the ballot, adding two votes to the vote total of whomever the Mayor is voting for at time of announcement. A stuff is attempted by announcing intent to stuff in the voting booth channel. A Mayor cannot pardon a player they have already stuffed the ballot for, or vice versa.",
+      "standardResultsFlavor": {
+        "pardon": "If the pardoned player is hanged, the Mayor's identity is not revealed; however, the pardon is publicly announced. There is no announcement made if pardoned player is not hanged.",
+        "ballotStuff": "If the stuffed player is hanged, the Mayor's identity is publicly revealed by the moderator provided that the stuff was the deciding factor in the hanged player's death."
+      },
+      "specialProperties": [
+        "Both actions are day actions",
+        "Both actions are irrevocable and once announced to moderator cannot be changed",
+        "If the Mayor changes their vote after stuffing the ballot box, the extra ballots will not count",
+        "A stuff has priority over LSSV"
+      ],
+      "inputRequirements": {
+        "type": "none",
+        "description": "No input required"
+      }
+    },
+    {
+      "id": 13,
+      "name": "Patrolman",
+      "team": "Town",
+      "targets": "Houses",
+      "moves": true,
+      "description": "Each night, the Patrolman may choose to travel to another player's house. They will see all players who enter or leave the house. If a kill is attempted at the house, the Patrolman will kill the killer and die in the process. All potential targets of the attack will survive.",
+      "framerInteraction": "If the Patrolman's target is framed, their target will look like they did the opposite of what they actually did that night. (Movers will not move, nonmovers will move.)",
+      "standardResultsFlavor": "The Patrolman will show as both killer and Patrolman having died in a fight in the Patrolman's target's front yard.",
+      "specialProperties": [
+        "The Patrolman will kill players even if they target the killer (e.g. targeting a Serial Killer who is visited by the escort)"
+      ],
+      "inputRequirements": {
+        "type": "player_dropdown",
+        "description": "Select a player's house to patrol",
+        "validation": "Target must be alive"
+      }
+    },
+    {
+      "id": 14,
+      "name": "Seer",
+      "team": "Town",
+      "targets": "Players",
+      "moves": false,
+      "description": "The Seer may select a player every night and will receive their role.",
+      "framerInteraction": "The Seer will receive a random role from any wolf role in the game.",
+      "specialProperties": [
+        "The Seer is the only role in the game to receive info if jailed"
+      ],
+      "inputRequirements": {
+        "type": "player_dropdown",
+        "description": "Select a player to investigate",
+        "validation": "Target must be alive"
+      }
+    },
+    {
+      "id": 15,
+      "name": "Sleepwalker",
+      "team": "Town",
+      "targets": "N/A",
+      "moves": true,
+      "description": "The Sleepwalker selects two players to avoid each night. They wander to any other house besides their own and the avoided players.",
+      "standardResultsFlavor": "If the player in the house they wander to is attacked, the Sleepwalker will die from the same attack, even if the target does not die.",
+      "immunities": "The Sleepwalker is immune to attacks and information gathering attempts from all moving roles that target players except for the Stalker (UTAH). Players who target the Sleepwalker under these conditions will receive \"FAILED\" in their results for the night.",
+      "specialProperties": [
+        "The Sleepwalker does not receive the information of where they wandered to at night"
+      ],
+      "inputRequirements": {
+        "type": "two_player_dropdown",
+        "description": "Select two players to avoid",
+        "validation": "Both targets must be alive"
+      }
+    },
+    {
+      "id": 16,
+      "name": "Veteran",
+      "team": "Town",
+      "targets": "N/A",
+      "moves": false,
+      "hasCharges": true,
+      "defaultCharges": 3,
+      "description": "(X) times per game, the Veteran can go on ALERT to kill all moving roles that visit the veteran that night (\"X\" is variable at mod discretion and game size, but is typically 3).",
+      "standardResultsFlavor": "Victims vanish without a trace.",
+      "specialProperties": [
+        "Roles that target the house are not killed by Veteran",
+        "If the Veteran's ALERT results in multiple deaths, only one alert is expended",
+        "Kills from the Veteran are the only kills that can not be healed by the Doctor"
+      ],
+      "inputRequirements": {
+        "type": "alert_toggle",
+        "description": "Toggle ALERT on/off",
+        "validation": "Veteran must have charges remaining"
+      }
+    },
+    {
+      "id": 17,
+      "name": "Villager",
+      "team": "Town",
+      "targets": "N/A",
+      "moves": false,
+      "description": "The Villager has no special powers.",
+      "inputRequirements": {
+        "type": "none",
+        "description": "No input required"
+      }
+    },
+    {
+      "id": 18,
+      "name": "Alpha Wolf",
+      "team": "Wolf",
+      "targets": "Players",
+      "moves": true,
+      "inWolfChat": true,
+      "description": "Each night, the Alpha Wolf travels to a player's home and kills them.",
+      "standardResultsFlavor": "Victims will be found dead with blood and fur near the body.",
+      "specialProperties": [
+        "If there is a dispute among the wolves over who to kill, the Alpha Wolf has the final say",
+        "If the Alpha Wolf dies, the Heir becomes the new Alpha Wolf (if in game), otherwise a new Alpha Wolf will be chosen by the wolves from amongst the alive \"vanilla\" wolves",
+        "If no \"vanilla\" wolf is alive, the wolves must choose a new alpha from amongst any of the living wolves in wolf chat",
+        "This player loses any role and abilities they had prior, as their new role is \"Alpha Wolf\"",
+        "Info roles will see this player as the Alpha Wolf from then on",
+        "The Alpha Wolf will fail if they attempt to target a UTAH role",
+        "The Alpha Wolf may choose the same target twice in a row for their Night Action"
+      ],
+      "inputRequirements": {
+        "type": "player_dropdown",
+        "description": "Select a player to kill",
+        "validation": "Target must be alive and targetable at home"
+      }
+    },
+    {
+      "id": 19,
+      "name": "Bloodhound",
+      "team": "Wolf",
+      "targets": "Houses",
+      "moves": true,
+      "inWolfChat": true,
+      "description": "Each night, the Bloodhound chooses a role to search for amongst the town. The Bloodhound will return with three names of players, one of which will be the player with that role. The other two names will be random names of Alive players.",
+      "specialProperties": [
+        "If the Bloodhound attempts to search for a role that is either not alive, or was never in the game to start with, they will receive a \"failure\" result",
+        "This also means that successful Bloodhound attempts will always return Alive players",
+        "If there is more than one player that has the role the Bloodhound is searching for, the Bloodhound will receive the name of a random player with that role",
+        "More than one player with that role may show up in results, so long as at least one of those names is that role",
+        "The Bloodhound may search for the same role twice-if they do, the results will be rerandomized following normal Bloodhound rules",
+        "The Bloodhound may not search for Villager"
+      ],
+      "inputRequirements": {
+        "type": "role_dropdown",
+        "description": "Select a role to search for",
+        "validation": "Role must exist in the game"
+      }
+    },
+    {
+      "id": 20,
+      "name": "Clairvoyant",
+      "team": "Wolf",
+      "targets": "Homes",
+      "moves": true,
+      "inWolfChat": true,
+      "description": "The Clairvoyant will select a player every night and receive their role.",
+      "specialProperties": [
+        "The Clairvoyant will fail if their target is untargetable at home (UTAH)"
+      ],
+      "inputRequirements": {
+        "type": "player_dropdown",
+        "description": "Select a player to investigate",
+        "validation": "Target must be alive and targetable at home"
+      }
+    },
+    {
+      "id": 21,
+      "name": "Consort",
+      "team": "Wolf",
+      "targets": "Players",
+      "moves": true,
+      "inWolfChat": true,
+      "description": "The Consort may choose to visit a player each night. This prevents a moving role on a night they choose to move from leaving their home and performing their action that night.",
+      "specialProperties": [
+        "The Consort is a non-rampageable role",
+        "The Consort dies if they travel to a Serial Killer or a Murderer",
+        "When this happens, the body will appear in Townsquare in the morning with the Neutral Killer's respective kill flavor, and the killer will not successfully kill their target that night",
+        "The Consort will fail if their target is untargetable at home (UTAH)"
+      ],
+      "inputRequirements": {
+        "type": "player_dropdown",
+        "description": "Select a player to block",
+        "validation": "Target must be alive and targetable at home"
+      }
+    },
+    {
+      "id": 22,
+      "name": "Framer",
+      "team": "Wolf",
+      "targets": "Houses",
+      "moves": true,
+      "inWolfChat": true,
+      "description": "The Framer travels to the home of their target and frames them to appear as a wolf to non-wolf info roles. This frame lasts 2 nights, starting with the night the frame takes place.",
+      "specialProperties": [
+        "How info roles view the frame varies by the info role",
+        "This specific interaction is described in the relevant info roles",
+        "If a framed player dies, their frame will still last the full 2 nights",
+        "(Example: the Grave Digger can dig a framed player, and be affected by that frame)"
+      ],
+      "inputRequirements": {
+        "type": "player_dropdown",
+        "description": "Select a player to frame",
+        "validation": "Target must be alive"
+      }
+    },
+    {
+      "id": 23,
+      "name": "Glutton",
+      "team": "Wolf",
+      "targets": "Players",
+      "moves": true,
+      "hasCharges": true,
+      "defaultCharges": 3,
+      "inWolfChat": true,
+      "description": "Once a night, the Glutton may travel to a player's home in an attempt to eat that player whole. The Glutton has (X) charges that are burned if the glutton succeeds or fails on their target, but not if they are blocked (\"X\" is variable at mod discretion and game size, but is usually 3).",
+      "standardResultsFlavor": "Victims vanish without a trace. Doctor Heals of a player eaten by the Glutton show as a \"player has been found covered in saliva but alive.\"",
+      "specialProperties": [
+        "If their target does not leave their home that night, the Glutton consumes them",
+        "If their target moves, the Glutton attempt fails",
+        "The Glutton may not target a player that another player in Wolf Chat is targeting"
+      ],
+      "inputRequirements": {
+        "type": "player_dropdown",
+        "description": "Select a player to eat",
+        "validation": "Target must be alive, targetable at home, and Glutton must have charges remaining"
+      }
+    },
+    {
+      "id": 24,
+      "name": "Hypnotist",
+      "team": "Wolf",
+      "targets": "Players",
+      "moves": true,
+      "inWolfChat": true,
+      "description": "Once a night, the Hypnotist may travel to a player's home in an attempt to hypnotize that player. That target will then involuntarily kill anyone they travel to the following night.",
+      "standardResultsFlavor": {
+        "killedByHypnotized": "A player killed by a hypnotized player will be strangled to death.",
+        "hypnotizedPlayer": "A player that has been hypnotized into killing another player will wake up \"Dizzy\" the morning after."
+      },
+      "specialProperties": [
+        "If a hypnotized player visits ANY wolf role, the hypnosis will be canceled and the hypnotized player will complete their night action as intended",
+        "The hypnotized player will not wake up dizzy"
+      ],
+      "inputRequirements": {
+        "type": "player_dropdown",
+        "description": "Select a player to hypnotize",
+        "validation": "Target must be alive and targetable at home"
+      }
+    },
+    {
+      "id": 25,
+      "name": "Lone Wolf",
+      "team": "Wolf",
+      "targets": "Players",
+      "moves": true,
+      "inWolfChat": false,
+      "description": "The Lone Wolf travels to the house of a player of their choosing each night. They cannot be targeted at home (UTAH).",
+      "specialProperties": [
+        "The Lone Wolf cannot become the Alpha until they are the final wolf remaining in Wolf Chat",
+        "The Lone Wolf is a Rampageable role"
+      ],
+      "inputRequirements": {
+        "type": "player_dropdown",
+        "description": "Select a player to visit",
+        "validation": "Target must be alive"
+      }
+    },
+    {
+      "id": 26,
+      "name": "Stalker",
+      "team": "Wolf",
+      "targets": "Houses",
+      "moves": true,
+      "hasCharges": true,
+      "defaultCharges": 3,
+      "inWolfChat": true,
+      "description": "Once a night, the Stalker may travel to a player's home in an attempt to slash that person to death if that player moves. The Stalker has (X) charges that are burned if the Stalker succeeds or fails on their target, but not if they are blocked (\"X\" is variable at mod discretion and game size, but is usually 3).",
+      "standardResultsFlavor": "Victims are found slashed to death on their front porch.",
+      "specialProperties": [
+        "If their target leaves their home that night, the Stalker kills them",
+        "If their target does not move, the Stalker attempt fails"
+      ],
+      "inputRequirements": {
+        "type": "player_dropdown",
+        "description": "Select a player's house to stalk",
+        "validation": "Target must be alive and Stalker must have charges remaining"
+      }
+    },
+    {
+      "id": 27,
+      "name": "Turncoat",
+      "team": "Wolf",
+      "targets": "N/A",
+      "moves": false,
+      "inWolfChat": false,
+      "description": "The Turncoat is a Wolf that is not in Wolf Chat.",
+      "specialProperties": [
+        "The Turncoat receives the names of all wolves at the start of the game",
+        "The wolves in Wolf Chat are notified that they have a Turncoat, but not who it is",
+        "The Turncoat also receives the names of any players who join Wolf Chat for any reason",
+        "If there is a second Turncoat in game, the Turncoat is informed of that info, but not the name of the other Turncoat",
+        "If the Turncoat is the last remaining Wolf, they will join Wolf Chat and become the Alpha Wolf"
+      ],
+      "inputRequirements": {
+        "type": "none",
+        "description": "No input required"
+      }
+    },
+    {
+      "id": 28,
+      "name": "Wolf",
+      "team": "Wolf",
+      "targets": "N/A",
+      "moves": false,
+      "inWolfChat": true,
+      "description": "The Wolf, also referred to as a \"Vanilla\" or \"Nilla\" Wolf, is a wolf without any special abilities that is in Wolf Chat.",
+      "specialProperties": [
+        "After Heir, a \"Nilla\" Wolf must become the next Alpha after Alpha Wolf death"
+      ],
+      "inputRequirements": {
+        "type": "none",
+        "description": "No input required"
+      }
+    },
+    {
+      "id": 29,
+      "name": "Arsonist",
+      "team": "Neutral",
+      "targets": "Players",
+      "moves": true,
+      "description": "Each night, the Arsonist may choose one of two options. Douse: The Arsonist chooses a player to \"douse\" by traveling to their home. This player gains the doused status and is notified in the morning. Light: The Arsonist lights all of their doused players on fire, killing them and themselves. The Arsonist wins when (X) players die from being lit on fire (\"X\" is variable at mod discretion and game size, but is typically 3). That number does not include the Arsonist themselves.",
+      "standardResultsFlavor": "Victims are found burned to death. This includes the Arsonist themselves. It will not be made known who among the burned players was the Arsonist.",
+      "immunities": "Alpha Kills",
+      "specialProperties": [
+        "The Arsonist will fail if they attempt to target a UTAH role",
+        "If anyone visits or blocks the Arsonist, they will be doused",
+        "If anyone visits an arsonist's target for dousing that night, they will also be doused",
+        "An Arsonist's \"Light\" action precedes all other Night actions regardless of OoO (undoused players are NOT rampaged)",
+        "The Arsonist CANNOT be night killed by the Alpha, but they can be killed by any other killing role",
+        "If a Lookout watches the Arsonist on a night that they Light, they will receive \"You watch the Arsonist light their targets on fire\" as their information"
+      ],
+      "inputRequirements": {
+        "type": "arsonist_action",
+        "description": "Choose to douse a player or light all doused players",
+        "validation": "For douse: target must be alive and targetable at home. For light: must have doused players"
+      }
+    },
+    {
+      "id": 30,
+      "name": "Graverobber",
+      "team": "Neutral",
+      "targets": "Dead players in the graveyard",
+      "moves": true,
+      "description": "Each night, the Graverobber may choose to travel to the graveyard and assume the role of a player who has already died. This includes the win condition of that player's role.",
+      "specialProperties": [
+        "The Graverobber cannot act without a dead player in the graveyard",
+        "The Graverobber may not target a player who has \"disappeared\""
+      ],
+      "inputRequirements": {
+        "type": "dead_player_dropdown",
+        "description": "Select a dead player to assume the role of",
+        "validation": "Target must be dead and not disappeared"
+      }
+    },
+    {
+      "id": 31,
+      "name": "Jester",
+      "team": "Neutral",
+      "targets": "Players that voted for the Jester to hang",
+      "moves": false,
+      "description": "The Jester's win condition triggers when they are hanged. No other deaths count. Upon successful trigger of win condition, the Jester selects one person with an active vote on them at End of Day and kills them.",
+      "standardResultsFlavor": "Victims are pointed at by the Jester during hanging, and then that victim dies.",
+      "inputRequirements": {
+        "type": "none",
+        "description": "No input required"
+      }
+    },
+    {
+      "id": 32,
+      "name": "Murderer",
+      "team": "Neutral",
+      "targets": "Players",
+      "moves": true,
+      "description": "The Murderer is a wolf-aligned neutral killer that needs to kill (X) town-aligned roles to win (\"X\" is variable at mod discretion and game size, but is typically 3). After the Murderer kills (X) town-aligned players they will leave the game and be declared a winner in Results.",
+      "standardResultsFlavor": "Victims are found with an axe in their head.",
+      "specialProperties": [
+        "The Murderer will fail if they attempt to target a UTAH role",
+        "If the Murderer is blocked or locked they will kill that blocker and their body will be found in townsquare in the morning",
+        "The Murderer IS notified of the amount of successful town kills they need to win at start of game, but is not notified as to whether or not their kills qualify towards completion of their win condition"
+      ],
+      "inputRequirements": {
+        "type": "player_dropdown",
+        "description": "Select a player to kill",
+        "validation": "Target must be alive and targetable at home"
+      }
+    },
+    {
+      "id": 33,
+      "name": "Orphan",
+      "team": "Neutral",
+      "targets": "Players",
+      "moves": true,
+      "description": "Each night, the Orphan travels to the house of a player of their choosing. After their third successful visit to a player, the Orphan will assume the role and win condition of the player they chose that night.",
+      "standardResultsFlavor": "If the player in the house they travel to is attacked, the Orphan will die from the same attack, even if the target does not die.",
+      "immunities": "The Orphan is immune to attacks and information gathering attempts from all moving roles that target players except for the Stalker (UTAH). Players who target the Orphan under these conditions will receive \"FAILED\" in their results for the night.",
+      "specialProperties": [
+        "If the Orphan is jailed, locked, or blocked they will not convert to a new role and their conversion timer will not decrease",
+        "If the Orphan misses a Night Action or chooses to stay home, their conversion timer does not decrease",
+        "If the Orphan misses a Night Action or chooses to stay home, they do not operate as a UTAH role for that night"
+      ],
+      "inputRequirements": {
+        "type": "player_dropdown",
+        "description": "Select a player to visit",
+        "validation": "Target must be alive"
+      }
+    },
+    {
+      "id": 34,
+      "name": "Plague Bringer",
+      "team": "Neutral",
+      "targets": "Houses",
+      "moves": true,
+      "description": "The Plague Bringer is a neutral killer that needs to infect half of living players to win (including the Plague Bringer as an infected member). Each night, the Plague Bringer will choose a player to visit. They will infect 1) The player they visit 2) Any visitors to the chosen player 3) Any visitors to the Plague Bringer. An infected player will become sick and die two days afterward. If a player visits or is visited by the Plague Bringer TWICE before dying of their infection, they will become a Carrier. A Carrier will infect anyone they visit or that visits them. A Carrier will not die of the infection, but still counts as an infected player. The Plague Bringer is notified when a player becomes a Carrier, but is not notified who that player is. Carriers may not make other players into Carriers, but will operate \"with splash\" the same way the Plague Bringer works. The Plague Bringer wins when half the town is infected and will be declared a winner in results. They will then leave town if they are still alive. The Plague Bringer can win even if they are dead.",
+      "standardResultsFlavor": "On Day 2 of the infection, the infected player will wake up with a bloody cough. On day 3 of the infection, the player will be found \"dead of the plague\" in the morning, but they will still be able to attempt Night Actions that night.",
+      "specialProperties": [
+        "The Plague Bringer may visit the same target twice in a row"
+      ],
+      "inputRequirements": {
+        "type": "player_dropdown",
+        "description": "Select a player to visit",
+        "validation": "Target must be alive"
+      }
+    },
+    {
+      "id": 35,
+      "name": "Serial Killer",
+      "team": "Neutral",
+      "targets": "Players",
+      "moves": true,
+      "description": "The Serial Killer is a neutral killer that needs to kill (X) players to win (\"X\" is variable at mod discretion and game size, but is typically 4). After the Serial Killer kills (X) players they will leave the game and be declared a winner in Results.",
+      "standardResultsFlavor": "Victims are found stabbed to death.",
+      "immunities": "Alpha Kills",
+      "specialProperties": [
+        "The Serial Killer will fail if they attempt to target a UTAH role",
+        "If the Serial Killer is blocked or locked they will kill that blocker and their body will be found in townsquare in the morning",
+        "The Serial Killer IS notified of the amount of successful kills they need to win at start of game"
+      ],
+      "inputRequirements": {
+        "type": "player_dropdown",
+        "description": "Select a player to kill",
+        "validation": "Target must be alive and targetable at home"
+      }
+    }
+  ]
+} 

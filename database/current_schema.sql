@@ -1,5 +1,5 @@
 -- Werewolf Discord Bot Database Schema
--- Generated automatically on 2025-08-03T18:20:07.130Z
+-- Generated automatically on 2025-08-05T16:07:38.690Z
 -- This file shows the current database structure with table comments
 -- Run this after migrations to get the latest schema
 
@@ -13,6 +13,18 @@ CREATE TABLE game_channels (
     night_message TEXT,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(channel_id, game_id)
+);
+
+-- Stores cross-night game information like hypnotist effects, auraseer balls, etc.
+CREATE TABLE game_meta (
+    id SERIAL PRIMARY KEY,
+    game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    user_id VARCHAR(20) NOT NULL,
+    night INTEGER NOT NULL,
+    meta_data JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(game_id, night, user_id)
 );
 
 -- Table to store roles assigned to games, allowing for custom names and theme overrides
@@ -33,8 +45,8 @@ CREATE TABLE game_speed (
     channel_id VARCHAR(20) NOT NULL,
     target_reactions INTEGER NOT NULL,
     current_reactions INTEGER NOT NULL DEFAULT 0,
-    emoji VARCHAR(50) DEFAULT '⚡',
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    emoji VARCHAR(50) DEFAULT '⚡',
     UNIQUE(game_id)
 );
 
