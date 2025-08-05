@@ -20,7 +20,7 @@ class WerewolfBot {
         const command = args.shift().toLowerCase();
 
         // Commands that anyone can use
-        const playerCommands = ['in', 'out', 'vote', 'retract', 'alive', 'peed', 'help', 'meme'];
+        const playerCommands = ['in', 'out', 'vote', 'retract', 'alive', 'peed', 'help', 'meme', 'wolf_list', 'mylo'];
         
         // Check permissions for admin-only commands
         if (!playerCommands.includes(command) && !this.hasModeratorPermissions(message.member)) {
@@ -130,6 +130,9 @@ class WerewolfBot {
                     break;
                 case 'mylo':
                     await message.reply('Mylo can maybe backpedal to Orphan if we need to if this doesn\'t land')
+                    break;
+                case 'wolf_list':
+                    await message.reply('The wolf list? Are we still doing this? Stop talking about the wolf list.');
                     break;
                 default:
                     await message.reply('❓ Unknown command bozo.');
