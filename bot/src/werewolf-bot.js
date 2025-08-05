@@ -3979,16 +3979,14 @@ class WerewolfBot {
         );
         const gameTheme = gameThemeResult.rows[0] || { is_skinned: false, is_themed: false };
 
-        // Sort players by role assignment order (if they were assigned in order)
-        // Players without roles will be at the end
-        const sortedPlayers = [
-            ...playersWithRoles,
-            ...playersResult.rows.filter(player => player.role_id === null)
-        ];
+        // Group players by team alignment
+        const townPlayers = [];
+        const wolfPlayers = [];
+        const neutralPlayers = [];
+        const noRolePlayers = [];
 
-        // Create role list with theme handling
-        const rolesList = sortedPlayers.map((player, index) => {
-            const statusIcon = player.status === 'alive' ? '💚' : '💀';
+        // Helper function to format role display
+        const formatRoleDisplay = (player) => {
             let roleText = '_No role assigned_';
             
             if (player.role_id) {
@@ -4013,8 +4011,55 @@ class WerewolfBot {
                 }
             }
             
-            return `${statusIcon} ${roleText} - ${player.username}`;
-        }).join('\n');
+            return `${roleText} - ${player.username}`;
+        };
+
+        // Sort players into teams
+        playersWithRoles.forEach(player => {
+            const team = player.team?.toLowerCase();
+            if (team === 'town') {
+                townPlayers.push(player);
+            } else if (team === 'wolves' || team === 'wolf') {
+                wolfPlayers.push(player);
+            } else if (team === 'neutral' || team === 'neutrals') {
+                neutralPlayers.push(player);
+            } else {
+                // Fallback for unknown teams
+                neutralPlayers.push(player);
+            }
+        });
+
+        // Add players without roles
+        playersResult.rows.filter(player => player.role_id === null).forEach(player => {
+            noRolePlayers.push(player);
+        });
+
+        // Sort players alphabetically within each team
+        townPlayers.sort((a, b) => a.username.localeCompare(b.username));
+        wolfPlayers.sort((a, b) => a.username.localeCompare(b.username));
+        neutralPlayers.sort((a, b) => a.username.localeCompare(b.username));
+        noRolePlayers.sort((a, b) => a.username.localeCompare(b.username));
+
+        // Build organized role list
+        const roleSections = [];
+        
+        if (townPlayers.length > 0) {
+            roleSections.push(`**🏘️ TOWN**\n${townPlayers.map(formatRoleDisplay).join('\n')}`);
+        }
+        
+        if (wolfPlayers.length > 0) {
+            roleSections.push(`**🐺 WOLVES**\n${wolfPlayers.map(formatRoleDisplay).join('\n')}`);
+        }
+        
+        if (neutralPlayers.length > 0) {
+            roleSections.push(`**⚖️ NEUTRALS**\n${neutralPlayers.map(formatRoleDisplay).join('\n')}`);
+        }
+        
+        if (noRolePlayers.length > 0) {
+            roleSections.push(`**❓ UNASSIGNED**\n${noRolePlayers.map(formatRoleDisplay).join('\n')}`);
+        }
+
+        const rolesList = roleSections.join('\n\n');
 
         // Count role occurrences
         const roleCounts = {};
@@ -4038,7 +4083,7 @@ class WerewolfBot {
             .addFields(
                 { name: 'Role Assignments', value: rolesList, inline: false },
                 { name: 'Role Summary', value: roleSummary || 'No roles assigned', inline: false },
-                { name: 'Legend', value: '💚 = Alive | 💀 = Dead', inline: false }
+                { name: 'Legend', value: '🐺 = In Wolf Chat', inline: false }
             )
             .setColor(0x9B59B6)
             .setTimestamp();

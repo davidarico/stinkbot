@@ -1,1 +1,0 @@
-Hosting temp files here meant to support other directories but would mess up the vision at the moment
