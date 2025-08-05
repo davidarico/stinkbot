@@ -90,7 +90,12 @@ class WerewolfBot {
         
         // Check permissions for admin-only commands
         if (!playerCommands.includes(command) && !this.hasModeratorPermissions(message.member)) {
-            return;
+            const funnyResponse = await this.generateFunnyResponse(command, message.author.username);
+            if (funnyResponse) {
+                await message.reply(funnyResponse);
+            } else {
+                await message.reply('❓ Unknown command bozo. (Or you fuckers used up all the tokens)');
+            }
         }
 
         try {
