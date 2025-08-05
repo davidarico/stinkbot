@@ -52,7 +52,23 @@ class WerewolfBot {
                 temperature: 0.8
             });
 
-            return response.choices[0]?.message?.content?.trim() || null;
+            const content = response.choices[0]?.message?.content?.trim() || null;
+            if (!content) return null;
+            
+            // Remove extra quotes from the beginning and end of the response
+            let cleanedContent = content;
+            
+            // Remove quotes from the beginning
+            while (cleanedContent.startsWith('"') || cleanedContent.startsWith('"') || cleanedContent.startsWith("'") || cleanedContent.startsWith("'")) {
+                cleanedContent = cleanedContent.slice(1);
+            }
+            
+            // Remove quotes from the end
+            while (cleanedContent.endsWith('"') || cleanedContent.endsWith('"') || cleanedContent.endsWith("'") || cleanedContent.endsWith("'")) {
+                cleanedContent = cleanedContent.slice(0, -1);
+            }
+            
+            return cleanedContent;
         } catch (error) {
             console.error('Error generating OpenAI response:', error);
             return null;
@@ -189,7 +205,7 @@ class WerewolfBot {
                     if (funnyResponse) {
                         await message.reply(funnyResponse);
                     } else {
-                        await message.reply('❓ Unknown command bozo.');
+                        await message.reply('❓ Unknown command bozo. (Or you fuckers used up all the tokens)');
                     }
             }
         } catch (error) {
