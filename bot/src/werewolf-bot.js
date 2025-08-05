@@ -4034,25 +4034,25 @@ class WerewolfBot {
             noRolePlayers.push(player);
         });
 
-        // Sort players alphabetically within each team
-        townPlayers.sort((a, b) => a.username.localeCompare(b.username));
-        wolfPlayers.sort((a, b) => a.username.localeCompare(b.username));
-        neutralPlayers.sort((a, b) => a.username.localeCompare(b.username));
-        noRolePlayers.sort((a, b) => a.username.localeCompare(b.username));
-
         // Build organized role list
         const roleSections = [];
         
         if (townPlayers.length > 0) {
-            roleSections.push(`**🏘️ TOWN**\n${townPlayers.map(formatRoleDisplay).join('\n')}`);
+            const mappedTownPlayers = townPlayers.map(formatRoleDisplay);
+            mappedTownPlayers.sort((a, b) => a.localeCompare(b));
+            roleSections.push(`**🏘️ TOWN**\n${mappedTownPlayers.join('\n')}`);
         }
         
         if (wolfPlayers.length > 0) {
-            roleSections.push(`**🐺 WOLVES**\n${wolfPlayers.map(formatRoleDisplay).join('\n')}`);
+            const mappedWolfPlayers = wolfPlayers.map(formatRoleDisplay);
+            mappedWolfPlayers.sort((a, b) => a.localeCompare(b));
+            roleSections.push(`**🐺 WOLVES**\n${mappedWolfPlayers.join('\n')}`);
         }
         
         if (neutralPlayers.length > 0) {
-            roleSections.push(`**⚖️ NEUTRALS**\n${neutralPlayers.map(formatRoleDisplay).join('\n')}`);
+            const mappedNeutralPlayers = neutralPlayers.map(formatRoleDisplay);
+            mappedNeutralPlayers.sort((a, b) => a.localeCompare(b));
+            roleSections.push(`**⚖️ NEUTRALS**\n${mappedNeutralPlayers.join('\n')}`);
         }
         
         if (noRolePlayers.length > 0) {
