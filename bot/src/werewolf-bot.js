@@ -90,7 +90,7 @@ class WerewolfBot {
         
         // Check permissions for admin-only commands
         if (!playerCommands.includes(command) && !this.hasModeratorPermissions(message.member)) {
-            const funnyResponse = await this.generateFunnyResponse(args.join(' '), message.author.displayName);
+            const funnyResponse = await this.generateFunnyResponse(message.content.slice(prefix.length).trim().split(/ +/), message.author.displayName);
             if (funnyResponse) {
                 await message.reply(funnyResponse);
             } else {
@@ -207,7 +207,7 @@ class WerewolfBot {
                     await message.reply('The wolf list? Are we still doing this? Stop talking about the wolf list.');
                     break;
                 default:
-                    const funnyResponse = await this.generateFunnyResponse(args.join(' '), message.author.displayName);
+                    const funnyResponse = await this.generateFunnyResponse(message.content.slice(prefix.length).trim().split(/ +/), message.author.displayName);
                     if (funnyResponse) {
                         await message.reply(funnyResponse);
                     } else {
