@@ -34,8 +34,6 @@ class WerewolfBot {
                 - Crass and vulgar language is allowed
 
                 Do not allude to the fact that the command is unknown.
-
-                The user issuing this command is ${username}.
             `;
 
             const response = await this.openai.chat.completions.create({
