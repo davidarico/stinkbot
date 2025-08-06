@@ -25,7 +25,6 @@ interface Player {
   alignment?: string
   isFramed?: boolean
   isDead?: boolean
-  actionNotes?: string
   charges?: number
 }
 
@@ -94,13 +93,7 @@ export default function GameManagementPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [loginLoading, setLoginLoading] = useState(false)
-  const [nightActions, setNightActions] = useState<Record<number, string>>({})
-  const [saveTimeouts, setSaveTimeouts] = useState<Record<number, NodeJS.Timeout>>({})
-  const [savedActions, setSavedActions] = useState<Set<number>>(new Set())
-  // Add state for calculation results near other useState hooks
-  const [calcLoading, setCalcLoading] = useState(false);
-  const [calcResult, setCalcResult] = useState<any>(null);
-  const [calcError, setCalcError] = useState<string | null>(null);
+
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [gameSettings, setGameSettings] = useState<any>(null);
   const [addChannelModalOpen, setAddChannelModalOpen] = useState(false);
@@ -117,14 +110,7 @@ export default function GameManagementPage() {
     }
   }, [gameId])
 
-  // Cleanup timeouts on unmount
-  useEffect(() => {
-    return () => {
-      Object.values(saveTimeouts).forEach(timeout => {
-        clearTimeout(timeout)
-      })
-    }
-  }, [saveTimeouts])
+
 
 
 
@@ -164,11 +150,7 @@ export default function GameManagementPage() {
           const playersData = await playersResponse.json()
           setPlayers(playersData)
           
-          // Load night actions if in night phase (after players are loaded)
-          if (currentGameData.phase === "night") {
-            console.log('Loading night actions for phase:', currentGameData.phase)
-            await loadNightActions(currentGameData)
-          }
+
         }
       }
 
@@ -394,111 +376,6 @@ export default function GameManagementPage() {
         description: "Error updating player status",
         variant: "destructive",
       })
-    }
-  }
-
-  const toggleFramed = (playerId: number) => {
-    setPlayers(players.map((player) => (player.id === playerId ? { ...player, isFramed: !player.isFramed } : player)))
-  }
-
-  const updateActionNotes = (playerId: number, notes: string) => {
-    setPlayers(players.map((player) => (player.id === playerId ? { ...player, actionNotes: notes } : player)))
-    
-    // Auto-save night actions during night phase
-    if (gameData.phase === "night") {
-      // Clear existing timeout for this player
-      if (saveTimeouts[playerId]) {
-        clearTimeout(saveTimeouts[playerId])
-      }
-      
-      // Set new timeout to save after 5 seconds of inactivity
-      const timeout = setTimeout(() => {
-        saveNightAction(playerId, notes)
-      }, 5000)
-      
-      setSaveTimeouts(prev => ({
-        ...prev,
-        [playerId]: timeout
-      }))
-      
-      // Update local state immediately
-      setNightActions(prev => ({
-        ...prev,
-        [playerId]: notes
-      }))
-    }
-  }
-
-  const handleActionNotesBlur = (playerId: number) => {
-    // Save immediately when input loses focus
-    if (gameData.phase === "night") {
-      const player = players.find(p => p.id === playerId)
-      if (player && player.actionNotes) {
-        // Clear the timeout since we're saving immediately
-        if (saveTimeouts[playerId]) {
-          clearTimeout(saveTimeouts[playerId])
-        }
-        saveNightAction(playerId, player.actionNotes)
-      }
-    }
-  }
-
-  const saveNightAction = async (playerId: number, action: string) => {
-    try {
-      const response = await fetch(`/api/games/${gameId}/night-actions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          playerId,
-          action,
-          nightNumber: gameData.dayNumber
-        })
-      })
-
-      if (response.ok) {
-        setSavedActions(prev => new Set([...prev, playerId]))
-        // Clear the saved indicator after 3 seconds
-        setTimeout(() => {
-          setSavedActions(prev => {
-            const newSet = new Set(prev)
-            newSet.delete(playerId)
-            return newSet
-          })
-        }, 3000)
-      } else {
-        console.error('Failed to save night action')
-      }
-    } catch (error) {
-      console.error('Error saving night action:', error)
-    }
-  }
-
-  const loadNightActions = async (gameDataToUse: GameData = gameData) => {
-    if (gameDataToUse.phase !== "night") return
-    
-    try {
-      console.log('Loading night actions for night:', gameDataToUse.dayNumber)
-      const response = await fetch(`/api/games/${gameId}/night-actions?nightNumber=${gameDataToUse.dayNumber}`)
-      if (response.ok) {
-        const actions = await response.json()
-        console.log('Loaded night actions:', actions)
-        const actionsMap: Record<number, string> = {}
-        actions.forEach((action: any) => {
-          actionsMap[action.player_id] = action.action
-        })
-        console.log('Actions map:', actionsMap)
-        setNightActions(actionsMap)
-        
-        // Update players with night actions
-        setPlayers(prevPlayers => 
-          prevPlayers.map(player => ({
-            ...player,
-            actionNotes: actionsMap[player.id] || player.actionNotes || ""
-          }))
-        )
-      }
-    } catch (error) {
-      console.error('Error loading night actions:', error)
     }
   }
 
@@ -1423,63 +1300,7 @@ export default function GameManagementPage() {
             <div className="lg:col-span-2 space-y-6">
               {/* Living Players */}
               <div className="space-y-4">
-                {gameData.phase === "night" && (
-                  <div className="flex flex-col gap-2 mb-4">
-                    <div className="flex justify-end">
-                      <Button
-                        variant="secondary"
-                        onClick={async () => {
-                          setCalcLoading(true);
-                          setCalcError(null);
-                          setCalcResult(null);
-                          try {
-                            const res = await fetch(`/api/games/${gameId}/calculate-night-actions`, { method: "POST" });
-                            const data = await res.json();
-                            if (!res.ok) throw new Error(data.error || "Unknown error");
-                            setCalcResult(data);
-                          } catch (err: any) {
-                            setCalcError(err.message || "Failed to calculate night actions");
-                          } finally {
-                            setCalcLoading(false);
-                          }
-                        }}
-                        disabled={calcLoading}
-                      >
-                        {calcLoading ? "Calculating..." : "Calculate Night Actions"}
-                      </Button>
-                    </div>
-                    {calcError && (
-                      <div className="text-red-500 mt-2">{calcError}</div>
-                    )}
-                    {calcResult && (
-                      <div className="mt-4 p-4 bg-gray-100 rounded">
-                        <h4 className="font-bold mb-2">Night Action Results</h4>
-                        <div>
-                          <strong>Deaths:</strong>
-                          <ul>
-                            {calcResult.deaths?.map((d: any, i: number) => (
-                              <li key={i}>{d.player} — {d.cause}</li>
-                            ))}
-                          </ul>
-                        </div>
-                        <div>
-                          <strong>Results:</strong>
-                          <ul>
-                            {calcResult.results?.map((result: any, i: number) => (
-                              <li key={i}>{result.player}: {result.resultMessage}</li>
-                            ))}
-                          </ul>
-                        </div>
-                        {calcResult.explanation && (
-                          <div>
-                            <strong>Explanation:</strong>
-                            <p className="mt-2 text-sm text-gray-600">{calcResult.explanation}</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
+
                 {/* Town */}
                 {players.filter((p) => p.alignment === "town" && p.status === "alive").length > 0 && (
                   <Card className={isDayPhase ? "bg-white/90" : "bg-white/10"}>
@@ -1504,31 +1325,8 @@ export default function GameManagementPage() {
                                 <span className={cn("font-medium", isDayPhase ? "text-gray-900" : "text-white")}>
                                   {player.username} - {getDisplayRoleName(player)}
                                 </span>
-                                {player.isFramed && (
-                                  <Badge variant="destructive">
-                                    Framed
-                                  </Badge>
-                                )}
-                                {/* Inline action notes only during night phase */}
-                                {!isDayPhase && (
-                                  <div className="relative flex items-center">
-                                    <Input
-                                      placeholder="Action notes..."
-                                      value={player.actionNotes || ""}
-                                      onChange={(e) => updateActionNotes(player.id, e.target.value)}
-                                      onBlur={() => handleActionNotesBlur(player.id)}
-                                      className="text-xs h-6 px-2 pr-8 max-w-32 flex-shrink-0 text-white"
-                                    />
-                                    {savedActions.has(player.id) && (
-                                      <Check className="absolute right-2 w-3 h-3 text-green-500" />
-                                    )}
-                                  </div>
-                                )}
                               </div>
                               <div className="space-x-2">
-                                <Button size="sm" variant="outline" onClick={() => toggleFramed(player.id)}>
-                                  {player.isFramed ? "Unframe" : "Frame"}
-                                </Button>
                                 <Button size="sm" variant="destructive" onClick={() => togglePlayerStatus(player.id)}>
                                   Kill
                                 </Button>
@@ -1595,31 +1393,8 @@ export default function GameManagementPage() {
                                 <span className={cn("font-medium", isDayPhase ? "text-gray-900" : "text-white")}>
                                   {player.username} - {getDisplayRoleName(player)}
                                 </span>
-                                {player.isFramed && (
-                                  <Badge variant="destructive">
-                                    Framed
-                                  </Badge>
-                                )}
-                                {/* Inline action notes only during night phase */}
-                                {!isDayPhase && (
-                                  <div className="relative flex items-center">
-                                    <Input
-                                      placeholder="Action notes..."
-                                      value={player.actionNotes || ""}
-                                      onChange={(e) => updateActionNotes(player.id, e.target.value)}
-                                      onBlur={() => handleActionNotesBlur(player.id)}
-                                      className="text-xs h-6 px-2 pr-8 max-w-32 flex-shrink-0 text-white"
-                                    />
-                                    {savedActions.has(player.id) && (
-                                      <Check className="absolute right-2 w-3 h-3 text-green-500" />
-                                    )}
-                                  </div>
-                                )}
                               </div>
                               <div className="space-x-2">
-                                <Button size="sm" variant="outline" onClick={() => toggleFramed(player.id)}>
-                                  {player.isFramed ? "Unframe" : "Frame"}
-                                </Button>
                                 <Button size="sm" variant="destructive" onClick={() => togglePlayerStatus(player.id)}>
                                   Kill
                                 </Button>
@@ -1686,31 +1461,8 @@ export default function GameManagementPage() {
                                 <span className={cn("font-medium", isDayPhase ? "text-gray-900" : "text-white")}>
                                   {player.username} - {getDisplayRoleName(player)}
                                 </span>
-                                {player.isFramed && (
-                                  <Badge variant="destructive">
-                                    Framed
-                                  </Badge>
-                                )}
-                                {/* Inline action notes only during night phase */}
-                                {!isDayPhase && (
-                                  <div className="relative flex items-center">
-                                    <Input
-                                      placeholder="Action notes..."
-                                      value={player.actionNotes || ""}
-                                      onChange={(e) => updateActionNotes(player.id, e.target.value)}
-                                      onBlur={() => handleActionNotesBlur(player.id)}
-                                      className="text-xs h-6 px-2 pr-8 max-w-32 flex-shrink-0 text-white"
-                                    />
-                                    {savedActions.has(player.id) && (
-                                      <Check className="absolute right-2 w-3 h-3 text-green-500" />
-                                    )}
-                                  </div>
-                                )}
                               </div>
                               <div className="space-x-2">
-                                <Button size="sm" variant="outline" onClick={() => toggleFramed(player.id)}>
-                                  {player.isFramed ? "Unframe" : "Frame"}
-                                </Button>
                                 <Button size="sm" variant="destructive" onClick={() => togglePlayerStatus(player.id)}>
                                   Kill
                                 </Button>
