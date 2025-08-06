@@ -921,6 +921,77 @@ class WerewolfBot {
 
         // Channel permissions are now set during channel creation
 
+        // Create channels for game_channels records where is_created is false
+        try {
+            const pendingChannelsResult = await this.db.query(
+                'SELECT channel_name, day_message, night_message FROM game_channels WHERE game_id = $1 AND is_created = $2',
+                [game.id, false]
+            );
+
+            for (const channelData of pendingChannelsResult.rows) {
+                try {
+                    // Create the channel with the same permissions as handleAddChannel
+                    const newChannel = await message.guild.channels.create({
+                        name: channelData.channel_name,
+                        type: ChannelType.GuildText,
+                        parent: category.id,
+                        permissionOverwrites: [
+                            {
+                                id: message.guild.roles.everyone.id,
+                                deny: ['ViewChannel', 'SendMessages']
+                            },
+                            {
+                                id: modRole.id,
+                                allow: ['ViewChannel', 'SendMessages']
+                            },
+                            {
+                                id: spectatorRole.id,
+                                allow: ['ViewChannel'],
+                                deny: ['SendMessages']
+                            },
+                            {
+                                id: aliveRole.id,
+                                deny: ['ViewChannel'],
+                                allow: ['SendMessages']
+                            }
+                        ]
+                    });
+
+                    // Alive shouldnt see the channel at all but can send messages if open_at_dusk is true
+                    await newChannel.permissionOverwrites.edit(aliveRole.id, {
+                        ViewChannel: false,
+                        SendMessages: channelData.open_at_dusk
+                    });
+
+                    // Position the channel between voting booth and wolf chat (same as handleAddChannel)
+                    try {
+                        const wolfChatChannel = category.children.cache.find(channel => 
+                            channel.name.includes('-wolf-chat')
+                        );
+                        
+                        if (wolfChatChannel) {
+                            await newChannel.setPosition(wolfChatChannel.position);
+                            console.log(`Positioned new channel "${channelData.channel_name}" before wolf chat`);
+                        }
+                    } catch (positionError) {
+                        console.error('Error positioning new channel:', positionError);
+                    }
+
+                    // Update the database record with the channel ID and mark as created
+                    await this.db.query(
+                        'UPDATE game_channels SET channel_id = $1, is_created = $2 WHERE game_id = $3 AND channel_name = $4',
+                        [newChannel.id, true, game.id, channelData.channel_name]
+                    );
+
+                    console.log(`[DEBUG] Created channel ${channelData.channel_name} with ID ${newChannel.id}`);
+                } catch (error) {
+                    console.error(`Error creating channel ${channelData.channel_name}:`, error);
+                }
+            }
+        } catch (error) {
+            console.error('Error creating pending game channels:', error);
+        }
+
         // Update game in database with explicit UTC timestamp
         await this.db.query(
             `UPDATE games SET 
@@ -1375,29 +1446,6 @@ class WerewolfBot {
                 }
             }
 
-            // Send alert about wolf roles not in chat even if there are no wolves in chat
-            if (wolfRolesNotInChat.length > 0 && game.wolf_chat_channel_id) {
-                try {
-                    const wolfChannel = await this.client.channels.fetch(game.wolf_chat_channel_id);
-                    if (wolfChannel) {
-                        const notInChatList = wolfRolesNotInChat.map(role => 
-                            `• **${role.roleName}**`
-                        ).join('\n');
-
-                        const alertEmbed = new EmbedBuilder()
-                            .setTitle('⚠️ Major Wolf Alert!')
-                            .setDescription(`You appear to have some helpers working in the shadows:\n\n${notInChatList}`)
-                            .setColor(0xF39C12)
-                            .setTimestamp();
-
-                        await wolfChannel.send({ embeds: [alertEmbed] });
-                        console.log(`[DEBUG] Sent alert about ${wolfRolesNotInChat.length} wolf roles not in chat`);
-                    }
-                } catch (error) {
-                    console.error('Error sending wolf roles not in chat alert:', error);
-                }
-            }
-
         } catch (error) {
             console.error('Error in sendRoleNotificationsToJournals:', error);
         }
@@ -1812,6 +1860,47 @@ class WerewolfBot {
                 ViewChannel: true,
                 SendMessages: false
             });
+        }
+
+        // Handle game channel permissions based on open_at_dawn and open_at_dusk flags
+        try {
+            // Get all game channels for this game
+            const gameChannelsResult = await this.db.query(
+                'SELECT channel_id, open_at_dawn, open_at_dusk FROM game_channels WHERE game_id = $1',
+                [game.id]
+            );
+
+            for (const channelData of gameChannelsResult.rows) {
+                try {
+                    const channel = await this.client.channels.fetch(channelData.channel_id);
+                    if (!channel) {
+                        console.log(`[DEBUG] Channel ${channelData.channel_id} not found, skipping permission update`);
+                        continue;
+                    }
+
+                    let shouldAllowSendMessages = false;
+                    
+                    if (newPhase === 'day') {
+                        // During day phase, check open_at_dawn flag
+                        shouldAllowSendMessages = channelData.open_at_dawn;
+                    } else {
+                        // During night phase, check open_at_dusk flag
+                        shouldAllowSendMessages = channelData.open_at_dusk;
+                    }
+
+                    // Update Alive role permissions for this channel
+                    await channel.permissionOverwrites.edit(aliveRole.id, {
+                        ViewChannel: false,
+                        SendMessages: shouldAllowSendMessages
+                    });
+
+                    console.log(`[DEBUG] Updated channel ${channel.name} permissions: Alive role can send messages = ${shouldAllowSendMessages} (${newPhase} phase)`);
+                } catch (error) {
+                    console.error(`Error updating permissions for channel ${channelData.channel_id}:`, error);
+                }
+            }
+        } catch (error) {
+            console.error('Error handling game channel permissions:', error);
         }
 
         // Create separate voting results embed for the moderator who issued the command
@@ -2474,8 +2563,8 @@ class WerewolfBot {
 
             // Save channel to database with default day/night messages from the game
             await this.db.query(
-                'INSERT INTO game_channels (game_id, channel_id, channel_name, day_message, night_message) VALUES ($1, $2, $3, $4, $5)',
-                [game.id, newChannel.id, fullChannelName, game.day_message, game.night_message]
+                'INSERT INTO game_channels (game_id, channel_id, channel_name, day_message, night_message, is_created) VALUES ($1, $2, $3, $4, $5, $6)',
+                [game.id, newChannel.id, fullChannelName, game.day_message, game.night_message, true]
             );
 
             const embed = new EmbedBuilder()

@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/database"
 
 interface RouteParams {
-  params: { gameId: string }
+  params: Promise<{ gameId: string }>
 }
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
@@ -24,7 +24,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       categoryId: game.category_id,
       isThemed: game.is_themed,
       isSkinned: game.is_skinned,
-      themeName: game.theme_name
+      themeName: game.theme_name,
+      dayMessage: game.day_message,
+      nightMessage: game.night_message,
+      wolfDayMessage: game.wolf_day_message,
+      wolfNightMessage: game.wolf_night_message
     })
   } catch (error) {
     console.error("Database error:", error)
@@ -35,7 +39,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   const { gameId } = await params
   const body = await request.json()
-  const { action, password, isThemed, isSkinned, themeName } = body
+  const { action, password, isThemed, isSkinned, themeName, settings } = body
 
   try {
     switch (action) {
@@ -49,6 +53,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       case "updateTheme":
         const result = await db.updateGameTheme(gameId, isThemed, isSkinned, themeName)
         return NextResponse.json(result)
+
+      case "updateSettings":
+        const settingsResult = await db.updateGameSettings(gameId, settings)
+        return NextResponse.json(settingsResult)
 
       default:
         return NextResponse.json({ error: "Invalid action" }, { status: 400 })

@@ -8,9 +8,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Search, Users, Shuffle, Moon, Sun, Filter, Check } from "lucide-react"
+import { Search, Users, Shuffle, Moon, Sun, Filter, Check, Settings, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
+import { SettingsModal } from "@/components/settings-modal"
+import { AddChannelModal } from "@/components/add-channel-modal"
 
 interface Player {
   id: number
@@ -99,6 +101,9 @@ export default function GameManagementPage() {
   const [calcLoading, setCalcLoading] = useState(false);
   const [calcResult, setCalcResult] = useState<any>(null);
   const [calcError, setCalcError] = useState<string | null>(null);
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+  const [gameSettings, setGameSettings] = useState<any>(null);
+  const [addChannelModalOpen, setAddChannelModalOpen] = useState(false);
 
   useEffect(() => {
     // Check if user is already authenticated for this game
@@ -143,6 +148,15 @@ export default function GameManagementPage() {
         }
         setGameData(currentGameData)
         setThemeInput(game.themeName || "")
+        
+        // Load game settings for the modal
+        setGameSettings({
+          dayMessage: game.dayMessage,
+          nightMessage: game.nightMessage,
+          wolfDayMessage: game.wolfDayMessage,
+          wolfNightMessage: game.wolfNightMessage,
+          votesToHang: game.votesToHang
+        })
         
         // Load players
         const playersResponse = await fetch(`/api/games/${gameId}/players`)
@@ -846,6 +860,34 @@ export default function GameManagementPage() {
             <p className="text-sm opacity-75 mt-1">
               Phase changes are managed by the Discord bot
             </p>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => setAddChannelModalOpen(true)}
+              variant="outline"
+              size="sm"
+              className={cn(
+                "flex items-center gap-2",
+                isDayPhase ? "bg-white/90" : "bg-white/10"
+              )}
+            >
+              <Plus className="w-4 h-4" />
+              Add Channel
+            </Button>
+            
+            <Button
+              onClick={() => setSettingsModalOpen(true)}
+              variant="outline"
+              size="sm"
+              className={cn(
+                "flex items-center gap-2",
+                isDayPhase ? "bg-white/90" : "bg-white/10"
+              )}
+            >
+              <Settings className="w-4 h-4" />
+              Settings
+            </Button>
           </div>
         </div>
 
@@ -1796,6 +1838,29 @@ export default function GameManagementPage() {
           </div>
         )}
       </div>
+      
+      {/* Settings Modal */}
+      <SettingsModal
+        gameId={gameId}
+        isOpen={settingsModalOpen}
+        onClose={() => setSettingsModalOpen(false)}
+        initialSettings={gameSettings}
+      />
+      
+      {/* Add Channel Modal */}
+      <AddChannelModal
+        gameId={gameId}
+        isOpen={addChannelModalOpen}
+        onClose={() => setAddChannelModalOpen(false)}
+        onChannelAdded={() => {
+          // Refresh the settings modal if it's open to show the new channel
+          if (settingsModalOpen) {
+            // This will trigger a reload of channels in the settings modal
+            setSettingsModalOpen(false)
+            setTimeout(() => setSettingsModalOpen(true), 100)
+          }
+        }}
+      />
     </div>
   )
 }

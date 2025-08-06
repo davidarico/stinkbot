@@ -18,6 +18,10 @@ interface Game {
   is_skinned: boolean
   is_themed: boolean
   theme_name?: string
+  day_message?: string
+  night_message?: string
+  wolf_day_message?: string
+  wolf_night_message?: string
   created_at: Date
   updated_at: Date
 }
@@ -405,6 +409,161 @@ export class DatabaseService {
       return { success: true, game: result.rows[0] }
     } catch (error) {
       console.error('Error updating game theme:', error)
+      throw error
+    }
+  }
+
+  async updateGameSettings(gameId: string, settings: {
+    dayMessage?: string
+    nightMessage?: string
+    wolfDayMessage?: string
+    wolfNightMessage?: string
+    votesToHang?: number
+    gameChannels?: Array<{
+      id: number
+      dayMessage?: string
+      nightMessage?: string
+      open_at_dawn?: boolean
+      open_at_dusk?: boolean
+    }>
+  }) {
+    try {
+      const client = await this.pool.connect()
+      
+      try {
+        await client.query('BEGIN')
+        
+        // Update main game settings
+        if (settings.dayMessage !== undefined || settings.nightMessage !== undefined || 
+            settings.wolfDayMessage !== undefined || settings.wolfNightMessage !== undefined ||
+            settings.votesToHang !== undefined) {
+          const updateFields = []
+          const values = []
+          let paramCount = 1
+          
+          if (settings.dayMessage !== undefined) {
+            updateFields.push(`day_message = $${paramCount}`)
+            values.push(settings.dayMessage)
+            paramCount++
+          }
+          if (settings.nightMessage !== undefined) {
+            updateFields.push(`night_message = $${paramCount}`)
+            values.push(settings.nightMessage)
+            paramCount++
+          }
+          if (settings.wolfDayMessage !== undefined) {
+            updateFields.push(`wolf_day_message = $${paramCount}`)
+            values.push(settings.wolfDayMessage)
+            paramCount++
+          }
+          if (settings.wolfNightMessage !== undefined) {
+            updateFields.push(`wolf_night_message = $${paramCount}`)
+            values.push(settings.wolfNightMessage)
+            paramCount++
+          }
+          if (settings.votesToHang !== undefined) {
+            updateFields.push(`votes_to_hang = $${paramCount}`)
+            values.push(settings.votesToHang)
+            paramCount++
+          }
+          
+          values.push(parseInt(gameId))
+          await client.query(
+            `UPDATE games SET ${updateFields.join(', ')} WHERE id = $${paramCount}`,
+            values
+          )
+        }
+        
+        // Update game channel settings
+        if (settings.gameChannels) {
+          for (const channel of settings.gameChannels) {
+            const updateFields = []
+            const values = []
+            let paramCount = 1
+            
+            if (channel.dayMessage !== undefined) {
+              updateFields.push(`day_message = $${paramCount}`)
+              values.push(channel.dayMessage)
+              paramCount++
+            }
+            if (channel.nightMessage !== undefined) {
+              updateFields.push(`night_message = $${paramCount}`)
+              values.push(channel.nightMessage)
+              paramCount++
+            }
+            if (channel.open_at_dawn !== undefined) {
+              updateFields.push(`open_at_dawn = $${paramCount}`)
+              values.push(channel.open_at_dawn)
+              paramCount++
+            }
+            if (channel.open_at_dusk !== undefined) {
+              updateFields.push(`open_at_dusk = $${paramCount}`)
+              values.push(channel.open_at_dusk)
+              paramCount++
+            }
+            
+            if (updateFields.length > 0) {
+              values.push(channel.id)
+              await client.query(
+                `UPDATE game_channels SET ${updateFields.join(', ')} WHERE id = $${paramCount}`,
+                values
+              )
+            }
+          }
+        }
+        
+        await client.query('COMMIT')
+        return { success: true }
+      } catch (error) {
+        await client.query('ROLLBACK')
+        throw error
+      } finally {
+        client.release()
+      }
+    } catch (error) {
+      console.error('Error updating game settings:', error)
+      throw error
+    }
+  }
+
+  async getGameChannels(gameId: string) {
+    try {
+      const result = await this.pool.query(
+        'SELECT * FROM game_channels WHERE game_id = $1 ORDER BY created_at',
+        [parseInt(gameId)]
+      )
+      return result.rows
+    } catch (error) {
+      console.error('Error fetching game channels:', error)
+      throw error
+    }
+  }
+
+  async addGameChannel(gameId: string, channelData: {
+    channelName: string
+    channelId: string
+    dayMessage?: string
+    nightMessage?: string
+    openAtDawn: boolean
+    openAtDusk: boolean
+  }) {
+    try {
+      const result = await this.pool.query(
+        `INSERT INTO game_channels (game_id, channel_id, channel_name, day_message, night_message, open_at_dawn, open_at_dusk) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+        [
+          parseInt(gameId),
+          channelData.channelId,
+          channelData.channelName,
+          channelData.dayMessage || null,
+          channelData.nightMessage || null,
+          channelData.openAtDawn,
+          channelData.openAtDusk
+        ]
+      )
+      return { success: true, channel: result.rows[0] }
+    } catch (error) {
+      console.error('Error adding game channel:', error)
       throw error
     }
   }

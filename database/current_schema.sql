@@ -1,5 +1,5 @@
 -- Werewolf Discord Bot Database Schema
--- Generated automatically on 2025-08-05T16:07:38.690Z
+-- Generated automatically on 2025-08-06T04:51:42.565Z
 -- This file shows the current database structure with table comments
 -- Run this after migrations to get the latest schema
 
@@ -12,6 +12,9 @@ CREATE TABLE game_channels (
     day_message TEXT,
     night_message TEXT,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    open_at_dawn BOOLEAN DEFAULT TRUE,
+    open_at_dusk BOOLEAN DEFAULT TRUE,
+    is_created BOOLEAN DEFAULT FALSE,
     UNIQUE(channel_id, game_id)
 );
 
