@@ -2354,7 +2354,7 @@ class WerewolfBot {
 
         // Get all signed up players
         const playersResult = await this.db.query(
-            'SELECT username FROM players WHERE game_id = $1 ORDER BY username',
+            'SELECT username FROM players WHERE game_id = $1',
             [game.id]
         );
 
@@ -2362,9 +2362,17 @@ class WerewolfBot {
             return message.reply('📝 No players have signed up yet.');
         }
 
-        // Create a simple, mobile-friendly format
+        // Create a simple, mobile-friendly format with alphanumeric sorting
         const playerNames = playersResult.rows.map(p => p.username);
-        const playerList = playerNames.join('\n');
+        
+        // Sort players by stripping non-alphanumeric characters while maintaining original display names
+        const sortedPlayerNames = playerNames.sort((a, b) => {
+            const aClean = a.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+            const bClean = b.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+            return aClean.localeCompare(bClean);
+        });
+        
+        const playerList = sortedPlayerNames.join('\n');
         
         // Send as a code block for easy copying
         const response = `**📝 Signed Up Players (${playersResult.rows.length})**\n\`\`\`\n${playerList}\n\`\`\``;
