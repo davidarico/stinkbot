@@ -2342,12 +2342,12 @@ class WerewolfBot {
 
         // Get active game in signup phase
         const gameResult = await this.db.query(
-            'SELECT * FROM games WHERE server_id = $1 AND status = $2',
-            [serverId, 'signup']
+            'SELECT * FROM games WHERE server_id = $1 AND status IN ($2, $3)',
+            [serverId, 'signup', 'active']
         );
 
         if (!gameResult.rows.length) {
-            return message.reply('❌ No active game available for signups.');
+            return message.reply('❌ No active game available.');
         }
 
         const game = gameResult.rows[0];
