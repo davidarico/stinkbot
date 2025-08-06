@@ -34,6 +34,8 @@ class WerewolfBot {
                 - Crass and vulgar language is allowed
 
                 Do not allude to the fact that the command is unknown.
+
+                The user issuing this command is ${username}.
             `;
 
             const response = await this.openai.chat.completions.create({
@@ -90,7 +92,7 @@ class WerewolfBot {
         
         // Check permissions for admin-only commands
         if (!playerCommands.includes(command) && !this.hasModeratorPermissions(message.member)) {
-            const funnyResponse = await this.generateFunnyResponse(command, message.author.username);
+            const funnyResponse = await this.generateFunnyResponse(args.join(' '), message.author.displayName);
             if (funnyResponse) {
                 await message.reply(funnyResponse);
             } else {
@@ -207,7 +209,7 @@ class WerewolfBot {
                     await message.reply('The wolf list? Are we still doing this? Stop talking about the wolf list.');
                     break;
                 default:
-                    const funnyResponse = await this.generateFunnyResponse(command, message.author.username);
+                    const funnyResponse = await this.generateFunnyResponse(args.join(' '), message.author.displayName);
                     if (funnyResponse) {
                         await message.reply(funnyResponse);
                     } else {
