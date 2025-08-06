@@ -2373,9 +2373,16 @@ class WerewolfBot {
         });
         
         const playerList = sortedPlayerNames.join('\n');
-        
+
+        const serverConfig = await this.db.query(
+            'SELECT * FROM server_configs WHERE server_id = $1',
+            [serverId]
+        );
+        const config = serverConfig.rows[0];
+        const gameName = config.game_name;
+
         // Send as a code block for easy copying
-        const response = `**📝 Signed Up Players (${playersResult.rows.length})**\n\`\`\`\n${playerList}\n\`\`\``;
+        const response = `**${gameName} Game ${game.game_number} Player List (${playersResult.rows.length}):**\n${playerList}`;
 
         await message.reply(response);
     }
