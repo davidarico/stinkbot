@@ -2395,16 +2395,55 @@ class WerewolfBot {
             return message.reply('❌ Alive role not found. Please use `Wolf.roles` to set up roles.');
         }
 
+        // OPTIMIZATION: Fetch all guild members at once instead of individual calls
+        try {
+            await message.guild.members.fetch();
+        } catch (error) {
+            console.log('Could not fetch all guild members, falling back to individual fetches');
+            // Fallback to original method if bulk fetch fails
+            const alivePlayers = [];
+            for (const player of allPlayers.rows) {
+                try {
+                    const member = await message.guild.members.fetch(player.user_id);
+                    if (member.roles.cache.has(aliveRole.id)) {
+                        alivePlayers.push(player.username);
+                    }
+                } catch (error) {
+                    console.log(`Could not fetch member ${player.user_id}, skipping`);
+                }
+            }
+            
+            if (alivePlayers.length === 0) {
+                return message.reply('💀 No players are currently alive in the game.');
+            }
+
+            // Sort players by stripping non-alphanumeric characters while maintaining original display names
+            const sortedAlivePlayers = alivePlayers.sort((a, b) => {
+                const aClean = a.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+                const bClean = b.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+                return aClean.localeCompare(bClean);
+            });
+
+            const playerList = sortedAlivePlayers.map((player, index) => `${index + 1}. ${player}`).join('\n');
+            
+            const embed = new EmbedBuilder()
+                .setTitle('💚 Alive Players')
+                .setDescription(`Here are all the players currently alive in the game:`)
+                .addFields({ 
+                    name: `Players (${alivePlayers.length})`, 
+                    value: playerList 
+                })
+                .setColor(0x00FF00);
+
+            return await message.reply({ embeds: [embed] });
+        }
+
+        // Use cached members for much faster processing
         const alivePlayers = [];
         for (const player of allPlayers.rows) {
-            try {
-                const member = await message.guild.members.fetch(player.user_id);
-                if (member.roles.cache.has(aliveRole.id)) {
-                    alivePlayers.push(player.username);
-                }
-            } catch (error) {
-                // Player might have left the server, skip them
-                console.log(`Could not fetch member ${player.user_id}, skipping`);
+            const member = message.guild.members.cache.get(player.user_id);
+            if (member && member.roles.cache.has(aliveRole.id)) {
+                alivePlayers.push(player.username);
             }
         }
 
