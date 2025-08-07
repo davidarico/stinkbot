@@ -2412,7 +2412,14 @@ class WerewolfBot {
             return message.reply('💀 No players are currently alive in the game.');
         }
 
-        const playerList = alivePlayers.map((player, index) => `${index + 1}. ${player}`).join('\n');
+        // Sort players by stripping non-alphanumeric characters while maintaining original display names
+        const sortedAlivePlayers = alivePlayers.sort((a, b) => {
+            const aClean = a.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+            const bClean = b.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+            return aClean.localeCompare(bClean);
+        });
+
+        const playerList = sortedAlivePlayers.map((player, index) => `${index + 1}. ${player}`).join('\n');
         
         const embed = new EmbedBuilder()
             .setTitle('💚 Alive Players')
