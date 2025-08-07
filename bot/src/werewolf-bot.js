@@ -909,11 +909,30 @@ class WerewolfBot {
             [game.id]
         );
 
+        try {
+            await message.guild.members.fetch();
+        } catch (error) {
+            console.log('Could not fetch all guild members, falling back to individual fetches');
+            // Fallback to original method if bulk fetch fails
+            for (const player of signedUpPlayers.rows) {
+                try {
+                    const member = await message.guild.members.fetch(player.user_id);
+                    await this.removeRole(member, 'Signed Up');
+                    await this.assignRole(member, 'Alive');
+                } catch (error) {
+                    console.error(`Error updating role for player ${player.user_id}:`, error);
+                }
+            }
+        }
+
+        // Use cached members for much faster processing
         for (const player of signedUpPlayers.rows) {
             try {
-                const member = await message.guild.members.fetch(player.user_id);
-                await this.removeRole(member, 'Signed Up');
-                await this.assignRole(member, 'Alive');
+                const member = message.guild.members.cache.get(player.user_id);
+                if (member) {
+                    await this.removeRole(member, 'Signed Up');
+                    await this.assignRole(member, 'Alive');
+                }
             } catch (error) {
                 console.error(`Error updating role for player ${player.user_id}:`, error);
             }
@@ -4635,15 +4654,29 @@ class WerewolfBot {
                         [activeGame.id]
                     );
 
-                    for (const player of allPlayers.rows) {
-                        try {
-                            const member = await message.guild.members.fetch(player.user_id);
-                            if (member && member.roles.cache.has(aliveRole.id)) {
-                                aliveCount++;
+                    try {
+                        await message.guild.members.fetch();
+                    } catch (error) {
+                        console.log('Could not fetch all guild members, falling back to individual fetches');
+                        // Fallback to original method if bulk fetch fails
+                        for (const player of allPlayers.rows) {
+                            try {
+                                const member = await message.guild.members.fetch(player.user_id);
+                                if (member && member.roles.cache.has(aliveRole.id)) {
+                                    aliveCount++;
+                                }
+                            } catch (error) {
+                                // Member might have left the server
+                                continue;
                             }
-                        } catch (error) {
-                            // Member might have left the server
-                            continue;
+                        }
+                    }
+
+                    // Use cached members for much faster processing
+                    for (const player of allPlayers.rows) {
+                        const member = message.guild.members.cache.get(player.user_id);
+                        if (member && member.roles.cache.has(aliveRole.id)) {
+                            aliveCount++;
                         }
                     }
                 }
