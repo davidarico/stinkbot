@@ -616,6 +616,19 @@ export class DatabaseService {
     }
   }
 
+  async getServerConfig(serverId: string) {
+    try {
+      const result = await this.pool.query(
+        'SELECT * FROM server_configs WHERE server_id = $1',
+        [serverId]
+      )
+      return result.rows[0] || null
+    } catch (error) {
+      console.error('Error fetching server config:', error)
+      throw error
+    }
+  }
+
   // Cleanup method to close the pool
   async close() {
     await this.pool.end()

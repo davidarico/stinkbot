@@ -47,6 +47,10 @@ interface GameData {
   isThemed: boolean
   isSkinned: boolean
   themeName?: string
+  serverConfig?: {
+    gameCounter: number
+    gameName?: string
+  }
 }
 
 interface GameRole {
@@ -130,6 +134,7 @@ export default function GameManagementPage() {
           isThemed: game.isThemed || false,
           isSkinned: game.isSkinned || false,
           themeName: game.themeName,
+          serverConfig: game.serverConfig,
         }
         setGameData(currentGameData)
         setThemeInput(game.themeName || "")
@@ -742,7 +747,9 @@ export default function GameManagementPage() {
           )}
         >
           <div>
-            <h1 className="text-3xl font-bold">Game {gameId}</h1>
+            <h1 className="text-3xl font-bold">
+              {gameData.serverConfig?.gameName} Game {gameData.serverConfig?.gameCounter || gameId}
+            </h1>
             <p className="text-lg flex items-center gap-2">
               {isDayPhase ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
               {gameData.phase === "signup"

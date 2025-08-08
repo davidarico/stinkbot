@@ -14,6 +14,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Game not found" }, { status: 404 })
     }
 
+    // Get server configuration for game counter and name
+    const serverConfig = await db.getServerConfig(game.server_id)
+
     return NextResponse.json({
       id: game.id.toString(),
       status: game.status,
@@ -28,7 +31,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       dayMessage: game.day_message,
       nightMessage: game.night_message,
       wolfDayMessage: game.wolf_day_message,
-      wolfNightMessage: game.wolf_night_message
+      wolfNightMessage: game.wolf_night_message,
+      serverConfig: serverConfig ? {
+        gameCounter: serverConfig.game_counter,
+        gameName: serverConfig.game_name
+      } : null
     })
   } catch (error) {
     console.error("Database error:", error)
