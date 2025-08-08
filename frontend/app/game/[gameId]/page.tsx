@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Search, Users, Shuffle, Moon, Sun, Filter, Check, Settings, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -189,7 +188,7 @@ export default function GameManagementPage() {
             })
           }
         })
-        setSelectedRoles(rolesForSelection)
+        setSelectedRoles(sortRolesByAlignmentAndName(rolesForSelection))
       }
 
       // Load votes for current day (only during day phase)
@@ -269,9 +268,26 @@ export default function GameManagementPage() {
     }
   }
 
+  const sortRolesByAlignmentAndName = (roles: Role[]): Role[] => {
+    return [...roles].sort((a, b) => {
+      // Sort by alignment priority: town, wolf, neutral
+      const alignmentOrder = { town: 1, wolf: 2, neutral: 3 }
+      const aOrder = alignmentOrder[a.alignment] || 4
+      const bOrder = alignmentOrder[b.alignment] || 4
+      
+      if (aOrder !== bOrder) {
+        return aOrder - bOrder
+      }
+      
+      // Then sort alphabetically by name within each alignment
+      return a.name.localeCompare(b.name)
+    })
+  }
+
   const addRoleToGame = (role: Role) => {
     // Always add the role, allowing duplicates
-    setSelectedRoles([...selectedRoles, role])
+    const newSelectedRoles = [...selectedRoles, role]
+    setSelectedRoles(sortRolesByAlignmentAndName(newSelectedRoles))
     
     // Initialize charges if this role has charges and isn't already set
     if (role.hasCharges && roleCharges[role.id] === undefined) {
@@ -283,7 +299,8 @@ export default function GameManagementPage() {
   }
 
   const removeRoleFromGame = (roleIndex: number) => {
-    setSelectedRoles(selectedRoles.filter((_, index) => index !== roleIndex))
+    const newSelectedRoles = selectedRoles.filter((_, index) => index !== roleIndex)
+    setSelectedRoles(sortRolesByAlignmentAndName(newSelectedRoles))
   }
 
   const assignRoles = async () => {
