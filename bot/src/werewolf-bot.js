@@ -141,7 +141,7 @@ class WerewolfBot {
                     await this.handleAlive(message);
                     break;
                 case 'inlist':
-                    await this.handleInList(message);
+                    await this.handleInList(message, args);
                     break;
                 case 'add_channel':
                     await this.handleAddChannel(message, args);
@@ -2491,7 +2491,7 @@ class WerewolfBot {
         await message.reply({ embeds: [embed] });
     }
 
-    async handleInList(message) {
+    async handleInList(message, args) {
         const serverId = message.guild.id;
 
         // Get active game in signup phase
@@ -2519,11 +2519,15 @@ class WerewolfBot {
         // Create a simple, mobile-friendly format with alphanumeric sorting
         const playerNames = playersResult.rows.map(p => p.username);
         
+        // Check if za parameter is provided for reverse sorting
+        const reverseSort = args.includes('za');
+        
         // Sort players by stripping non-alphanumeric characters while maintaining original display names
         const sortedPlayerNames = playerNames.sort((a, b) => {
             const aClean = a.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
             const bClean = b.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-            return aClean.localeCompare(bClean);
+            const comparison = aClean.localeCompare(bClean);
+            return reverseSort ? -comparison : comparison;
         });
         
         const playerList = sortedPlayerNames.join('\n');
