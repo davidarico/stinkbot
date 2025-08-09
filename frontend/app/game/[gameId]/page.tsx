@@ -750,7 +750,8 @@ export default function GameManagementPage() {
         >
           <div>
             <h1 className="text-3xl font-bold">
-              {gameData.serverConfig?.gameName} Game {gameData.serverConfig?.gameCounter || gameId}
+              {/*When starting a game the game counter gets incremented by 1, so we need to subtract 1 to get the correct game number*/}
+              {gameData.serverConfig?.gameName} Game {gameData.serverConfig?.gameCounter ? gameData.serverConfig.gameCounter - 1 : gameId}
             </h1>
             <p className="text-lg flex items-center gap-2">
               {isDayPhase ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}

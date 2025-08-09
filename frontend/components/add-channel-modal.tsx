@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -19,6 +19,8 @@ interface AddChannelModalProps {
 export function AddChannelModal({ gameId, isOpen, onClose, onChannelAdded }: AddChannelModalProps) {
   const { toast } = useToast()
   const [loading, setLoading] = useState(false)
+  const [channelPrefix, setChannelPrefix] = useState("")
+  const [loadingPrefix, setLoadingPrefix] = useState(false)
   const [formData, setFormData] = useState({
     channelName: "",
     dayMessage: "",
@@ -27,11 +29,106 @@ export function AddChannelModal({ gameId, isOpen, onClose, onChannelAdded }: Add
     openAtDusk: true
   })
 
+  // Load channel prefix when modal opens
+  useEffect(() => {
+    if (isOpen && gameId) {
+      loadChannelPrefix()
+    }
+  }, [isOpen, gameId])
+
+  const loadChannelPrefix = async () => {
+    try {
+      setLoadingPrefix(true)
+      const response = await fetch(`/api/games/${gameId}/info`)
+      if (response.ok) {
+        const data = await response.json()
+        setChannelPrefix(data.channelPrefix)
+      }
+    } catch (error) {
+      console.error('Error loading channel prefix:', error)
+    } finally {
+      setLoadingPrefix(false)
+    }
+  }
+
+  // Sanitize and format channel name
+  const sanitizeChannelName = (input: string): string => {
+    // Remove prefix if user tries to type it
+    let sanitized = input
+    if (channelPrefix && sanitized.startsWith(channelPrefix + "-")) {
+      sanitized = sanitized.substring(channelPrefix.length + 1)
+    }
+    
+    // Step 1: Convert to lowercase
+    sanitized = sanitized.toLowerCase()
+    
+    // Step 2: Replace spaces with hyphens
+    sanitized = sanitized.replace(/\s+/g, '-')
+    
+    // Step 3: Remove all non-alphanumeric characters except hyphens
+    sanitized = sanitized.replace(/[^a-z0-9-]/g, '')
+    
+    // Step 4: Replace multiple consecutive hyphens with single hyphen
+    sanitized = sanitized.replace(/-{2,}/g, '-')
+    
+    // Step 5: Remove leading hyphens only (allow trailing hyphens during typing)
+    sanitized = sanitized.replace(/^-+/g, '')
+    
+    return sanitized
+  }
+
+  // Get the full channel name with prefix
+  const getFullChannelName = (): string => {
+    if (!channelPrefix || !formData.channelName) return ""
+    // Clean up any trailing hyphens for the final name
+    const cleanChannelName = formData.channelName.replace(/^-+|-+$/g, '')
+    return `${channelPrefix}-${cleanChannelName}`
+  }
+
+  // Validate channel name
+  const validateChannelName = (name: string): string | null => {
+    // Clean up the name for validation (remove trailing hyphens)
+    const cleanName = name.replace(/^-+|-+$/g, '')
+    
+    if (!cleanName.trim()) {
+      return "Channel name is required."
+    }
+    
+    if (cleanName.length < 2) {
+      return "Channel name must be at least 2 characters long."
+    }
+    
+    if (cleanName.length > 50) {
+      return "Channel name must be 50 characters or less."
+    }
+    
+    if (!/^[a-z0-9-]+$/.test(cleanName)) {
+      return "Channel name can only contain lowercase letters, numbers, and hyphens."
+    }
+    
+    if (cleanName.startsWith('-') || cleanName.endsWith('-')) {
+      return "Channel name cannot start or end with a hyphen."
+    }
+    
+    return null
+  }
+
   const handleSave = async () => {
-    if (!formData.channelName.trim()) {
+    const validationError = validateChannelName(formData.channelName)
+    if (validationError) {
       toast({
         title: "Validation Error",
-        description: "Channel name is required.",
+        description: validationError,
+        variant: "destructive",
+      })
+      return
+    }
+
+    const fullChannelName = getFullChannelName()
+    if (!fullChannelName) {
+      toast({
+        title: "Error",
+        description: "Unable to generate channel name. Please try again.",
         variant: "destructive",
       })
       return
@@ -43,7 +140,7 @@ export function AddChannelModal({ gameId, isOpen, onClose, onChannelAdded }: Add
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          channelName: formData.channelName.trim(),
+          channelName: fullChannelName,
           dayMessage: formData.dayMessage.trim() || null,
           nightMessage: formData.nightMessage.trim() || null,
           openAtDawn: formData.openAtDawn,
@@ -118,12 +215,39 @@ export function AddChannelModal({ gameId, isOpen, onClose, onChannelAdded }: Add
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-300">Channel Name</label>
-                <Input
-                  placeholder="e.g., Couple Chat, Mason Chat..."
-                  value={formData.channelName}
-                  onChange={(e) => setFormData(prev => ({ ...prev, channelName: e.target.value }))}
-                  className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
-                />
+                <div className="space-y-2">
+                  {loadingPrefix ? (
+                    <div className="text-sm text-gray-400">Loading prefix...</div>
+                  ) : channelPrefix ? (
+                    <div className="text-sm text-gray-400">
+                      Channel will be created as: <span className="font-mono text-blue-400">{getFullChannelName() || `${channelPrefix}-`}</span>
+                    </div>
+                  ) : null}
+                  
+                  <div className="relative">
+                    {channelPrefix && (
+                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-mono text-sm pointer-events-none">
+                        {channelPrefix}-
+                      </div>
+                    )}
+                    <Input
+                      placeholder="couple-chat, mason-chat, etc."
+                      value={formData.channelName}
+                      onChange={(e) => {
+                        const sanitized = sanitizeChannelName(e.target.value)
+                        setFormData(prev => ({ ...prev, channelName: sanitized }))
+                      }}
+                      className={`bg-gray-700 border-gray-600 text-white placeholder-gray-400 ${
+                        channelPrefix ? 'pl-20' : ''
+                      }`}
+                      style={{ paddingLeft: channelPrefix ? `${channelPrefix.length * 8 + 24}px` : undefined }}
+                    />
+                  </div>
+                  
+                  <div className="text-xs text-gray-500">
+                    Only lowercase letters, numbers, and hyphens allowed. Spaces will be converted to hyphens.
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>

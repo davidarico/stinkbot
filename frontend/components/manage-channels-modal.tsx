@@ -44,11 +44,6 @@ export function ManageChannelsModal({ gameId, isOpen, onClose }: ManageChannelsM
   const [channelToDelete, setChannelToDelete] = useState<GameChannel | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
-  // Debug: Log when selectedUserId changes
-  useEffect(() => {
-    console.log('selectedUserId changed to:', selectedUserId)
-  }, [selectedUserId])
-
   useEffect(() => {
     if (isOpen) {
       loadData()
@@ -87,8 +82,6 @@ export function ManageChannelsModal({ gameId, isOpen, onClose }: ManageChannelsM
 
   const addUserToChannel = async (channelId: number, userId: string) => {
     if (!userId.trim()) return
-
-    console.log('Adding user to channel:', { channelId, userId, selectedUserId })
 
     try {
       const response = await fetch(`/api/games/${gameId}/channels`, {
@@ -177,7 +170,6 @@ export function ManageChannelsModal({ gameId, isOpen, onClose }: ManageChannelsM
   const getAvailableUsers = (channel: GameChannel) => {
     const invitedUsers = channel.invited_users || []
     const available = players.filter(player => !invitedUsers.includes(player.userId))
-    console.log('Available users for channel:', channel.channel_name, available)
     return available
   }
 
@@ -316,7 +308,6 @@ export function ManageChannelsModal({ gameId, isOpen, onClose }: ManageChannelsM
                             <select
                               value={selectedUserId}
                               onChange={(e) => {
-                                console.log('Native select changed:', e.target.value)
                                 setSelectedUserId(e.target.value)
                               }}
                               className="w-full bg-gray-700 border-gray-600 text-white rounded-md px-3 py-2"
@@ -332,7 +323,6 @@ export function ManageChannelsModal({ gameId, isOpen, onClose }: ManageChannelsM
                             <Button
                               size="sm"
                               onClick={() => {
-                                console.log('Button clicked with selectedUserId:', selectedUserId)
                                 if (selectedUserId) {
                                   addUserToChannel(channel.id, selectedUserId)
                                 }
