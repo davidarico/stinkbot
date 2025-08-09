@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast"
 import { SettingsModal } from "@/components/settings-modal"
 import { AddChannelModal } from "@/components/add-channel-modal"
 import { ManageChannelsModal } from "@/components/manage-channels-modal"
+import { ActionCalculators } from "@/components/action-calculators"
 
 interface Player {
   id: number
@@ -114,10 +115,6 @@ export default function GameManagementPage() {
       setLoading(false)
     }
   }, [gameId])
-
-
-
-
 
   const loadGameData = async () => {
     try {
@@ -1365,9 +1362,17 @@ export default function GameManagementPage() {
         )}
 
         {(gameData.phase === "night" || gameData.phase === "day") && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Players by Team */}
-            <div className="lg:col-span-2 space-y-6">
+          <div className="space-y-6">
+            {/* Action Calculators - Only show during night phase */}
+            <ActionCalculators 
+              players={players}
+              gameRoles={availableRoles}
+              isDayPhase={isDayPhase}
+            />
+            
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Players by Team */}
+              <div className="lg:col-span-2 space-y-6">
               {/* Living Players */}
               <div className="space-y-4">
 
@@ -1657,6 +1662,7 @@ export default function GameManagementPage() {
                 </CardContent>
               </Card>
             )}
+            </div>
           </div>
         )}
       </div>
