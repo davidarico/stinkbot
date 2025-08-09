@@ -1020,9 +1020,6 @@ class WerewolfBot {
 
             for (const channelData of channelsWithInvitesResult.rows) {
                 if (channelData.invited_users && Array.isArray(channelData.invited_users)) {
-                    console.log(`[PERMISSIONS] Processing view permissions for channel: ${channelData.channel_name}`);
-                    console.log(`[PERMISSIONS] Users to add: ${channelData.invited_users.join(', ')}`);
-
                     // Get the channel object
                     const channel = await this.client.channels.fetch(channelData.channel_id);
                     if (!channel) {
@@ -1036,9 +1033,8 @@ class WerewolfBot {
                             let member;
                             try {
                                 member = await message.guild.members.fetch(userId);
-                                console.log(`[PERMISSIONS] Found user ${userId} in server as ${member.displayName || member.user.username}`);
                             } catch (fetchError) {
-                                console.log(`[PERMISSIONS] User ${userId} not found in server, skipping permission grant`);
+                                console.log(`User ${userId} not found in server, skipping permission grant`);
                                 continue;
                             }
 
@@ -1046,10 +1042,8 @@ class WerewolfBot {
                             await channel.permissionOverwrites.edit(userId, {
                                 ViewChannel: true
                             });
-
-                            console.log(`[PERMISSIONS] Successfully added view permission for user ${userId} (${member.displayName || member.user.username}) to channel ${channelData.channel_name}`);
                         } catch (permissionError) {
-                            console.error(`[PERMISSIONS] Error adding view permission for user ${userId} to channel ${channelData.channel_name}:`, permissionError);
+                            console.error(`Error adding view permission for user ${userId} to channel ${channelData.channel_name}:`, permissionError);
                         }
                     }
                 }
