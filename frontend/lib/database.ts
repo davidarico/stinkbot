@@ -568,6 +568,87 @@ export class DatabaseService {
     }
   }
 
+  async addInvitedUserToChannel(gameId: string, channelId: number, userId: string) {
+    try {
+      // First get the current invited_users array
+      const currentResult = await this.pool.query(
+        'SELECT invited_users FROM game_channels WHERE id = $1 AND game_id = $2',
+        [channelId, parseInt(gameId)]
+      )
+      
+      if (currentResult.rows.length === 0) {
+        throw new Error('Channel not found')
+      }
+
+      const currentInvitedUsers = currentResult.rows[0].invited_users || []
+      
+      // Check if user is already invited
+      if (currentInvitedUsers.includes(userId)) {
+        return { success: false, message: 'User already invited' }
+      }
+
+      // Add the user to the array
+      const updatedInvitedUsers = [...currentInvitedUsers, userId]
+      
+      const result = await this.pool.query(
+        'UPDATE game_channels SET invited_users = $1 WHERE id = $2 AND game_id = $3 RETURNING *',
+        [JSON.stringify(updatedInvitedUsers), channelId, parseInt(gameId)]
+      )
+      
+      return { success: true, channel: result.rows[0] }
+    } catch (error) {
+      console.error('Error adding invited user to channel:', error)
+      throw error
+    }
+  }
+
+  async removeInvitedUserFromChannel(gameId: string, channelId: number, userId: string) {
+    try {
+      // First get the current invited_users array
+      const currentResult = await this.pool.query(
+        'SELECT invited_users FROM game_channels WHERE id = $1 AND game_id = $2',
+        [channelId, parseInt(gameId)]
+      )
+      
+      if (currentResult.rows.length === 0) {
+        throw new Error('Channel not found')
+      }
+
+      const currentInvitedUsers = currentResult.rows[0].invited_users || []
+      
+      // Remove the user from the array
+      const updatedInvitedUsers = currentInvitedUsers.filter((user: string) => user !== userId)
+      
+      const result = await this.pool.query(
+        'UPDATE game_channels SET invited_users = $1 WHERE id = $2 AND game_id = $3 RETURNING *',
+        [JSON.stringify(updatedInvitedUsers), channelId, parseInt(gameId)]
+      )
+      
+      return { success: true, channel: result.rows[0] }
+    } catch (error) {
+      console.error('Error removing invited user from channel:', error)
+      throw error
+    }
+  }
+
+  async deleteGameChannel(gameId: string, channelId: number) {
+    try {
+      const result = await this.pool.query(
+        'DELETE FROM game_channels WHERE id = $1 AND game_id = $2 RETURNING *',
+        [channelId, parseInt(gameId)]
+      )
+      
+      if (result.rows.length === 0) {
+        return { success: false, message: 'Channel not found' }
+      }
+      
+      return { success: true, channel: result.rows[0] }
+    } catch (error) {
+      console.error('Error deleting game channel:', error)
+      throw error
+    }
+  }
+
   async getNightActions(gameId: string, nightNumber: number) {
     try {
       console.log('Database: Fetching night actions for game', gameId, 'night', nightNumber)

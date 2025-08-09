@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { SettingsModal } from "@/components/settings-modal"
 import { AddChannelModal } from "@/components/add-channel-modal"
+import { ManageChannelsModal } from "@/components/manage-channels-modal"
 
 interface Player {
   id: number
@@ -100,6 +101,7 @@ export default function GameManagementPage() {
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [gameSettings, setGameSettings] = useState<any>(null);
   const [addChannelModalOpen, setAddChannelModalOpen] = useState(false);
+  const [manageChannelsModalOpen, setManageChannelsModalOpen] = useState(false);
 
   useEffect(() => {
     // Check if user is already authenticated for this game
@@ -764,18 +766,35 @@ export default function GameManagementPage() {
           </div>
           
           <div className="flex items-center gap-2">
-            <Button
-              onClick={() => setAddChannelModalOpen(true)}
-              variant="outline"
-              size="sm"
-              className={cn(
-                "flex items-center gap-2",
-                isDayPhase ? "bg-white/90" : "bg-white/10"
-              )}
-            >
-              <Plus className="w-4 h-4" />
-              Add Channel
-            </Button>
+            {gameData.phase === "signup" && (
+              <>
+                <Button
+                  onClick={() => setAddChannelModalOpen(true)}
+                  variant="outline"
+                  size="sm"
+                  className={cn(
+                    "flex items-center gap-2",
+                    isDayPhase ? "bg-white/90" : "bg-white/10"
+                  )}
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Channel
+                </Button>
+                
+                <Button
+                  onClick={() => setManageChannelsModalOpen(true)}
+                  variant="outline"
+                  size="sm"
+                  className={cn(
+                    "flex items-center gap-2",
+                    isDayPhase ? "bg-white/90" : "bg-white/10"
+                  )}
+                >
+                  <Users className="w-4 h-4" />
+                  Manage Channels
+                </Button>
+              </>
+            )}
             
             <Button
               onClick={() => setSettingsModalOpen(true)}
@@ -1636,6 +1655,13 @@ export default function GameManagementPage() {
             setTimeout(() => setSettingsModalOpen(true), 100)
           }
         }}
+      />
+      
+      {/* Manage Channels Modal */}
+      <ManageChannelsModal
+        gameId={gameId}
+        isOpen={manageChannelsModalOpen}
+        onClose={() => setManageChannelsModalOpen(false)}
       />
     </div>
   )
