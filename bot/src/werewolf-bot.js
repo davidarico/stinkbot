@@ -1055,15 +1055,15 @@ class WerewolfBot {
         // Update game in database with explicit UTC timestamp
         await this.db.query(
             `UPDATE games SET 
-             status = 'active',
-             day_phase = 'night',
-             day_number = 1,
-             town_square_channel_id = $1,
-             wolf_chat_channel_id = $2,
-             memos_channel_id = $3,
-             results_channel_id = $4,
-             voting_booth_channel_id = $5,
-             phase_change_at = $6
+                status = 'active',
+                day_phase = 'night',
+                day_number = 1,
+                town_square_channel_id = $1,
+                wolf_chat_channel_id = $2,
+                memos_channel_id = $3,
+                results_channel_id = $4,
+                voting_booth_channel_id = $5,
+                phase_change_at = $6
              WHERE id = $7`,
             [townSquare.id, wolfChat.id, memos.id, results.id, votingBooth.id, new Date().toISOString(), game.id]
         );

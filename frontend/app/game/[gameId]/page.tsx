@@ -364,6 +364,22 @@ export default function GameManagementPage() {
     }
   }
 
+  // Helper function to count couple roles in selected roles
+  const getCoupleCount = (): number => {
+    return selectedRoles.filter(role => role.name === "Couple").length
+  }
+
+  // Helper function to get couple validation message
+  const getCoupleValidationMessage = (): string | null => {
+    const coupleCount = getCoupleCount()
+    if (coupleCount === 1) {
+      return "There is only one couple in the role list"
+    } else if (coupleCount > 2) {
+      return "There are more than two couples, manually create the couple chats with the 'Add Channel' button"
+    }
+    return null
+  }
+
   const togglePlayerStatus = async (playerId: number) => {
     const player = players.find(p => p.id === playerId)
     if (!player) return
@@ -1260,6 +1276,16 @@ export default function GameManagementPage() {
                   <Shuffle className="w-4 h-4 mr-2" />
                   Assign Roles
                 </Button>
+
+                {/* Couple validation message */}
+                {getCoupleValidationMessage() && (
+                  <div className={cn(
+                    "p-3 rounded-md text-sm mb-4",
+                    isDayPhase ? "bg-orange-50 text-orange-700 border border-orange-200" : "bg-orange-900/20 text-orange-300 border border-orange-700"
+                  )}>
+                    {getCoupleValidationMessage()}
+                  </div>
+                )}
 
                 {players.some((p) => p.role) && (
                   <div className="space-y-4">

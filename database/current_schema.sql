@@ -1,5 +1,5 @@
 -- Werewolf Discord Bot Database Schema
--- Generated automatically on 2025-08-08T06:02:55.982Z
+-- Generated automatically on 2025-08-09T03:31:14.770Z
 -- This file shows the current database structure with table comments
 -- Run this after migrations to get the latest schema
 
@@ -16,6 +16,7 @@ CREATE TABLE game_channels (
     open_at_dusk BOOLEAN DEFAULT TRUE,
     is_created BOOLEAN DEFAULT FALSE,
     invited_users JSONB,
+    is_couple_chat BOOLEAN DEFAULT FALSE,
     UNIQUE(channel_id, game_id)
 );
 

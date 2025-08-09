@@ -198,6 +198,9 @@ export class DatabaseService {
           )
         }
         
+        // Check for couple roles and create couple chat if needed
+        await this.handleCoupleChat(client, gameId)
+        
         await client.query('COMMIT')
         return { success: true }
       } catch (error) {
@@ -541,24 +544,28 @@ export class DatabaseService {
 
   async addGameChannel(gameId: string, channelData: {
     channelName: string
-    channelId: string
+    channelId?: string
     dayMessage?: string
     nightMessage?: string
     openAtDawn: boolean
     openAtDusk: boolean
+    isCoupleChat?: boolean
+    invitedUsers?: string[]
   }) {
     try {
       const result = await this.pool.query(
-        `INSERT INTO game_channels (game_id, channel_id, channel_name, day_message, night_message, open_at_dawn, open_at_dusk) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+        `INSERT INTO game_channels (game_id, channel_id, channel_name, day_message, night_message, open_at_dawn, open_at_dusk, is_couple_chat, invited_users) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
         [
           parseInt(gameId),
-          channelData.channelId,
+          channelData.channelId || null,
           channelData.channelName,
           channelData.dayMessage || null,
           channelData.nightMessage || null,
           channelData.openAtDawn,
-          channelData.openAtDusk
+          channelData.openAtDusk,
+          channelData.isCoupleChat || false,
+          channelData.invitedUsers ? JSON.stringify(channelData.invitedUsers) : null
         ]
       )
       return { success: true, channel: result.rows[0] }
@@ -707,6 +714,114 @@ export class DatabaseService {
     } catch (error) {
       console.error('Error fetching server config:', error)
       throw error
+    }
+  }
+
+  async getCoupleChat(gameId: string) {
+    try {
+      const result = await this.pool.query(
+        'SELECT * FROM game_channels WHERE game_id = $1 AND is_couple_chat = true LIMIT 1',
+        [parseInt(gameId)]
+      )
+      return result.rows[0] || null
+    } catch (error) {
+      console.error('Error fetching couple chat:', error)
+      throw error
+    }
+  }
+
+  async getCouplePlayerUserIds(gameId: string): Promise<string[]> {
+    try {
+      const result = await this.pool.query(
+        `SELECT p.user_id 
+         FROM players p 
+         JOIN roles r ON p.role_id = r.id 
+         WHERE p.game_id = $1 AND r.name = 'Couple'`,
+        [parseInt(gameId)]
+      )
+      return result.rows.map(row => row.user_id)
+    } catch (error) {
+      console.error('Error fetching couple player user IDs:', error)
+      throw error
+    }
+  }
+
+  private async handleCoupleChat(client: any, gameId: string) {
+    try {
+      // Get couple players
+      const coupleResult = await client.query(
+        `SELECT p.user_id 
+         FROM players p 
+         JOIN roles r ON p.role_id = r.id 
+         WHERE p.game_id = $1 AND r.name = 'Couple'`,
+        [parseInt(gameId)]
+      )
+      
+      const coupleUserIds = coupleResult.rows.map((row: any) => row.user_id)
+      
+      // Check if couple chat already exists
+      const existingCoupleChat = await client.query(
+        'SELECT id FROM game_channels WHERE game_id = $1 AND is_couple_chat = true',
+        [parseInt(gameId)]
+      )
+      
+      if (coupleUserIds.length !== 2) {
+        // No couples in the game - delete existing couple chat if it exists
+        if (existingCoupleChat.rows.length > 0) {
+          await client.query(
+            'DELETE FROM game_channels WHERE game_id = $1 AND is_couple_chat = true',
+            [parseInt(gameId)]
+          )
+        }
+      } else if (coupleUserIds.length === 2) {
+        // Exactly 2 couples - create or update couple chat
+        if (existingCoupleChat.rows.length > 0) {
+          // Update existing couple chat with new invited users
+          await client.query(
+            'UPDATE game_channels SET invited_users = $1 WHERE game_id = $2 AND is_couple_chat = true',
+            [JSON.stringify(coupleUserIds), parseInt(gameId)]
+          )
+        } else {
+          // Create new couple chat
+          // Get game and server config info to construct the channel name
+          const gameResult = await client.query(
+            'SELECT game_number, server_id FROM games WHERE id = $1',
+            [parseInt(gameId)]
+          )
+          
+          if (gameResult.rows.length > 0) {
+            const game = gameResult.rows[0]
+            const serverConfigResult = await client.query(
+              'SELECT game_prefix FROM server_configs WHERE server_id = $1',
+              [game.server_id]
+            )
+            
+            const serverConfig = serverConfigResult.rows[0]
+            const channelName = `${serverConfig.game_prefix}${game.game_number}-couple-chat`
+            
+            // Create couple chat channel
+            await client.query(
+              `INSERT INTO game_channels (game_id, channel_name, day_message, night_message, open_at_dawn, open_at_dusk, is_couple_chat, invited_users) 
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+              [
+                parseInt(gameId),
+                channelName,
+                'Back to the mines yall go.', // Day message
+                'Have some nice pillow talk you two.', // Night message
+                false, // Don't open at dawn (day)
+                true,  // Open at dusk (night)
+                true,  // This is a couple chat
+                JSON.stringify(coupleUserIds)
+              ]
+            )
+          }
+        }
+      }
+      // For any other number of couples (1, 3+), we don't create/update/delete the couple chat
+      // The frontend validation messages will handle those cases
+    } catch (error) {
+      console.error('Error handling couple chat:', error)
+      // Don't throw - this shouldn't break role assignment
     }
   }
 

@@ -20,7 +20,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   const { gameId } = await params
   const body = await request.json()
-  const { channelName, channelId, dayMessage, nightMessage, openAtDawn, openAtDusk } = body
+  const { channelName, channelId, dayMessage, nightMessage, openAtDawn, openAtDusk, isCoupleChat, invitedUsers } = body
 
   try {
     const result = await db.addGameChannel(gameId, {
@@ -29,7 +29,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       dayMessage,
       nightMessage,
       openAtDawn,
-      openAtDusk
+      openAtDusk,
+      isCoupleChat,
+      invitedUsers
     })
     return NextResponse.json(result)
   } catch (error) {
