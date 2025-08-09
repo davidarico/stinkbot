@@ -943,7 +943,7 @@ class WerewolfBot {
         // Create channels for game_channels records where is_created is false
         try {
             const pendingChannelsResult = await this.db.query(
-                'SELECT channel_name, day_message, night_message FROM game_channels WHERE game_id = $1 AND is_created = $2',
+                'SELECT channel_name, day_message, night_message, invited_users FROM game_channels WHERE game_id = $1 AND is_created = $2',
                 [game.id, false]
             );
 
@@ -1009,6 +1009,53 @@ class WerewolfBot {
             }
         } catch (error) {
             console.error('Error creating pending game channels:', error);
+        }
+
+        // Add view permissions for invited users to their respective channels
+        try {
+            const channelsWithInvitesResult = await this.db.query(
+                'SELECT invited_users, channel_name, channel_id FROM game_channels WHERE game_id = $1 AND invited_users IS NOT NULL AND is_created = true',
+                [game.id]
+            );
+
+            for (const channelData of channelsWithInvitesResult.rows) {
+                if (channelData.invited_users && Array.isArray(channelData.invited_users)) {
+                    console.log(`[PERMISSIONS] Processing view permissions for channel: ${channelData.channel_name}`);
+                    console.log(`[PERMISSIONS] Users to add: ${channelData.invited_users.join(', ')}`);
+
+                    // Get the channel object
+                    const channel = await this.client.channels.fetch(channelData.channel_id);
+                    if (!channel) {
+                        console.error(`[PERMISSIONS] Could not find channel ${channelData.channel_name} with ID ${channelData.channel_id}`);
+                        continue;
+                    }
+
+                    for (const userId of channelData.invited_users) {
+                        try {
+                            // Check if user is in the server
+                            let member;
+                            try {
+                                member = await message.guild.members.fetch(userId);
+                                console.log(`[PERMISSIONS] Found user ${userId} in server as ${member.displayName || member.user.username}`);
+                            } catch (fetchError) {
+                                console.log(`[PERMISSIONS] User ${userId} not found in server, skipping permission grant`);
+                                continue;
+                            }
+
+                            // Add view permission for this user to the channel
+                            await channel.permissionOverwrites.edit(userId, {
+                                ViewChannel: true
+                            });
+
+                            console.log(`[PERMISSIONS] Successfully added view permission for user ${userId} (${member.displayName || member.user.username}) to channel ${channelData.channel_name}`);
+                        } catch (permissionError) {
+                            console.error(`[PERMISSIONS] Error adding view permission for user ${userId} to channel ${channelData.channel_name}:`, permissionError);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error processing invited user permissions:', error);
         }
 
         // Update game in database with explicit UTC timestamp
