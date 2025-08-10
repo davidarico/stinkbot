@@ -34,7 +34,7 @@ client.once('ready', () => {
     console.log(`📊 Serving ${client.guilds.cache.size} servers`);
     
     // Set up daily member sync cron job (runs at 2 AM UTC every day)
-    const memberSyncCron = cron.schedule('0 2 * * *', async () => {
+    const memberSyncCron = cron.schedule('0 4 * * *', async () => {
         console.log('🕐 Daily member sync cron job triggered');
         try {
             await werewolfBot.syncServerMembers();
