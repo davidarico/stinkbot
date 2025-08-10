@@ -49,9 +49,6 @@ export function ActionCalculators({ players, gameRoles, isDayPhase }: ActionCalc
               {isOpen ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
               <Calculator className="w-5 h-5" />
               Action Calculators
-              <Badge variant="secondary" className="ml-auto">
-                Night Phase Tools
-              </Badge>
             </CardTitle>
           </CardHeader>
         </CollapsibleTrigger>

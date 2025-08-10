@@ -21,9 +21,10 @@ interface Player {
 
 interface SleepwalkerCalculatorProps {
   players: Player[]
+  sleepwalkerPlayer?: string // Username of the player who is the Sleepwalker
 }
 
-export function SleepwalkerCalculator({ players }: SleepwalkerCalculatorProps) {
+export function SleepwalkerCalculator({ players, sleepwalkerPlayer }: SleepwalkerCalculatorProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [avoid1, setAvoid1] = useState<string>("")
   const [avoid2, setAvoid2] = useState<string>("")
@@ -35,9 +36,10 @@ export function SleepwalkerCalculator({ players }: SleepwalkerCalculatorProps) {
   const generateResults = () => {
     const avoidList = [avoid1, avoid2].filter(name => name.trim() !== "")
     
-    // Get all living players not in the avoid list
+    // Get all living players not in the avoid list and not the Sleepwalker itself
     const availableTargets = alivePlayers.filter(player => 
-      !avoidList.includes(player.username)
+      !avoidList.includes(player.username) && 
+      player.username !== sleepwalkerPlayer
     )
 
     if (availableTargets.length === 0) {
@@ -56,9 +58,8 @@ export function SleepwalkerCalculator({ players }: SleepwalkerCalculatorProps) {
       ? `\n\nAvoided players: ${avoidList.join(", ")}`
       : "\n\nNo players avoided"
 
-    const resultText = `**Sleepwalker Target Selection**
-
-The Sleepwalker randomly targets: **${randomTarget.username}**${avoidText}
+    const resultText = `
+The Sleepwalker visits: **${randomTarget.username}**${avoidText}
 
 *Selected from ${availableTargets.length} available living players.*`
 
@@ -89,9 +90,12 @@ The Sleepwalker randomly targets: **${randomTarget.username}**${avoidText}
     }
   }
 
-  // Get available players for avoid selection (all alive players)
+  // Get available players for avoid selection (all alive players except Sleepwalker)
   const getAvailablePlayersForAvoid = (currentAvoid: string) => {
     return alivePlayers.filter(player => {
+      // Don't show the Sleepwalker itself
+      if (player.username === sleepwalkerPlayer) return false
+      
       // Don't show players already selected in the other avoid slot
       if (currentAvoid === avoid1) {
         return player.username !== avoid2
@@ -110,20 +114,12 @@ The Sleepwalker randomly targets: **${randomTarget.username}**${avoidText}
               {isOpen ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
               <Moon className="w-5 h-5" />
               Sleepwalker Calculator
-              <Badge variant="outline" className="ml-auto text-xs">
-                Random Target
-              </Badge>
             </CardTitle>
           </CardHeader>
         </CollapsibleTrigger>
         
         <CollapsibleContent>
           <CardContent className="space-y-4">
-            <div className="text-sm text-gray-300 p-3 bg-white/5 rounded border border-white/10">
-              <p className="font-medium mb-2">Sleepwalker Rule:</p>
-              <p>The Sleepwalker randomly targets a living player, avoiding up to two specified players. This calculator will randomly select from all available targets.</p>
-            </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-white">
@@ -131,7 +127,7 @@ The Sleepwalker randomly targets: **${randomTarget.username}**${avoidText}
                 </label>
                 <div className="flex items-center gap-2">
                   <Select value={avoid1} onValueChange={setAvoid1}>
-                    <SelectTrigger className="bg-white/10 border-white/20 text-white flex-1">
+                    <SelectTrigger className="bg-white/10 border-white/20 text-white flex-1 [&>span]:text-white">
                       <SelectValue placeholder="Select player to avoid..." />
                     </SelectTrigger>
                     <SelectContent>
@@ -161,7 +157,7 @@ The Sleepwalker randomly targets: **${randomTarget.username}**${avoidText}
                 </label>
                 <div className="flex items-center gap-2">
                   <Select value={avoid2} onValueChange={setAvoid2}>
-                    <SelectTrigger className="bg-white/10 border-white/20 text-white flex-1">
+                    <SelectTrigger className="bg-white/10 border-white/20 text-white flex-1 [&>span]:text-white">
                       <SelectValue placeholder="Select player to avoid..." />
                     </SelectTrigger>
                     <SelectContent>
@@ -188,8 +184,14 @@ The Sleepwalker randomly targets: **${randomTarget.username}**${avoidText}
 
             <div className="text-xs text-gray-400">
               Available targets: {alivePlayers.filter(player => 
-                ![avoid1, avoid2].filter(name => name.trim() !== "").includes(player.username)
+                ![avoid1, avoid2].filter(name => name.trim() !== "").includes(player.username) &&
+                player.username !== sleepwalkerPlayer
               ).length} / {alivePlayers.length} living players
+              {sleepwalkerPlayer && (
+                <span className="block mt-1">
+                  Sleepwalker ({sleepwalkerPlayer}) cannot visit themselves
+                </span>
+              )}
             </div>
 
             <div className="flex gap-2">

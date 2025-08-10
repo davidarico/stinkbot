@@ -40,6 +40,7 @@ export function BartenderCalculator({ players, gameRoles }: BartenderCalculatorP
   const [selectedPlayer, setSelectedPlayer] = useState<string>("")
   const [targetFramed, setTargetFramed] = useState(false)
   const [results, setResults] = useState<string | null>(null)
+  const [resultRoles, setResultRoles] = useState<string[]>([])
 
   const { toast } = useToast()
 
@@ -64,6 +65,17 @@ export function BartenderCalculator({ players, gameRoles }: BartenderCalculatorP
         role.specialProperties?.toLowerCase().includes('shows as')) return false
     
     return true
+  }
+
+  // Get roles that are actually in play (assigned to players)
+  const getRolesInPlay = (): string[] => {
+    const rolesInPlay = new Set<string>()
+    players.forEach(player => {
+      if (player.role) {
+        rolesInPlay.add(player.role)
+      }
+    })
+    return Array.from(rolesInPlay)
   }
 
   // Check if a player is targetable (not UTAH - untargetable at home)
@@ -119,9 +131,9 @@ export function BartenderCalculator({ players, gameRoles }: BartenderCalculatorP
     // If the target's true role cannot appear in Bartender info, exclude it from results
     const trueRoleCanAppear = canRoleAppearInBartenderInfo(trueRole)
     
-    // Get all roles that were in the game at the beginning and can appear in Bartender info
-    const availableRoles = [...new Set(gameRoles.map(role => role.name))]
-      .filter(canRoleAppearInBartenderInfo)
+    // Get all roles that are actually in play and can appear in Bartender info
+    const rolesInPlay = getRolesInPlay()
+    const availableRoles = rolesInPlay.filter(canRoleAppearInBartenderInfo)
     
     if (availableRoles.length < 3) {
       toast({
@@ -209,6 +221,9 @@ export function BartenderCalculator({ players, gameRoles }: BartenderCalculatorP
 
     // Shuffle the results so the true role isn't always first
     resultRoles = resultRoles.sort(() => Math.random() - 0.5)
+    
+    // Update the state with the final result
+    setResultRoles(resultRoles)
 
     let resultText = `**Bartender Investigation: ${selectedPlayer}**${targetFramed ? " (Framed)" : ""}`
     
@@ -216,8 +231,7 @@ export function BartenderCalculator({ players, gameRoles }: BartenderCalculatorP
       resultText += `\n\n⚠️ Note: ${selectedPlayer}'s true role (${trueRole}) cannot appear in Bartender information.`
     }
     
-    resultText += `\n\nThe Bartender visits ${selectedPlayer} and receives the following three roles:
-• ${resultRoles.join("\n• ")}`
+    resultText += `\n\n${resultRoles.join(" / ")}`
     
     if (trueRoleCanAppear && !targetFramed) {
       resultText += `\n\n*One of these is their true role, two are lies. One role is town, one is wolf, and the final role is either town or neutral.*`
@@ -230,7 +244,7 @@ export function BartenderCalculator({ players, gameRoles }: BartenderCalculatorP
 
   const copyResults = async () => {
     if (results) {
-      await navigator.clipboard.writeText(results)
+      await navigator.clipboard.writeText(resultRoles.join(" / "))
       toast({
         title: "Copied!",
         description: "Results copied to clipboard",
@@ -242,6 +256,7 @@ export function BartenderCalculator({ players, gameRoles }: BartenderCalculatorP
     setSelectedPlayer("")
     setTargetFramed(false)
     setResults(null)
+    setResultRoles([])
   }
 
   return (
@@ -253,30 +268,19 @@ export function BartenderCalculator({ players, gameRoles }: BartenderCalculatorP
               {isOpen ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
               <Wine className="w-5 h-5" />
               Bartender Calculator
-              <Badge variant="outline" className="ml-auto text-xs">
-                Investigation Role
-              </Badge>
             </CardTitle>
           </CardHeader>
         </CollapsibleTrigger>
         
         <CollapsibleContent>
           <CardContent className="space-y-4">
-            <div className="text-sm text-gray-300 p-3 bg-white/5 rounded border border-white/10">
-              <p className="font-medium mb-2">Bartender Rule:</p>
-              <p>The Bartender visits one player per night. They receive three roles that were in the game at the beginning — the targeted player's true role and two lies. One role must be town. One role must be wolf. The final role must either be town or neutral.</p>
-              <p className="mt-2 text-xs text-gray-400">
-                <strong>Restrictions:</strong> Roles that cannot be targeted (Sleepwalker, Orphan) or appear as other roles (Heir, Rivals) cannot appear in results. Bartender fails if target is untargetable at home (UTAH).
-              </p>
-            </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-white">
                   Target Player
                 </label>
                 <Select value={selectedPlayer} onValueChange={setSelectedPlayer}>
-                  <SelectTrigger className="bg-white/10 border-white/20 text-white">
+                  <SelectTrigger className="bg-white/10 border-white/20 text-white [&>span]:text-white">
                     <SelectValue placeholder="Select a player to investigate..." />
                   </SelectTrigger>
                   <SelectContent>
@@ -295,9 +299,6 @@ export function BartenderCalculator({ players, gameRoles }: BartenderCalculatorP
                     })}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-gray-400">
-                  ❌ = UTAH (untargetable)
-                </p>
               </div>
 
               <div className="space-y-2">
