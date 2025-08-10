@@ -1,5 +1,5 @@
 -- Werewolf Discord Bot Database Schema
--- Generated automatically on 2025-08-10T02:30:26.006Z
+-- Generated automatically on 2025-08-10T04:52:38.707Z
 -- This file shows the current database structure with table comments
 -- Run this after migrations to get the latest schema
 
@@ -160,7 +160,8 @@ CREATE TABLE server_users (
     id SERIAL PRIMARY KEY,
     user_id VARCHAR(255) NOT NULL,
     server_id VARCHAR(255) NOT NULL,
-    display_name VARCHAR(255) NOT NULL
+    display_name VARCHAR(255) NOT NULL,
+    UNIQUE(server_id, user_id)
 );
 
 -- Table to store votes cast by players

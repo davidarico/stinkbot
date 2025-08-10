@@ -46,17 +46,18 @@ client.once('ready', () => {
         timezone: 'UTC'
     });
     
-    console.log('⏰ Daily member sync cron job scheduled (runs at 4 AM UTC daily)');
+    if (process.env.NODE_ENV === 'production') {
+        console.log('⏰ Daily member sync cron job scheduled (runs at 4 AM UTC daily)');
     
-    // Optional: Run initial sync after bot startup (with delay to ensure all guilds are loaded)
-    setTimeout(async () => {
-        console.log('🔄 Running initial member sync after startup...');
-        try {
-            await werewolfBot.syncServerMembers();
-        } catch (error) {
-            console.error('❌ Error in initial member sync:', error);
-        }
-    }, 30000); // 30 second delay
+        setTimeout(async () => {
+            console.log('🔄 Running initial member sync after startup...');
+            try {
+                await werewolfBot.syncServerMembers();
+            } catch (error) {
+                console.error('❌ Error in initial member sync:', error);
+            }
+        }, 30000); // 30 second delay
+    }
 });
 
 client.on('messageCreate', async (message) => {
