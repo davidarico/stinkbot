@@ -35,3 +35,4 @@ build/
 # Temporary files
 *.tmp
 *.temp
+archive_*.json

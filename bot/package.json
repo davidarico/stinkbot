@@ -19,6 +19,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.451.0",
     "discord.js": "^14.14.1",
     "dotenv": "^16.3.1",
     "moment-timezone": "^0.6.0",

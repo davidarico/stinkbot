@@ -2,6 +2,7 @@ const { PermissionFlagsBits, ChannelType, EmbedBuilder } = require('discord.js')
 const fs = require('fs');
 const moment = require('moment-timezone');
 const OpenAI = require('openai');
+const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 
 class WerewolfBot {
     constructor(client, db) {
@@ -16,6 +17,19 @@ class WerewolfBot {
             });
         } else {
             this.openai = null;
+        }
+
+        // Initialize S3 client if credentials are available
+        if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && process.env.AWS_REGION) {
+            this.s3Client = new S3Client({
+                region: process.env.AWS_REGION,
+                credentials: {
+                    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+                    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+                }
+            });
+        } else {
+            this.s3Client = null;
         }
     }
 
@@ -205,6 +219,9 @@ class WerewolfBot {
                     break;
                 case 'wolf_list':
                     await message.reply('The wolf list? Are we still doing this? Stop talking about the wolf list.');
+                    break;
+                case 'archive':
+                    await this.handleArchive(message, args);
                     break;
                 default:
                     const funnyResponse = await this.generateFunnyResponse(message.content.slice(prefix.length).trim().split(/ +/), message.author.displayName);
@@ -5320,6 +5337,195 @@ class WerewolfBot {
         } catch (error) {
             console.error('Error handling meme command:', error);
             await message.reply('❌ An error occurred while processing the meme command.');
+        }
+    }
+
+    async handleArchive(message, args) {
+        try {
+            // Check if category name was provided
+            if (!args || args.length === 0) {
+                await message.reply('❌ Please provide a category name. Usage: `Wolf.archive <category-name>`');
+                return;
+            }
+
+            const categoryName = args.join(' ');
+            await message.reply(`🗄️ Starting archive process for category: "${categoryName}". This may take a while...`);
+
+            // Find the category by name
+            const guild = message.guild;
+            const category = guild.channels.cache.find(
+                channel => channel.type === ChannelType.GuildCategory && 
+                          channel.name.toLowerCase() === categoryName.toLowerCase()
+            );
+
+            if (!category) {
+                await message.reply(`❌ Category "${categoryName}" not found.`);
+                return;
+            }
+
+            // Get all text channels in the category, excluding mod-chat channels
+            const channels = guild.channels.cache.filter(
+                channel => channel.type === ChannelType.GuildText && 
+                          channel.parentId === category.id &&
+                          !channel.name.toLowerCase().includes('mod-chat')
+            );
+
+            if (channels.size === 0) {
+                await message.reply(`❌ No valid text channels found in category "${categoryName}".`);
+                return;
+            }
+
+            const archiveData = {
+                category: categoryName,
+                categoryId: category.id,
+                archivedAt: new Date().toISOString(),
+                archivedBy: {
+                    userId: message.author.id,
+                    username: message.author.username,
+                    displayName: message.member ? message.member.displayName : message.author.username
+                },
+                totalChannels: channels.size,
+                channels: []
+            };
+
+            let totalMessages = 0;
+
+            // Process each channel
+            for (const [channelId, channel] of channels) {
+                console.log(`Processing channel: ${channel.name}`);
+                await message.channel.send(`📂 Processing channel: #${channel.name}...`);
+
+                const channelData = {
+                    channelId: channel.id,
+                    channelName: channel.name,
+                    messages: []
+                };
+
+                try {
+                    // Fetch all messages from the channel
+                    let lastMessageId = null;
+                    let fetchedCount = 0;
+
+                    while (true) {
+                        const options = { limit: 100 };
+                        if (lastMessageId) {
+                            options.before = lastMessageId;
+                        }
+
+                        const messages = await channel.messages.fetch(options);
+                        
+                        if (messages.size === 0) {
+                            break;
+                        }
+
+                        // Process each message
+                        for (const [messageId, msg] of messages) {
+                            const messageData = {
+                                messageId: msg.id,
+                                content: msg.content,
+                                userId: msg.author.id,
+                                username: msg.author.username,
+                                displayName: msg.member ? msg.member.displayName : msg.author.username,
+                                timestamp: msg.createdAt.toISOString(),
+                                channelId: msg.channel.id,
+                                channelName: msg.channel.name,
+                                replyToMessageId: msg.reference ? msg.reference.messageId : null,
+                                attachments: msg.attachments.size > 0 ? 
+                                    msg.attachments.map(att => ({
+                                        id: att.id,
+                                        name: att.name,
+                                        url: att.url,
+                                        size: att.size
+                                    })) : [],
+                                embeds: msg.embeds.length > 0 ? 
+                                    msg.embeds.map(embed => ({
+                                        title: embed.title,
+                                        description: embed.description,
+                                        url: embed.url
+                                    })) : [],
+                                reactions: msg.reactions.cache.size > 0 ? 
+                                    msg.reactions.cache.map(reaction => ({
+                                        emoji: reaction.emoji.name,
+                                        count: reaction.count
+                                    })) : []
+                            };
+
+                            channelData.messages.push(messageData);
+                            fetchedCount++;
+                        }
+
+                        lastMessageId = messages.last().id;
+                        
+                        // Rate limiting to avoid Discord API limits
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    }
+
+                    console.log(`Fetched ${fetchedCount} messages from ${channel.name}`);
+                    totalMessages += fetchedCount;
+
+                } catch (channelError) {
+                    console.error(`Error processing channel ${channel.name}:`, channelError);
+                    channelData.error = `Failed to fetch messages: ${channelError.message}`;
+                }
+
+                // Sort messages by timestamp (oldest first)
+                channelData.messages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+                channelData.messageCount = channelData.messages.length;
+                archiveData.channels.push(channelData);
+            }
+
+            archiveData.totalMessages = totalMessages;
+
+            // Create filename with timestamp
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const filename = `archive_${categoryName.replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}.json`;
+            const jsonContent = JSON.stringify(archiveData, null, 2);
+
+            let s3Url = null;
+            let storageLocation = 'Local filesystem';
+
+            // Try to upload to S3 if configured
+            if (this.s3Client && process.env.AWS_S3_BUCKET_NAME) {
+                try {
+                    const uploadParams = {
+                        Bucket: process.env.AWS_S3_BUCKET_NAME,
+                        Key: `archives/${filename}`,
+                        Body: jsonContent,
+                        ContentType: 'application/json'
+                    };
+
+                    await this.s3Client.send(new PutObjectCommand(uploadParams));
+                    s3Url = `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/archives/${filename}`;
+                    storageLocation = 'AWS S3';
+                    
+                    await message.channel.send(`☁️ Successfully uploaded archive to S3: \`${filename}\``);
+                } catch (s3Error) {
+                    console.error('Error uploading to S3:', s3Error);
+                    await message.channel.send(`⚠️ Failed to upload to S3, falling back to local storage: ${s3Error.message}`);
+                }
+            }
+
+            // Always save locally as backup (or primary if S3 not configured)
+            const filepath = `/home/david/git/stinkbot/${filename}`;
+            fs.writeFileSync(filepath, jsonContent);
+
+            // Send completion message
+            const embed = new EmbedBuilder()
+                .setTitle('✅ Archive Complete')
+                .setDescription(`Successfully archived category: "${categoryName}"`)
+                .addFields(
+                    { name: 'Channels Processed', value: channels.size.toString(), inline: true },
+                    { name: 'Total Messages', value: totalMessages.toString(), inline: true },
+                    { name: 'Backup File Created', value: filename, inline: true }
+                )
+                .setColor(0x00AE86)
+                .setTimestamp();
+
+            await message.reply({ embeds: [embed] });
+
+        } catch (error) {
+            console.error('Error handling archive command:', error);
+            await message.reply('❌ An error occurred while processing the archive command.');
         }
     }
 

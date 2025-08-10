@@ -77,6 +77,17 @@ PG_PASSWORD=your_db_password
 # Bot Configuration (optional)
 # This will change the prefix for commands listed below
 BOT_PREFIX=Wolf. 
+
+# OpenAI Configuration (optional)
+# For AI-powered responses to unknown commands
+OPENAI_API_KEY=your_openai_api_key_here
+
+# AWS S3 Configuration (optional)
+# For uploading archive files to S3
+AWS_ACCESS_KEY_ID=your_aws_access_key_id_here
+AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key_here
+AWS_REGION=us-east-1
+AWS_S3_BUCKET_NAME=your-s3-bucket-name-here
 ```
 
 ### Discord Bot Setup
@@ -137,6 +148,7 @@ Commands are divided into two categories: **Player Commands** (available to ever
 | `Wolf.speed <number>` | ⚡ Start a speed vote with target number of reactions (use "abort" to cancel) |
 | `Wolf.recovery` | 🔄 Recovery mode - migrate from manual game management to bot control |
 | `Wolf.issues` | 🐛 Display current known issues and bugs |
+| `Wolf.archive <category-name>` | 🗄️ Archive all messages from a game category to JSON (with optional S3 upload) |
 | `Wolf.refresh` | 🔄 **Reset server** (delete channels, reset roles to Spectator) |
 
 > ⚠️ **Warning**: The `refresh` command will delete ALL text channels except #general, delete ALL categories, reset game counter to 1, end any active games, and reset all members to Spectator role. This action cannot be undone! Use only for testing!
@@ -255,6 +267,58 @@ Player1 (2)
 Player2 (1)
 - Player1
 ```
+
+## 🗄️ Archive System
+
+The archive system allows moderators to save all messages from a game category to a JSON file for permanent storage.
+
+### Archive Command
+
+**Usage:** `Wolf.archive <category-name>`
+
+The archive command will:
+1. Find the specified category by name (case-insensitive)
+2. Process all text channels in the category (excluding mod-chat channels)
+3. Fetch all messages from each channel with complete metadata
+4. Generate a timestamped JSON file with all data
+5. Upload to S3 (if configured) and/or save locally
+
+### Archive Data Structure
+
+The generated JSON file includes:
+- **Category metadata**: name, ID, archive timestamp, archived by user
+- **Channel data**: For each channel, includes all messages with:
+  - Message content, author, timestamps
+  - User display names and usernames
+  - Reply references and attachments
+  - Embeds and reactions
+  - Complete message threading information
+
+### S3 Integration (Optional)
+
+If AWS S3 is configured, archive files are automatically uploaded to your S3 bucket:
+
+**Required Environment Variables:**
+```env
+AWS_ACCESS_KEY_ID=your_aws_access_key_id_here
+AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key_here  
+AWS_REGION=us-east-1
+AWS_S3_BUCKET_NAME=your-s3-bucket-name-here
+```
+
+**S3 Storage Structure:**
+- Files are uploaded to: `archives/archive_<category-name>_<timestamp>.json`
+- Public URLs are provided in the completion message
+- Local backup is always created regardless of S3 configuration
+
+### Archive Features
+
+- **Complete message history**: All messages from category channels
+- **Rich metadata**: User info, timestamps, attachments, reactions
+- **Rate limiting**: Built-in delays to respect Discord API limits
+- **Error handling**: Continues processing even if individual channels fail
+- **Progress updates**: Real-time status messages during processing
+- **Dual storage**: S3 upload + local backup for redundancy
 
 ## 🔧 Development
 
