@@ -46,7 +46,7 @@ client.once('ready', () => {
         timezone: 'UTC'
     });
     
-    console.log('⏰ Daily member sync cron job scheduled (runs at 2 AM UTC daily)');
+    console.log('⏰ Daily member sync cron job scheduled (runs at 4 AM UTC daily)');
     
     // Optional: Run initial sync after bot startup (with delay to ensure all guilds are loaded)
     setTimeout(async () => {
