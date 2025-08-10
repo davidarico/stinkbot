@@ -68,14 +68,15 @@ export function BartenderCalculator({ players, gameRoles }: BartenderCalculatorP
   }
 
   // Get roles that are actually in play (assigned to players)
+  // This preserves duplicates to ensure proper weighting
   const getRolesInPlay = (): string[] => {
-    const rolesInPlay = new Set<string>()
+    const rolesInPlay: string[] = []
     players.forEach(player => {
       if (player.role) {
-        rolesInPlay.add(player.role)
+        rolesInPlay.push(player.role)
       }
     })
-    return Array.from(rolesInPlay)
+    return rolesInPlay
   }
 
   // Check if a player is targetable (not UTAH - untargetable at home)
@@ -135,7 +136,16 @@ export function BartenderCalculator({ players, gameRoles }: BartenderCalculatorP
     const rolesInPlay = getRolesInPlay()
     const availableRoles = rolesInPlay.filter(canRoleAppearInBartenderInfo)
     
-    if (availableRoles.length < 3) {
+    // Remove duplicates for role selection to ensure equal weighting
+    let uniqueAvailableRoles = [...new Set(availableRoles)]
+    
+    // If target is framed, remove their true role from available roles
+    // since the Bartender will see them as a wolf role instead
+    if (targetFramed) {
+      uniqueAvailableRoles = uniqueAvailableRoles.filter(role => role !== trueRole)
+    }
+    
+    if (uniqueAvailableRoles.length < 3) {
       toast({
         title: "Insufficient Roles",
         description: "Need at least 3 different roles in the game to generate results",
@@ -144,16 +154,16 @@ export function BartenderCalculator({ players, gameRoles }: BartenderCalculatorP
       return
     }
 
-    // Separate roles by alignment
-    const townRoles = availableRoles.filter(roleName => {
+    // Separate roles by alignment (using unique roles for equal weighting)
+    const townRoles = uniqueAvailableRoles.filter(roleName => {
       const role = gameRoles.find(r => r.name === roleName)
       return role?.alignment === "town"
     })
-    const wolfRoles = availableRoles.filter(roleName => {
+    const wolfRoles = uniqueAvailableRoles.filter(roleName => {
       const role = gameRoles.find(r => r.name === roleName)
       return role?.alignment === "wolf"
     })
-    const neutralRoles = availableRoles.filter(roleName => {
+    const neutralRoles = uniqueAvailableRoles.filter(roleName => {
       const role = gameRoles.find(r => r.name === roleName)
       return role?.alignment === "neutral"
     })
@@ -172,18 +182,24 @@ export function BartenderCalculator({ players, gameRoles }: BartenderCalculatorP
     // One must be town, one must be wolf, final must be town or neutral
     let resultRoles: string[] = []
     
-    // Add the true role (or framed role if framed) - only if it can appear
+    // Determine what role the Bartender actually sees
+    let bartenderSeesRole = trueRole
     if (targetFramed) {
-      // If framed, the "true" role should be a wolf role (this is what the bartender sees)
-      const randomWolfRole = wolfRoles[Math.floor(Math.random() * wolfRoles.length)]
-      resultRoles.push(randomWolfRole)
-    } else if (trueRoleCanAppear) {
-      resultRoles.push(trueRole)
+      // If framed, the Bartender sees them as a wolf role
+      if (wolfRoles.length > 0) {
+        bartenderSeesRole = wolfRoles[Math.floor(Math.random() * wolfRoles.length)]
+      }
     }
-    // If true role cannot appear, we'll generate 3 random roles following the constraints
+    
+    // Add the role the Bartender sees (if it can appear in Bartender info)
+    const bartenderSeesRoleCanAppear = canRoleAppearInBartenderInfo(bartenderSeesRole)
+    if (bartenderSeesRoleCanAppear) {
+      resultRoles.push(bartenderSeesRole)
+    }
+    // If the role cannot appear, we'll generate 3 random roles following the constraints
 
     // Determine what roles we still need based on what we already have
-    const trueRoleAlignment = gameRoles.find(r => r.name === trueRole)?.alignment || "town"
+    const bartenderSeesRoleAlignment = gameRoles.find(r => r.name === bartenderSeesRole)?.alignment || "town"
     const needsTown = !resultRoles.some(role => {
       const alignment = gameRoles.find(r => r.name === role)?.alignment
       return alignment === "town"
@@ -193,9 +209,12 @@ export function BartenderCalculator({ players, gameRoles }: BartenderCalculatorP
       return alignment === "wolf"
     })
 
+    // If target is framed, ensure true role is never selected in remaining slots
+    const excludeFromRemaining = targetFramed ? [trueRole] : []
+
     // Add required roles
     if (needsTown && townRoles.length > 0) {
-      const availableTownRoles = townRoles.filter(role => !resultRoles.includes(role))
+      const availableTownRoles = townRoles.filter(role => !resultRoles.includes(role) && !excludeFromRemaining.includes(role))
       if (availableTownRoles.length > 0) {
         const randomTownRole = availableTownRoles[Math.floor(Math.random() * availableTownRoles.length)]
         resultRoles.push(randomTownRole)
@@ -203,7 +222,7 @@ export function BartenderCalculator({ players, gameRoles }: BartenderCalculatorP
     }
 
     if (needsWolf && wolfRoles.length > 0) {
-      const availableWolfRoles = wolfRoles.filter(role => !resultRoles.includes(role))
+      const availableWolfRoles = wolfRoles.filter(role => !resultRoles.includes(role) && !excludeFromRemaining.includes(role))
       if (availableWolfRoles.length > 0) {
         const randomWolfRole = availableWolfRoles[Math.floor(Math.random() * availableWolfRoles.length)]
         resultRoles.push(randomWolfRole)
@@ -212,7 +231,7 @@ export function BartenderCalculator({ players, gameRoles }: BartenderCalculatorP
 
     // Fill remaining slots with town or neutral roles
     while (resultRoles.length < 3) {
-      const remainingOptions = [...townRoles, ...neutralRoles].filter(role => !resultRoles.includes(role))
+      const remainingOptions = [...townRoles, ...neutralRoles].filter(role => !resultRoles.includes(role) && !excludeFromRemaining.includes(role))
       if (remainingOptions.length === 0) break
       
       const randomRole = remainingOptions[Math.floor(Math.random() * remainingOptions.length)]
@@ -227,16 +246,18 @@ export function BartenderCalculator({ players, gameRoles }: BartenderCalculatorP
 
     let resultText = `**Bartender Investigation: ${selectedPlayer}**${targetFramed ? " (Framed)" : ""}`
     
-    if (!trueRoleCanAppear && !targetFramed) {
+    if (!bartenderSeesRoleCanAppear && !targetFramed) {
       resultText += `\n\n⚠️ Note: ${selectedPlayer}'s true role (${trueRole}) cannot appear in Bartender information.`
+    } else if (!bartenderSeesRoleCanAppear && targetFramed) {
+      resultText += `\n\n⚠️ Note: ${selectedPlayer} is framed, but the framed role (${bartenderSeesRole}) cannot appear in Bartender information.`
     }
     
     resultText += `\n\n${resultRoles.join(" / ")}`
     
-    if (trueRoleCanAppear && !targetFramed) {
-      resultText += `\n\n*One of these is their true role, two are lies. One role is town, one is wolf, and the final role is either town or neutral.*`
+    if (bartenderSeesRoleCanAppear) {
+      resultText += `\n\n*One of these is the role the Bartender sees, two are lies. One role is town, one is wolf, and the final role is either town or neutral.*`
     } else {
-      resultText += `\n\n*All three are lies (true role cannot appear in Bartender info). One role is town, one is wolf, and the final role is either town or neutral.*`
+      resultText += `\n\n*All three are lies (the role the Bartender sees cannot appear in Bartender info). One role is town, one is wolf, and the final role is either town or neutral.*`
     }
 
     setResults(resultText)
