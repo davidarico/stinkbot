@@ -1,17 +1,55 @@
-# 🐺 Stinkbot - A Werewolf Discord Bot
+# Werewolf Discord Bot
 
-A Discord bot designed to manage Werewolf games across multiple servers. This bot helps organize games without enforcing rules, allowing moderators to manage signups, voting, and game phases.
+A Discord bot for managing Werewolf (mafia) games across multiple servers.
 
-## ✨ Features
+## Features
 
-- **Multi-server support** - Each server has its own configuration and games
-- **Moderator-only controls** - Only users with moderator permissions can manage games
-- **Game organization** - Automatic channel creation and management
-- **Vote tracking** - Real-time vote counting and display
-- **Phase management** - Easy day/night cycle transitions
-- **Player management** - Simple signup and removal system
+- Game management (signup, voting, day/night cycles)
+- Role management and assignments
+- Journal system for players
+- Archive functionality for game categories
+- **Daily member sync for archive purposes**
 
-## 🚀 Quick Start
+## Daily Member Sync
+
+The bot includes an automated daily process that syncs all server members to the database for archive purposes. This feature:
+
+- **Runs automatically** every day at 2 AM UTC
+- **Stores member data** in the `server_users` table with:
+  - `user_id`: Discord user ID
+  - `server_id`: Discord server ID  
+  - `display_name`: User's display name (nickname or username)
+- **Updates existing records** when display names change
+- **Skips bot users** to avoid cluttering the database
+- **Provides logging** to a designated channel (if configured)
+
+### Manual Sync Command
+
+Moderators can trigger a manual sync using:
+```
+Wolf.sync_members
+```
+
+### Configuration
+
+To enable logging to a Discord channel, set the environment variable:
+```
+MEMBER_SYNC_LOG_CHANNEL_ID=your_channel_id_here
+```
+
+### Database Schema
+
+The member data is stored in the `server_users` table:
+```sql
+CREATE TABLE server_users (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(255) NOT NULL,
+    server_id VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL
+);
+```
+
+## Installation
 
 ### Prerequisites
 

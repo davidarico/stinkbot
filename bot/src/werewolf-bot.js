@@ -223,6 +223,9 @@ class WerewolfBot {
                 case 'archive':
                     await this.handleArchive(message, args);
                     break;
+                case 'sync_members':
+                    await this.handleSyncMembers(message);
+                    break;
                 default:
                     const funnyResponse = await this.generateFunnyResponse(message.content.slice(prefix.length).trim().split(/ +/), message.author.displayName);
                     if (funnyResponse) {
@@ -5526,6 +5529,118 @@ class WerewolfBot {
         } catch (error) {
             console.error('Error handling archive command:', error);
             await message.reply('❌ An error occurred while processing the archive command.');
+        }
+    }
+
+    /**
+     * Handle manual sync members command
+     */
+    async handleSyncMembers(message) {
+        try {
+            await message.reply('🔄 Starting manual server member sync... This may take a few moments.');
+            
+            // Call the sync method
+            await this.syncServerMembers();
+            
+            await message.reply('✅ Manual server member sync completed!');
+            
+        } catch (error) {
+            console.error('Error handling manual sync members command:', error);
+            await message.reply('❌ An error occurred while processing the sync command.');
+        }
+    }
+
+    /**
+     * Sync all server members to the database for archive purposes
+     * This method fetches all members from all servers the bot is in
+     * and stores their user_id and display_name in the server_users table
+     */
+    async syncServerMembers() {
+        try {
+            console.log('🔄 Starting daily server member sync...');
+            
+            let totalMembersProcessed = 0;
+            let totalServersProcessed = 0;
+            
+            // Iterate through all guilds the bot is in
+            for (const [guildId, guild] of this.client.guilds.cache) {
+                try {
+                    console.log(`📊 Processing guild: ${guild.name} (${guild.id})`);
+                    
+                    // Fetch all members for this guild
+                    await guild.members.fetch();
+                    
+                    let membersProcessed = 0;
+                    
+                    // Process each member
+                    for (const [memberId, member] of guild.members.cache) {
+                        try {
+                            // Skip bot users
+                            if (member.user.bot) continue;
+                            
+                            // Get display name (nickname if set, otherwise username)
+                            const displayName = member.displayName || member.user.username;
+                            
+                            // Upsert member data to database
+                            const query = `
+                                INSERT INTO server_users (user_id, server_id, display_name)
+                                VALUES ($1, $2, $3)
+                                ON CONFLICT (user_id, server_id) 
+                                DO UPDATE SET display_name = $3
+                            `;
+                            
+                            await this.db.query(query, [
+                                member.user.id,
+                                guild.id,
+                                displayName
+                            ]);
+                            
+                            membersProcessed++;
+                            
+                        } catch (memberError) {
+                            console.error(`Error processing member ${member.user.tag} in guild ${guild.name}:`, memberError);
+                        }
+                    }
+                    
+                    console.log(`✅ Processed ${membersProcessed} members in guild: ${guild.name}`);
+                    totalMembersProcessed += membersProcessed;
+                    totalServersProcessed++;
+                    
+                    // Rate limiting between guilds to avoid Discord API limits
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    
+                } catch (guildError) {
+                    console.error(`Error processing guild ${guild.name} (${guild.id}):`, guildError);
+                }
+            }
+            
+            console.log(`🎉 Daily member sync complete! Processed ${totalMembersProcessed} members across ${totalServersProcessed} servers`);
+            
+            // Log summary to a designated channel if configured
+            if (process.env.MEMBER_SYNC_LOG_CHANNEL_ID) {
+                try {
+                    const logChannel = this.client.channels.cache.get(process.env.MEMBER_SYNC_LOG_CHANNEL_ID);
+                    if (logChannel) {
+                        const embed = new EmbedBuilder()
+                            .setTitle('📊 Daily Member Sync Complete')
+                            .setDescription('Server member data has been updated for archive purposes')
+                            .addFields(
+                                { name: 'Servers Processed', value: totalServersProcessed.toString(), inline: true },
+                                { name: 'Members Processed', value: totalMembersProcessed.toString(), inline: true },
+                                { name: 'Timestamp', value: new Date().toISOString(), inline: true }
+                            )
+                            .setColor(0x00AE86)
+                            .setTimestamp();
+                        
+                        await logChannel.send({ embeds: [embed] });
+                    }
+                } catch (logError) {
+                    console.error('Error sending sync log message:', logError);
+                }
+            }
+            
+        } catch (error) {
+            console.error('❌ Error during daily member sync:', error);
         }
     }
 

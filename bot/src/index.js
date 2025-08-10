@@ -1,4 +1,5 @@
 const { Client, GatewayIntentBits, PermissionFlagsBits } = require('discord.js');
+const cron = require('node-cron');
 const db = require('./database');
 const WerewolfBot = require('./werewolf-bot');
 
@@ -31,6 +32,31 @@ const werewolfBot = new WerewolfBot(client, db);
 client.once('ready', () => {
     console.log(`🤖 ${client.user.tag} is online!`);
     console.log(`📊 Serving ${client.guilds.cache.size} servers`);
+    
+    // Set up daily member sync cron job (runs at 2 AM UTC every day)
+    const memberSyncCron = cron.schedule('0 2 * * *', async () => {
+        console.log('🕐 Daily member sync cron job triggered');
+        try {
+            await werewolfBot.syncServerMembers();
+        } catch (error) {
+            console.error('❌ Error in daily member sync cron job:', error);
+        }
+    }, {
+        scheduled: true,
+        timezone: 'UTC'
+    });
+    
+    console.log('⏰ Daily member sync cron job scheduled (runs at 2 AM UTC daily)');
+    
+    // Optional: Run initial sync after bot startup (with delay to ensure all guilds are loaded)
+    setTimeout(async () => {
+        console.log('🔄 Running initial member sync after startup...');
+        try {
+            await werewolfBot.syncServerMembers();
+        } catch (error) {
+            console.error('❌ Error in initial member sync:', error);
+        }
+    }, 30000); // 30 second delay
 });
 
 client.on('messageCreate', async (message) => {
