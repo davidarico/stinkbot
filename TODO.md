@@ -6,10 +6,9 @@ Tell TC their wolf team
 Tell wolf team their pup?
 
 ## Website Work
-Add settings modal for game
-Manage custom channel creations and channel names
-    Along with setting up permissions for that channel
 Add admin page for managing roles and rules
+Add ability to create breakdown role list
+Tell neuts their win con amount and charged roles their charges
 
 Mayor Pardons and Stuffs
 Have the ability to generate night actions
