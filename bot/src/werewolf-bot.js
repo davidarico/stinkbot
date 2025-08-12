@@ -5669,18 +5669,22 @@ class WerewolfBot {
                             // Get display name (nickname if set, otherwise username)
                             const displayName = member.displayName || member.user.username;
                             
+                            // Get profile picture URL
+                            const profilePictureUrl = member.user.displayAvatarURL({ format: 'png', size: 256 });
+                            
                             // Upsert member data to database
                             const query = `
-                                INSERT INTO server_users (user_id, server_id, display_name)
-                                VALUES ($1, $2, $3)
+                                INSERT INTO server_users (user_id, server_id, display_name, profile_picture_link)
+                                VALUES ($1, $2, $3, $4)
                                 ON CONFLICT (user_id, server_id) 
-                                DO UPDATE SET display_name = $3
+                                DO UPDATE SET display_name = $3, profile_picture_link = $4
                             `;
                             
                             await this.db.query(query, [
                                 member.user.id,
                                 guild.id,
-                                displayName
+                                displayName,
+                                profilePictureUrl
                             ]);
                             
                             membersProcessed++;
