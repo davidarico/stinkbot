@@ -1,5 +1,5 @@
 -- Werewolf Discord Bot Database Schema
--- Generated automatically on 2025-08-10T04:52:38.707Z
+-- Generated automatically on 2025-08-12T19:42:24.388Z
 -- This file shows the current database structure with table comments
 -- Run this after migrations to get the latest schema
 
@@ -153,7 +153,8 @@ CREATE TABLE server_configs (
     game_counter INTEGER NOT NULL DEFAULT 1,
     game_name VARCHAR(100),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    server_name VARCHAR(255)
 );
 
 CREATE TABLE server_users (
@@ -161,6 +162,7 @@ CREATE TABLE server_users (
     user_id VARCHAR(255) NOT NULL,
     server_id VARCHAR(255) NOT NULL,
     display_name VARCHAR(255) NOT NULL,
+    profile_picture_link VARCHAR(255),
     UNIQUE(server_id, user_id)
 );
 

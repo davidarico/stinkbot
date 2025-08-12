@@ -3,6 +3,8 @@ const fs = require('fs');
 const moment = require('moment-timezone');
 const OpenAI = require('openai');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { Client } = require('@opensearch-project/opensearch');
+const { createAwsSigv4Signer } = require('@opensearch-project/opensearch/aws');
 
 class WerewolfBot {
     constructor(client, db) {
@@ -30,6 +32,46 @@ class WerewolfBot {
             });
         } else {
             this.s3Client = null;
+        }
+
+        // Initialize OpenSearch client if endpoint is available
+        if (process.env.OPENSEARCH_DOMAIN_ENDPOINT) {
+            const endpoint = process.env.OPENSEARCH_DOMAIN_ENDPOINT;
+            
+            // Check if this is a local endpoint (no AWS authentication needed)
+            if (endpoint.includes('localhost') || endpoint.includes('127.0.0.1') || endpoint.startsWith('http://')) {
+                // Local OpenSearch instance - no AWS authentication
+                this.openSearchClient = new Client({
+                    node: endpoint,
+                    // Optional: Add basic auth if your local instance requires it
+                    // auth: {
+                    //     username: process.env.OPENSEARCH_USERNAME || 'admin',
+                    //     password: process.env.OPENSEARCH_PASSWORD || 'admin'
+                    // }
+                });
+            } else {
+                // AWS OpenSearch instance - use AWS authentication
+                if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && process.env.AWS_REGION) {
+                    this.openSearchClient = new Client({
+                        ...createAwsSigv4Signer({
+                            region: process.env.AWS_REGION,
+                            service: 'es',
+                            getCredentials: () => {
+                                return Promise.resolve({
+                                    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+                                    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+                                });
+                            },
+                        }),
+                        node: endpoint,
+                    });
+                } else {
+                    console.warn('⚠️ OpenSearch endpoint provided but AWS credentials missing for remote endpoint');
+                    this.openSearchClient = null;
+                }
+            }
+        } else {
+            this.openSearchClient = null;
         }
     }
 
@@ -5351,6 +5393,12 @@ class WerewolfBot {
                 return;
             }
 
+            // Check if OpenSearch is configured
+            if (!this.openSearchClient) {
+                await message.reply('❌ OpenSearch is not configured. Please set up the required environment variables.');
+                return;
+            }
+
             const categoryName = args.join(' ');
             await message.reply(`🗄️ Starting archive process for category: "${categoryName}". This may take a while...`);
 
@@ -5378,36 +5426,27 @@ class WerewolfBot {
                 return;
             }
 
-            const archiveData = {
-                category: categoryName,
-                categoryId: category.id,
-                archivedAt: new Date().toISOString(),
-                archivedBy: {
-                    userId: message.author.id,
-                    username: message.author.username,
-                    displayName: message.member ? message.member.displayName : message.author.username
-                },
-                totalChannels: channels.size,
-                channels: []
+            const archivedAt = new Date().toISOString();
+            const archivedBy = {
+                userId: message.author.id,
+                username: message.author.username,
+                displayName: message.member ? message.member.displayName : message.author.username
             };
 
             let totalMessages = 0;
+            let indexedMessages = 0;
+            let failedMessages = 0;
 
             // Process each channel
             for (const [channelId, channel] of channels) {
                 console.log(`Processing channel: ${channel.name}`);
                 await message.channel.send(`📂 Processing channel: #${channel.name}...`);
 
-                const channelData = {
-                    channelId: channel.id,
-                    channelName: channel.name,
-                    messages: []
-                };
-
                 try {
                     // Fetch all messages from the channel
                     let lastMessageId = null;
                     let fetchedCount = 0;
+                    const messagesToIndex = [];
 
                     while (true) {
                         const options = { limit: 100 };
@@ -5423,6 +5462,9 @@ class WerewolfBot {
 
                         // Process each message
                         for (const [messageId, msg] of messages) {
+                            // Skip bot messages
+                            if (msg.author.bot) continue;
+
                             const messageData = {
                                 messageId: msg.id,
                                 content: msg.content,
@@ -5432,6 +5474,8 @@ class WerewolfBot {
                                 timestamp: msg.createdAt.toISOString(),
                                 channelId: msg.channel.id,
                                 channelName: msg.channel.name,
+                                categoryId: category.id,
+                                categoryName: category.name,
                                 replyToMessageId: msg.reference ? msg.reference.messageId : null,
                                 attachments: msg.attachments.size > 0 ? 
                                     msg.attachments.map(att => ({
@@ -5450,10 +5494,17 @@ class WerewolfBot {
                                     msg.reactions.cache.map(reaction => ({
                                         emoji: reaction.emoji.name,
                                         count: reaction.count
-                                    })) : []
+                                    })) : [],
+                                archivedAt: archivedAt,
+                                archivedBy: archivedBy,
+                                contentLength: msg.content.length,
+                                hasAttachments: msg.attachments.size > 0,
+                                hasEmbeds: msg.embeds.length > 0,
+                                hasReactions: msg.reactions.cache.size > 0,
+                                isReply: msg.reference ? true : false
                             };
 
-                            channelData.messages.push(messageData);
+                            messagesToIndex.push(messageData);
                             fetchedCount++;
                         }
 
@@ -5466,30 +5517,71 @@ class WerewolfBot {
                     console.log(`Fetched ${fetchedCount} messages from ${channel.name}`);
                     totalMessages += fetchedCount;
 
+                    // Index messages in batches to OpenSearch
+                    if (messagesToIndex.length > 0) {
+                        const batchSize = 100;
+                        for (let i = 0; i < messagesToIndex.length; i += batchSize) {
+                            const batch = messagesToIndex.slice(i, i + batchSize);
+                            
+                            try {
+                                const bulkBody = [];
+                                for (const msg of batch) {
+                                    bulkBody.push({ index: { _index: 'messages' } });
+                                    bulkBody.push(msg);
+                                }
+
+                                const response = await this.openSearchClient.bulk({
+                                    body: bulkBody
+                                });
+
+                                // Check for errors in bulk response
+                                if (response.body.errors) {
+                                    const errors = response.body.items.filter(item => item.index && item.index.error);
+                                    failedMessages += errors.length;
+                                    indexedMessages += batch.length - errors.length;
+                                    
+                                    if (errors.length > 0) {
+                                        console.error(`Failed to index ${errors.length} messages in batch:`, errors);
+                                    }
+                                } else {
+                                    indexedMessages += batch.length;
+                                }
+
+                                // Rate limiting for OpenSearch
+                                await new Promise(resolve => setTimeout(resolve, 50));
+
+                            } catch (bulkError) {
+                                console.error(`Error indexing batch for channel ${channel.name}:`, bulkError);
+                                failedMessages += batch.length;
+                            }
+                        }
+                    }
+
                 } catch (channelError) {
                     console.error(`Error processing channel ${channel.name}:`, channelError);
-                    channelData.error = `Failed to fetch messages: ${channelError.message}`;
+                    await message.channel.send(`⚠️ Error processing channel #${channel.name}: ${channelError.message}`);
                 }
-
-                // Sort messages by timestamp (oldest first)
-                channelData.messages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-                channelData.messageCount = channelData.messages.length;
-                archiveData.channels.push(channelData);
             }
 
-            archiveData.totalMessages = totalMessages;
-
-            // Create filename with timestamp
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            const filename = `archive_${categoryName.replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}.json`;
-            const jsonContent = JSON.stringify(archiveData, null, 2);
-
+            // Create backup JSON file for S3 (optional)
             let s3Url = null;
-            let storageLocation = 'Local filesystem';
-
-            // Try to upload to S3 if configured
             if (this.s3Client && process.env.AWS_S3_BUCKET_NAME) {
                 try {
+                    const archiveSummary = {
+                        category: categoryName,
+                        categoryId: category.id,
+                        archivedAt: archivedAt,
+                        archivedBy: archivedBy,
+                        totalChannels: channels.size,
+                        totalMessages: totalMessages,
+                        indexedMessages: indexedMessages,
+                        failedMessages: failedMessages
+                    };
+
+                    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                    const filename = `archive_summary_${categoryName.replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}.json`;
+                    const jsonContent = JSON.stringify(archiveSummary, null, 2);
+
                     const uploadParams = {
                         Bucket: process.env.AWS_S3_BUCKET_NAME,
                         Key: `archives/${filename}`,
@@ -5499,27 +5591,23 @@ class WerewolfBot {
 
                     await this.s3Client.send(new PutObjectCommand(uploadParams));
                     s3Url = `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/archives/${filename}`;
-                    storageLocation = 'AWS S3';
                     
-                    await message.channel.send(`☁️ Successfully uploaded archive to S3: \`${filename}\``);
+                    await message.channel.send(`☁️ Archive summary uploaded to S3: \`${filename}\``);
                 } catch (s3Error) {
-                    console.error('Error uploading to S3:', s3Error);
-                    await message.channel.send(`⚠️ Failed to upload to S3, falling back to local storage: ${s3Error.message}`);
+                    console.error('Error uploading summary to S3:', s3Error);
                 }
             }
-
-            // Always save locally as backup (or primary if S3 not configured)
-            const filepath = `/home/david/git/stinkbot/${filename}`;
-            fs.writeFileSync(filepath, jsonContent);
 
             // Send completion message
             const embed = new EmbedBuilder()
                 .setTitle('✅ Archive Complete')
-                .setDescription(`Successfully archived category: "${categoryName}"`)
+                .setDescription(`Successfully archived category: "${categoryName}" to OpenSearch`)
                 .addFields(
                     { name: 'Channels Processed', value: channels.size.toString(), inline: true },
                     { name: 'Total Messages', value: totalMessages.toString(), inline: true },
-                    { name: 'Backup File Created', value: filename, inline: true }
+                    { name: 'Indexed Messages', value: indexedMessages.toString(), inline: true },
+                    { name: 'Failed Messages', value: failedMessages.toString(), inline: true },
+                    { name: 'Storage', value: 'OpenSearch', inline: true }
                 )
                 .setColor(0x00AE86)
                 .setTimestamp();

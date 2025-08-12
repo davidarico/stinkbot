@@ -717,6 +717,22 @@ export class DatabaseService {
     }
   }
 
+  async getServerUsersByUserIds(userIds: string[]) {
+    try {
+      if (userIds.length === 0) return []
+      
+      const placeholders = userIds.map((_, index) => `$${index + 1}`).join(',')
+      const result = await this.pool.query(
+        `SELECT user_id, display_name FROM server_users WHERE user_id = ANY($1)`,
+        [userIds]
+      )
+      return result.rows
+    } catch (error) {
+      console.error('Error fetching server users by user IDs:', error)
+      throw error
+    }
+  }
+
   async getCoupleChat(gameId: string) {
     try {
       const result = await this.pool.query(

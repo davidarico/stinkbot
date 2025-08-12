@@ -24,6 +24,13 @@ The application supports a wide variety of Werewolf roles including:
 - **Real-time Updates**: Synchronizes with Discord bot data in real-time
 - **Game History**: Maintains historical data of games and player statistics
 
+### Message Archives
+- **OpenSearch Integration**: Full-text search through archived Discord messages
+- **Advanced Filtering**: Filter by game, channel, user, and content
+- **Message Context**: View messages in chronological context
+- **User Name Sync**: Automatically updates display names from Discord
+- **Pagination**: Efficient browsing of large message archives
+
 ## Technology Stack
 
 - **Framework**: Next.js 15 with React 19
@@ -31,6 +38,7 @@ The application supports a wide variety of Werewolf roles including:
 - **Styling**: Tailwind CSS with custom UI components
 - **UI Components**: Radix UI primitives with custom styling
 - **Database**: PostgreSQL (via Supabase)
+- **Search Engine**: OpenSearch for message archives
 - **Authentication**: Session-based authentication per game
 
 ## Project Structure
@@ -84,12 +92,39 @@ The application connects to a PostgreSQL database with the following key tables:
    NODE_ENV=development
    ```
 
-3. Run the development server:
+3. Set up OpenSearch (if using archives feature):
+   ```bash
+   npm run setup-opensearch
+   ```
+
+4. Run the development server:
    ```bash
    npm run dev
    ```
 
-4. Open [http://localhost:3000](http://localhost:3000) in your browser
+5. Open [http://localhost:3000](http://localhost:3000) in your browser
+
+## Message Archives
+
+The archives feature allows users to search through archived Discord messages from Werewolf games. This feature requires:
+
+### Prerequisites
+- OpenSearch instance running on localhost:9200 (or configure the endpoint in the API routes)
+- Discord messages indexed in OpenSearch with the correct schema
+
+### Features
+- **Full-text Search**: Search through message content with fuzzy matching
+- **Filter by Game**: Filter messages by specific game categories
+- **Filter by Channel**: Filter messages by Discord channels
+- **Filter by User**: Filter messages by specific users
+- **Message Context**: Click on any message to view surrounding context
+- **Pagination**: Browse through large result sets efficiently
+- **User Name Sync**: Display names are automatically updated from the database
+
+### API Endpoints
+- `GET /api/archives/search` - Search messages with filters and pagination
+- `GET /api/archives/aggregations` - Get available filter options
+- `GET /api/archives/context` - Get message context around a specific message
 
 ### Production Build
 

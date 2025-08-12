@@ -11,14 +11,23 @@ export default function HomePage() {
         </div>
 
         <div className="text-center space-y-4">
-          <div>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link href="/roles">
               <Button
                 variant="outline"
                 size="lg"
-                className="border-purple-400 text-purple-200 hover:bg-purple-800/50 px-8 py-3 text-lg bg-transparent mb-4"
+                className="border-purple-400 text-purple-200 hover:bg-purple-800/50 px-8 py-3 text-lg bg-transparent"
               >
                 View All Roles
+              </Button>
+            </Link>
+            <Link href="/archives">
+              <Button
+                variant="outline"
+                size="lg"
+                className="border-purple-400 text-purple-200 hover:bg-purple-800/50 px-8 py-3 text-lg bg-transparent"
+              >
+                Message Archives
               </Button>
             </Link>
           </div>
