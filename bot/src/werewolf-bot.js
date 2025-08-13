@@ -4309,7 +4309,17 @@ class WerewolfBot {
                 const message = await channel.messages.fetch(speedMessage.id);
                 
                 // Find the custom emoji reaction
-                const emojiReaction = message.reactions.cache.get(customEmoji);
+                let emojiReaction;
+                if (customEmoji.startsWith('<:') && customEmoji.endsWith('>')) {
+                    // Custom emoji format: <:name:id>
+                    const emojiId = customEmoji.match(/:(\d+)>/)?.[1];
+                    if (emojiId) {
+                        emojiReaction = message.reactions.cache.get(emojiId);
+                    }
+                } else {
+                    // Unicode emoji
+                    emojiReaction = message.reactions.cache.get(customEmoji);
+                }
                 
                 if (emojiReaction) {
                     // Count non-bot reactions
@@ -4442,7 +4452,21 @@ class WerewolfBot {
             const customEmoji = speedData.emoji || '⚡'; // Use stored emoji or default to lightning bolt
 
             // Only handle reactions with the custom emoji for this speed vote
-            if (reaction.emoji.name !== customEmoji && reaction.emoji.toString() !== customEmoji) return;
+            let isCorrectEmoji = false;
+            if (customEmoji.startsWith('<:') && customEmoji.endsWith('>')) {
+                // Custom emoji format: <:name:id>
+                const emojiId = customEmoji.match(/:(\d+)>/)?.[1];
+                if (emojiId && reaction.emoji.id === emojiId) {
+                    isCorrectEmoji = true;
+                }
+            } else {
+                // Unicode emoji
+                if (reaction.emoji.name === customEmoji || reaction.emoji.toString() === customEmoji) {
+                    isCorrectEmoji = true;
+                }
+            }
+            
+            if (!isCorrectEmoji) return;
 
             // Check if the user has the "Alive" role
             const guild = reaction.message.guild;
