@@ -11,6 +11,8 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
 import { ChevronLeft, ChevronRight, Search, MessageSquare, User, Hash } from 'lucide-react'
 import { format } from 'date-fns'
+import { extractMediaFromContent } from '@/lib/media-utils'
+import { MediaDisplay } from '@/components/MediaDisplay'
 
 interface SearchResult {
   _id: string
@@ -320,6 +322,29 @@ export default function ArchivesPage() {
                             <span className="text-gray-400 italic">No text content</span>
                           )}
                         </div>
+                        
+                        {/* Display media content */}
+                        {result._source.content && (
+                          <MediaDisplay 
+                            media={extractMediaFromContent(result._source.content)} 
+                            className="mt-3"
+                          />
+                        )}
+                        
+                        {/* Display Discord attachments if any */}
+                        {result._source.attachments && result._source.attachments.length > 0 && (
+                          <div className="mt-3">
+                            <MediaDisplay 
+                              media={result._source.attachments.map((attachment: any) => ({
+                                type: attachment.content_type?.startsWith('image/') ? 'image' : 
+                                      attachment.content_type?.startsWith('video/') ? 'video' : 'embed',
+                                url: attachment.url,
+                                title: attachment.filename || 'Discord Attachment'
+                              }))}
+                              className="mt-2"
+                            />
+                          </div>
+                        )}
                       </div>
                       
                       <div className="flex-shrink-0">
@@ -409,6 +434,29 @@ export default function ArchivesPage() {
                             <span className="text-gray-400 italic">No text content</span>
                           )}
                         </div>
+                        
+                        {/* Display media content in context */}
+                        {msg._source.content && (
+                          <MediaDisplay 
+                            media={extractMediaFromContent(msg._source.content)} 
+                            className="mt-2"
+                          />
+                        )}
+                        
+                        {/* Display Discord attachments in context */}
+                        {msg._source.attachments && msg._source.attachments.length > 0 && (
+                          <div className="mt-2">
+                            <MediaDisplay 
+                              media={msg._source.attachments.map((attachment: any) => ({
+                                type: attachment.content_type?.startsWith('image/') ? 'image' : 
+                                      attachment.content_type?.startsWith('video/') ? 'video' : 'embed',
+                                url: attachment.url,
+                                title: attachment.filename || 'Discord Attachment'
+                              }))}
+                              className="mt-1"
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
