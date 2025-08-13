@@ -1392,7 +1392,7 @@ class WerewolfBot {
             const playersResult = await this.db.query(
                 `SELECT p.user_id, p.username, p.role_id, p.is_wolf, 
                         r.name as role_name, r.in_wolf_chat, r.team,
-                        gr.custom_name
+                        gr.custom_name, p.charges_left, p.win_by_number
                  FROM players p
                  LEFT JOIN roles r ON p.role_id = r.id
                  LEFT JOIN game_role gr ON p.game_id = gr.game_id AND p.role_id = gr.role_id
@@ -1443,7 +1443,9 @@ class WerewolfBot {
                         wolfTeam.push({
                             username: player.username,
                             roleName: displayRoleName,
-                            fullRoleDescription: fullRoleDescription
+                            fullRoleDescription: fullRoleDescription,
+                            charges: player.charges_left,
+                            winByNumber: player.win_by_number
                         });
 
                         // Add player to wolf chat channel
@@ -1477,7 +1479,9 @@ class WerewolfBot {
                         console.log(`[DEBUG] Found wolf role not in chat: ${player.username} as ${displayRoleName}`);
                         wolfRolesNotInChat.push({
                             roleName: displayRoleName,
-                            fullRoleDescription: fullRoleDescription
+                            fullRoleDescription: fullRoleDescription,
+                            charges: player.charges_left,
+                            winByNumber: player.win_by_number
                         });
                     }
 
@@ -1516,6 +1520,24 @@ class WerewolfBot {
                         .setTimestamp()
                         .setFooter({ text: 'Good luck and have fun!' });
 
+                    // Add charges information if the player has charges
+                    if (player.charges_left !== null && player.charges_left !== undefined && player.charges_left > 0) {
+                        roleEmbed.addFields({
+                            name: '⚡ Charges',
+                            value: `You have **${player.charges_left} charges**.`,
+                            inline: true
+                        });
+                    }
+
+                    // Add win by number information if the player has a win condition
+                    if (player.win_by_number !== null && player.win_by_number !== undefined && player.win_by_number > 0) {
+                        roleEmbed.addFields({
+                            name: '🎯 Win Condition',
+                            value: `You need to achieve **${player.win_by_number}** to win.`,
+                            inline: true
+                        });
+                    }
+
                     // Send the role notification to the journal
                     await journalChannel.send({
                         content: `<@${player.user_id}>`,
@@ -1539,9 +1561,21 @@ class WerewolfBot {
                     const wolfChannel = await this.client.channels.fetch(game.wolf_chat_channel_id);
                     if (wolfChannel) {
                         // Create wolf team list message
-                        const wolfTeamList = wolfTeam.map(wolf => 
-                            `• **${wolf.roleName}** - ${wolf.username}`
-                        ).join('\n');
+                        const wolfTeamList = wolfTeam.map(wolf => {
+                            let wolfInfo = `• **${wolf.roleName}** - ${wolf.username}`;
+                            
+                            // Add charges if available
+                            if (wolf.charges !== null && wolf.charges !== undefined && wolf.charges > 0) {
+                                wolfInfo += ` (⚡ ${wolf.charges} charges)`;
+                            }
+                            
+                            // Add win condition if available
+                            if (wolf.winByNumber !== null && wolf.winByNumber !== undefined && wolf.winByNumber > 0) {
+                                wolfInfo += ` (🎯 win by ${wolf.winByNumber})`;
+                            }
+                            
+                            return wolfInfo;
+                        }).join('\n');
 
                         const wolfEmbed = new EmbedBuilder()
                             .setTitle('🐺 Wolf Team')
@@ -1553,9 +1587,21 @@ class WerewolfBot {
 
                         // If there are wolf roles not in chat, alert the team
                         if (wolfRolesNotInChat.length > 0) {
-                            const notInChatList = wolfRolesNotInChat.map(role => 
-                                `• **${role.roleName}**`
-                            ).join('\n');
+                            const notInChatList = wolfRolesNotInChat.map(role => {
+                                let roleInfo = `• **${role.roleName}**`;
+                                
+                                // Add charges if available
+                                if (role.charges !== null && role.charges !== undefined && role.charges > 0) {
+                                    roleInfo += ` (⚡ ${role.charges} charges)`;
+                                }
+                                
+                                // Add win condition if available
+                                if (role.winByNumber !== null && role.winByNumber !== undefined && role.winByNumber > 0) {
+                                    roleInfo += ` (🎯 win by ${role.winByNumber})`;
+                                }
+                                
+                                return roleInfo;
+                            }).join('\n');
 
                             const alertEmbed = new EmbedBuilder()
                                 .setTitle('⚠️ Major Wolf Alert!')

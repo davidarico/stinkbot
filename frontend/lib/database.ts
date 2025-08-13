@@ -39,6 +39,7 @@ interface Player {
   is_framed: boolean
   framed_night?: number
   charges_left?: number
+  win_by_number?: number
   signed_up_at: Date
   charges?: number
   role?: string // This will be populated from the role join
@@ -59,6 +60,7 @@ interface GameRole {
   role_count: number
   custom_name?: string
   charges?: number
+  win_by_number?: number
 }
 
 interface Role {
@@ -140,6 +142,8 @@ export class DatabaseService {
             in_wolf_chat,
             has_charges,
             default_charges,
+            has_win_by_number,
+            default_win_by_number,
             is_spotlight
           FROM roles 
           ORDER BY name
@@ -159,6 +163,8 @@ export class DatabaseService {
           hasInfoFunction: role.targets === 'Players' && role.moves,
           hasCharges: role.has_charges,
           defaultCharges: role.default_charges,
+          hasWinByNumber: role.has_win_by_number,
+          defaultWinByNumber: role.default_win_by_number,
           inWolfChat: role.in_wolf_chat,
           isSpotlight: role.is_spotlight
         }))
@@ -191,11 +197,36 @@ export class DatabaseService {
       try {
         await client.query('BEGIN')
         
+        // First, get the game roles to get charges and win_by_number values
+        const gameRoles = await this.getGameRoles(gameId)
+        const gameRoleMap = new Map(gameRoles.map(gr => [gr.role_id, gr]))
+        
         for (const assignment of assignments) {
+          // Update basic role assignment
           await client.query(
             'UPDATE players SET role_id = $1, is_wolf = $2, skinned_role = $3 WHERE id = $4 AND game_id = $5',
             [assignment.roleId, assignment.isWolf, assignment.skinnedRole || null, assignment.playerId, parseInt(gameId)]
           )
+          
+          // Set charges and win_by_number from game_role table
+          const gameRole = gameRoleMap.get(assignment.roleId)
+          if (gameRole) {
+            // Set charges if the role has charges
+            if (gameRole.charges !== undefined && gameRole.charges > 0) {
+              await client.query(
+                'UPDATE players SET charges_left = $1 WHERE id = $2 AND game_id = $3',
+                [gameRole.charges, assignment.playerId, parseInt(gameId)]
+              )
+            }
+            
+            // Set win_by_number if the role has win_by_number
+            if (gameRole.win_by_number !== undefined && gameRole.win_by_number > 0) {
+              await client.query(
+                'UPDATE players SET win_by_number = $1 WHERE id = $2 AND game_id = $3',
+                [gameRole.win_by_number, assignment.playerId, parseInt(gameId)]
+              )
+            }
+          }
         }
         
         // Check for couple roles and create couple chat if needed
@@ -237,6 +268,19 @@ export class DatabaseService {
       return { success: true, player: result.rows[0] }
     } catch (error) {
       console.error('Error updating player charges:', error)
+      throw error
+    }
+  }
+
+  async updatePlayerWinByNumber(playerId: number, winByNumber: number) {
+    try {
+      const result = await this.pool.query(
+        'UPDATE players SET win_by_number = $1 WHERE id = $2 RETURNING *',
+        [winByNumber, playerId]
+      )
+      return { success: true, player: result.rows[0] }
+    } catch (error) {
+      console.error('Error updating player win_by_number:', error)
       throw error
     }
   }
@@ -300,7 +344,7 @@ export class DatabaseService {
   async getGameRoles(gameId: string): Promise<GameRole[]> {
     try {
       const result = await this.pool.query(
-        `SELECT gr.*, r.name as role_name, r.team as role_team, r.has_charges, r.default_charges, r.in_wolf_chat
+        `SELECT gr.*, r.name as role_name, r.team as role_team, r.has_charges, r.default_charges, r.has_win_by_number, r.default_win_by_number, r.in_wolf_chat
          FROM game_role gr 
          JOIN roles r ON gr.role_id = r.id 
          WHERE gr.game_id = $1`,
@@ -313,7 +357,7 @@ export class DatabaseService {
     }
   }
 
-  async saveGameRoles(gameId: string, gameRoles: Array<{roleId: number, roleCount: number, customName?: string, charges?: number}>) {
+  async saveGameRoles(gameId: string, gameRoles: Array<{roleId: number, roleCount: number, customName?: string, charges?: number, winByNumber?: number}>) {
     try {
       const client = await this.pool.connect()
       
@@ -341,8 +385,8 @@ export class DatabaseService {
         for (const gameRole of gameRoles) {
           try {
             await client.query(
-              'INSERT INTO game_role (game_id, role_id, role_count, custom_name, charges) VALUES ($1, $2, $3, $4, $5)',
-              [parseInt(gameId), gameRole.roleId, gameRole.roleCount, gameRole.customName || null, gameRole.charges ?? 0]
+              'INSERT INTO game_role (game_id, role_id, role_count, custom_name, charges, win_by_number) VALUES ($1, $2, $3, $4, $5, $6)',
+              [parseInt(gameId), gameRole.roleId, gameRole.roleCount, gameRole.customName || null, gameRole.charges ?? 0, gameRole.winByNumber ?? 0]
             )
           } catch (insertError) {
             console.error('Failed to insert game role:', insertError)
@@ -366,7 +410,7 @@ export class DatabaseService {
     }
   }
 
-  private async saveGameRolesIndividually(gameId: string, gameRoles: Array<{roleId: number, roleCount: number, customName?: string, charges?: number}>) {
+  private async saveGameRolesIndividually(gameId: string, gameRoles: Array<{roleId: number, roleCount: number, customName?: string, charges?: number, winByNumber?: number}>) {
     try {
       const client = await this.pool.connect()
       
@@ -380,8 +424,8 @@ export class DatabaseService {
         for (const gameRole of gameRoles) {
           try {
             await client.query(
-              'INSERT INTO game_role (game_id, role_id, role_count, custom_name, charges) VALUES ($1, $2, $3, $4, $5)',
-              [parseInt(gameId), gameRole.roleId, gameRole.roleCount, gameRole.customName || null, gameRole.charges ?? 0]
+              'INSERT INTO game_role (game_id, role_id, role_count, custom_name, charges, win_by_number) VALUES ($1, $2, $3, $4, $5, $6)',
+              [parseInt(gameId), gameRole.roleId, gameRole.roleCount, gameRole.customName || null, gameRole.charges ?? 0, gameRole.winByNumber ?? 0]
             )
           } catch (insertError) {
             console.warn('Failed to insert game role:', insertError)

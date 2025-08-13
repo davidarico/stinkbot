@@ -1,5 +1,5 @@
 -- Werewolf Discord Bot Database Schema
--- Generated automatically on 2025-08-12T19:42:24.388Z
+-- Generated automatically on 2025-08-13T01:41:58.510Z
 -- This file shows the current database structure with table comments
 -- Run this after migrations to get the latest schema
 
@@ -39,6 +39,7 @@ CREATE TABLE game_role (
     role_count INTEGER NOT NULL DEFAULT 1,
     custom_name TEXT,
     charges INTEGER DEFAULT 0,
+    win_by_number INTEGER DEFAULT 0,
     PRIMARY KEY (game_id, role_id)
 );
 
@@ -123,6 +124,7 @@ CREATE TABLE players (
     is_framed BOOLEAN DEFAULT FALSE,
     framed_night INTEGER,
     charges_left INTEGER,
+    win_by_number INTEGER DEFAULT 0,
     UNIQUE(game_id, user_id)
 );
 
@@ -143,6 +145,8 @@ CREATE TABLE roles (
     is_spotlight BOOLEAN DEFAULT FALSE,
     has_charges BOOLEAN NOT NULL DEFAULT FALSE,
     default_charges INTEGER NOT NULL DEFAULT 0,
+    has_win_by_number BOOLEAN DEFAULT FALSE,
+    default_win_by_number INTEGER DEFAULT 0,
     UNIQUE(name)
 );
 

@@ -12,22 +12,23 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const players = await db.getPlayers(gameId)
     const game = await db.getGame(gameId)
     
-    return NextResponse.json(players.map(player => ({
-      id: player.id,
-      username: player.username,
-      status: player.status,
-      role: player.role,
-      roleId: player.role_id,
-      skinnedRole: player.skinned_role,
-      alignment: player.is_wolf ? "wolf" : 
-                 (player as any).role_team === 'wolf' ? "wolf" : 
-                 (player as any).role_team === 'neutral' ? "neutral" : "town",
-      userId: player.user_id,
-      isFramed: player.is_framed,
-      isDead: player.is_dead,
-      charges: player.charges,
-      displayRole: game?.is_skinned && player.skinned_role ? player.skinned_role : player.role
-    })))
+          return NextResponse.json(players.map(player => ({
+        id: player.id,
+        username: player.username,
+        status: player.status,
+        role: player.role,
+        roleId: player.role_id,
+        skinnedRole: player.skinned_role,
+        alignment: player.is_wolf ? "wolf" : 
+                   (player as any).role_team === 'wolf' ? "wolf" : 
+                   (player as any).role_team === 'neutral' ? "neutral" : "town",
+        userId: player.user_id,
+        isFramed: player.is_framed,
+        isDead: player.is_dead,
+        charges: player.charges,
+        winByNumber: player.win_by_number,
+        displayRole: game?.is_skinned && player.skinned_role ? player.skinned_role : player.role
+      })))
   } catch (error) {
     console.error("Database error:", error)
     return NextResponse.json({ error: "Database error" }, { status: 500 })
@@ -59,8 +60,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         } else if (data.charges !== undefined) {
           const updatedPlayer = await db.updatePlayerCharges(data.playerId, data.charges)
           return NextResponse.json(updatedPlayer)
+        } else if (data.winByNumber !== undefined) {
+          const updatedPlayer = await db.updatePlayerWinByNumber(data.playerId, data.winByNumber)
+          return NextResponse.json(updatedPlayer)
         } else {
-          return NextResponse.json({ error: "Status or charges required" }, { status: 400 })
+          return NextResponse.json({ error: "Status, charges, or winByNumber required" }, { status: 400 })
         }
 
       default:

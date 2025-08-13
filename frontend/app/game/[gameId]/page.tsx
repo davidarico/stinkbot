@@ -27,6 +27,7 @@ interface Player {
   isFramed?: boolean
   isDead?: boolean
   charges?: number
+  winByNumber?: number
 }
 
 interface Role {
@@ -38,6 +39,8 @@ interface Role {
   hasInfoFunction?: boolean
   hasCharges?: boolean
   defaultCharges?: number
+  hasWinByNumber?: boolean
+  defaultWinByNumber?: number
   inWolfChat?: boolean
 }
 
@@ -61,6 +64,7 @@ interface GameRole {
   roleCount: number
   customName?: string
   charges?: number
+  winByNumber?: number
 }
 
 interface Vote {
@@ -91,6 +95,7 @@ export default function GameManagementPage() {
   const [gameRoles, setGameRoles] = useState<GameRole[]>([])
   const [customRoleNames, setCustomRoleNames] = useState<Record<number, string>>({})
   const [roleCharges, setRoleCharges] = useState<Record<number, number>>({})
+  const [roleWinByNumbers, setRoleWinByNumbers] = useState<Record<number, number>>({})
   const [themeInput, setThemeInput] = useState("")
   const [roleSearch, setRoleSearch] = useState("")
   const [alignmentFilter, setAlignmentFilter] = useState<string>("all")
@@ -166,6 +171,7 @@ export default function GameManagementPage() {
         // Build custom role names map
         const customNames: Record<number, string> = {}
         const charges: Record<number, number> = {}
+        const winByNumbers: Record<number, number> = {}
         gameRolesData.forEach((gr: any) => {
           if (gr.custom_name) {
             customNames[gr.role_id] = gr.custom_name
@@ -173,9 +179,13 @@ export default function GameManagementPage() {
           if (gr.charges !== undefined) {
             charges[gr.role_id] = gr.charges
           }
+          if (gr.win_by_number !== undefined) {
+            winByNumbers[gr.role_id] = gr.win_by_number
+          }
         })
         setCustomRoleNames(customNames)
         setRoleCharges(charges)
+        setRoleWinByNumbers(winByNumbers)
         
         // Convert game roles to selected roles for display
         const rolesForSelection: Role[] = []
@@ -188,6 +198,8 @@ export default function GameManagementPage() {
               description: '',
               hasCharges: gr.has_charges || false,
               defaultCharges: gr.default_charges || 0,
+              hasWinByNumber: gr.has_win_by_number || false,
+              defaultWinByNumber: gr.default_win_by_number || 0,
               inWolfChat: gr.in_wolf_chat || false
             })
           }
@@ -213,6 +225,8 @@ export default function GameManagementPage() {
           alignment: role.alignment || 'town', // The API already returns alignment
           hasCharges: role.hasCharges || false,
           defaultCharges: role.defaultCharges || 0,
+          hasWinByNumber: role.hasWinByNumber || false,
+          defaultWinByNumber: role.defaultWinByNumber || 0,
           inWolfChat: role.inWolfChat || false
         }))
         setAvailableRoles(mappedRoles)
@@ -300,6 +314,14 @@ export default function GameManagementPage() {
         [role.id]: role.defaultCharges || 0
       }))
     }
+    
+    // Initialize win_by_number if this role has win_by_number and isn't already set
+    if (role.hasWinByNumber && roleWinByNumbers[role.id] === undefined) {
+      setRoleWinByNumbers(prev => ({
+        ...prev,
+        [role.id]: role.defaultWinByNumber || 0
+      }))
+    }
   }
 
   const removeRoleFromGame = (roleIndex: number) => {
@@ -317,17 +339,52 @@ export default function GameManagementPage() {
       return
     }
 
-    const shuffledPlayers = [...players].sort(() => Math.random() - 0.5)
-    const shuffledRoles = [...selectedRoles].sort(() => Math.random() - 0.5)
-
-    const assignments = shuffledPlayers.map((player, index) => ({
-      playerId: player.id,
-      roleId: shuffledRoles[index].id,
-      isWolf: shuffledRoles[index].alignment === "wolf",
-      skinnedRole: gameData.isSkinned ? shuffledRoles[index].name : undefined
-    }))
-
     try {
+      // First, save the game roles to ensure charges and win_by_number are saved
+      const roleCountMap: Record<number, number> = {}
+      selectedRoles.forEach(role => {
+        roleCountMap[role.id] = (roleCountMap[role.id] || 0) + 1
+      })
+
+      const gameRoleData = Object.entries(roleCountMap).map(([roleId, count]) => {
+        const roleIdNum = parseInt(roleId)
+        const role = availableRoles.find(r => r.id === roleIdNum)
+        return {
+          roleId: roleIdNum,
+          roleCount: count,
+          customName: customRoleNames[roleIdNum] || undefined,
+          charges: roleCharges[roleIdNum] !== undefined ? roleCharges[roleIdNum] : (role?.hasCharges ? role.defaultCharges : undefined),
+          winByNumber: roleWinByNumbers[roleIdNum] !== undefined ? roleWinByNumbers[roleIdNum] : (role?.hasWinByNumber ? role.defaultWinByNumber : undefined)
+        }
+      })
+
+      // Save game roles first
+      const saveRolesResponse = await fetch(`/api/games/${gameId}/roles`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameRoles: gameRoleData })
+      })
+
+      if (!saveRolesResponse.ok) {
+        toast({
+          title: "Save Failed",
+          description: "Failed to save role configuration before assignment",
+          variant: "destructive",
+        })
+        return
+      }
+
+      // Now assign roles to players
+      const shuffledPlayers = [...players].sort(() => Math.random() - 0.5)
+      const shuffledRoles = [...selectedRoles].sort(() => Math.random() - 0.5)
+
+      const assignments = shuffledPlayers.map((player, index) => ({
+        playerId: player.id,
+        roleId: shuffledRoles[index].id,
+        isWolf: shuffledRoles[index].alignment === "wolf",
+        skinnedRole: gameData.isSkinned ? shuffledRoles[index].name : undefined
+      }))
+
       const response = await fetch(`/api/games/${gameId}/players`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -338,6 +395,11 @@ export default function GameManagementPage() {
       })
 
       if (response.ok) {
+        toast({
+          title: "Success",
+          description: "Roles assigned successfully with charges and win conditions!",
+        })
+        
         // Reload players to get updated data
         const playersResponse = await fetch(`/api/games/${gameId}/players`)
         if (playersResponse.ok) {
@@ -450,6 +512,40 @@ export default function GameManagementPage() {
     }
   }
 
+  const updatePlayerWinByNumber = async (playerId: number, winByNumber: number) => {
+    try {
+      const response = await fetch(`/api/games/${gameId}/players`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'updatePlayer', 
+          data: { playerId, winByNumber }
+        })
+      })
+
+      if (response.ok) {
+        setPlayers(
+          players.map((player) =>
+            player.id === playerId ? { ...player, winByNumber } : player,
+          ),
+        )
+      } else {
+        toast({
+          title: "Update Failed",
+          description: "Failed to update player win by number",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error('Error updating player win by number:', error)
+      toast({
+        title: "Update Error",
+        description: "Error updating player win by number",
+        variant: "destructive",
+      })
+    }
+  }
+
   const saveGameRoles = async () => {
     if (selectedRoles.length === 0) {
       toast({
@@ -473,7 +569,8 @@ export default function GameManagementPage() {
         roleId: roleIdNum,
         roleCount: count,
         customName: customRoleNames[roleIdNum] || undefined,
-        charges: roleCharges[roleIdNum] !== undefined ? roleCharges[roleIdNum] : (role?.hasCharges ? role.defaultCharges : undefined)
+        charges: roleCharges[roleIdNum] !== undefined ? roleCharges[roleIdNum] : (role?.hasCharges ? role.defaultCharges : undefined),
+        winByNumber: roleWinByNumbers[roleIdNum] !== undefined ? roleWinByNumbers[roleIdNum] : (role?.hasWinByNumber ? role.defaultWinByNumber : undefined)
       }
     })
 
@@ -645,10 +742,23 @@ export default function GameManagementPage() {
     }))
   }
 
+  const updateRoleWinByNumber = (roleId: number, winByNumber: number) => {
+    setRoleWinByNumbers(prev => ({
+      ...prev,
+      [roleId]: winByNumber
+    }))
+  }
+
   const roleHasCharges = (player: Player): boolean => {
     if (!player.roleId) return false
     const role = availableRoles.find(r => r.id === player.roleId)
     return role?.hasCharges || false
+  }
+
+  const roleHasWinByNumber = (player: Player): boolean => {
+    if (!player.roleId) return false
+    const role = availableRoles.find(r => r.id === player.roleId)
+    return role?.hasWinByNumber || false
   }
 
   const filteredRoles = availableRoles
@@ -1190,6 +1300,37 @@ export default function GameManagementPage() {
                         </div>
                       )}
 
+                      {/* Win by number counter for roles with win_by_number */}
+                      {role.hasWinByNumber && (
+                        <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                          <div className="flex items-center justify-between">
+                            <span className={cn("text-xs font-medium", isDayPhase ? "text-gray-700" : "text-gray-300")}>
+                              Win by number: {roleWinByNumbers[role.id] || role.defaultWinByNumber || 0}
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                onClick={() => updateRoleWinByNumber(role.id, (roleWinByNumbers[role.id] || role.defaultWinByNumber || 0) + 1)}
+                                className="px-2 py-1 h-5 text-xs"
+                                disabled={(roleWinByNumbers[role.id] || role.defaultWinByNumber || 0) >= 20}
+                              >
+                                +
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="destructive" 
+                                onClick={() => updateRoleWinByNumber(role.id, Math.max(0, (roleWinByNumbers[role.id] || role.defaultWinByNumber || 0) - 1))}
+                                className="px-2 py-1 h-5 text-xs"
+                                disabled={(roleWinByNumbers[role.id] || role.defaultWinByNumber || 0) <= 0}
+                              >
+                                -
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                     </div>
                   ))}
                   {selectedRoles.length === 0 && (
@@ -1438,6 +1579,37 @@ export default function GameManagementPage() {
                                 </div>
                               </div>
                             )}
+
+                            {/* Win by number for roles that have them */}
+                            {roleHasWinByNumber(player) && (
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className={cn("text-sm font-medium", isDayPhase ? "text-gray-700" : "text-gray-300")}>
+                                  Win by number:
+                                </span>
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => updatePlayerWinByNumber(player.id, Math.max(0, (player.winByNumber || 0) - 1))}
+                                    disabled={(player.winByNumber || 0) <= 0}
+                                    className="px-2 py-1 h-6"
+                                  >
+                                    -
+                                  </Button>
+                                  <span className={cn("px-2 text-sm font-mono", isDayPhase ? "text-gray-900" : "text-white")}>
+                                    {player.winByNumber || 0}
+                                  </span>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => updatePlayerWinByNumber(player.id, (player.winByNumber || 0) + 1)}
+                                    className="px-2 py-1 h-6"
+                                  >
+                                    +
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         ))}
                     </CardContent>
@@ -1506,6 +1678,37 @@ export default function GameManagementPage() {
                                 </div>
                               </div>
                             )}
+
+                            {/* Win by number for roles that have them */}
+                            {roleHasWinByNumber(player) && (
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className={cn("text-sm font-medium", isDayPhase ? "text-gray-700" : "text-gray-300")}>
+                                  Win by number:
+                                </span>
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => updatePlayerWinByNumber(player.id, Math.max(0, (player.winByNumber || 0) - 1))}
+                                    disabled={(player.winByNumber || 0) <= 0}
+                                    className="px-2 py-1 h-6"
+                                  >
+                                    -
+                                  </Button>
+                                  <span className={cn("px-2 text-sm font-mono", isDayPhase ? "text-gray-900" : "text-white")}>
+                                    {player.winByNumber || 0}
+                                  </span>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => updatePlayerWinByNumber(player.id, (player.winByNumber || 0) + 1)}
+                                    className="px-2 py-1 h-6"
+                                  >
+                                    +
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         ))}
                     </CardContent>
@@ -1567,6 +1770,37 @@ export default function GameManagementPage() {
                                     size="sm"
                                     variant="outline"
                                     onClick={() => updatePlayerCharges(player.id, (player.charges || 0) + 1)}
+                                    className="px-2 py-1 h-6"
+                                  >
+                                    +
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Win by number for roles that have them */}
+                            {roleHasWinByNumber(player) && (
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className={cn("text-sm font-medium", isDayPhase ? "text-gray-700" : "text-gray-300")}>
+                                  Win by number:
+                                </span>
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => updatePlayerWinByNumber(player.id, Math.max(0, (player.winByNumber || 0) - 1))}
+                                    disabled={(player.winByNumber || 0) <= 0}
+                                    className="px-2 py-1 h-6"
+                                  >
+                                    -
+                                  </Button>
+                                  <span className={cn("px-2 text-sm font-mono", isDayPhase ? "text-gray-900" : "text-white")}>
+                                    {player.winByNumber || 0}
+                                  </span>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => updatePlayerWinByNumber(player.id, (player.winByNumber || 0) + 1)}
                                     className="px-2 py-1 h-6"
                                   >
                                     +
