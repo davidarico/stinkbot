@@ -5010,9 +5010,14 @@ class WerewolfBot {
                 .setTimestamp()
                 .setFooter({ text: `Server ID: ${serverId}` });
 
+            // Get channel count
+            const channelCount = message.guild.channels.cache.size;
+            const channelLimit = 500; // Discord's limit
+            const channelUsagePercentage = ((channelCount / channelLimit) * 100).toFixed(1);
+            
             // Basic server info
             embed.addFields(
-                { name: '📊 Basic Info', value: `**Members:** ${memberCount}\n**Total Games:** ${totalGames}`, inline: true }
+                { name: '📊 Basic Info', value: `**Members:** ${memberCount}\n**Total Games:** ${totalGames}\n**Channels:** ${channelCount}/${channelLimit} (${channelUsagePercentage}%)`, inline: true }
             );
 
             // Server configuration
