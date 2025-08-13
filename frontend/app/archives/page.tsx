@@ -20,6 +20,7 @@ interface SearchResult {
     userId: string
     username: string
     displayName: string
+    profilePictureLink?: string
     timestamp: string
     channelId: string
     channelName: string
@@ -281,9 +282,17 @@ export default function ArchivesPage() {
                   <CardContent className="p-4">
                     <div className="flex items-start gap-3">
                       <Avatar className="h-8 w-8">
-                        <AvatarFallback className="bg-gray-600 text-white">
-                          {result._source.displayName?.charAt(0) || '?'}
-                        </AvatarFallback>
+                        {result._source.profilePictureLink ? (
+                          <img 
+                            src={result._source.profilePictureLink} 
+                            alt={`${result._source.displayName || result._source.username}'s avatar`}
+                            className="h-8 w-8 rounded-full object-cover"
+                          />
+                        ) : (
+                          <AvatarFallback className="bg-gray-600 text-white">
+                            {result._source.displayName?.charAt(0) || '?'}
+                          </AvatarFallback>
+                        )}
                       </Avatar>
                       
                       <div className="flex-1 min-w-0">
@@ -372,9 +381,17 @@ export default function ArchivesPage() {
                   >
                     <div className="flex items-start gap-3">
                       <Avatar className="h-6 w-6">
-                        <AvatarFallback className="text-xs bg-gray-600 text-white">
-                          {msg._source.displayName?.charAt(0) || '?'}
-                        </AvatarFallback>
+                        {msg._source.profilePictureLink ? (
+                          <img 
+                            src={msg._source.profilePictureLink} 
+                            alt={`${msg._source.displayName || msg._source.username}'s avatar`}
+                            className="h-6 w-6 rounded-full object-cover"
+                          />
+                        ) : (
+                          <AvatarFallback className="text-xs bg-gray-600 text-white">
+                            {msg._source.displayName?.charAt(0) || '?'}
+                          </AvatarFallback>
+                        )}
                       </Avatar>
                       
                       <div className="flex-1 min-w-0">

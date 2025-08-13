@@ -50,19 +50,20 @@ export async function GET(request: NextRequest) {
       body: searchBody
     })
 
-    // Get updated display names from database
+    // Get updated display names and profile pictures from database
     const hits = response.body.hits.hits
     const userIds = [...new Set(hits.map((hit: any) => hit._source.userId))]
     
     if (userIds.length > 0) {
       const serverUsers = await db.getServerUsersByUserIds(userIds)
-      const userMap = new Map(serverUsers.map(user => [user.user_id, user.display_name]))
+      const userMap = new Map(serverUsers.map(user => [user.user_id, { displayName: user.display_name, profilePictureLink: user.profile_picture_link }]))
       
-      // Update display names in results
+      // Update display names and profile pictures in results
       hits.forEach((hit: any) => {
-        const updatedDisplayName = userMap.get(hit._source.userId)
-        if (updatedDisplayName) {
-          hit._source.displayName = updatedDisplayName
+        const userInfo = userMap.get(hit._source.userId)
+        if (userInfo) {
+          hit._source.displayName = userInfo.displayName
+          hit._source.profilePictureLink = userInfo.profilePictureLink
         }
       })
     }

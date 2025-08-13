@@ -767,7 +767,7 @@ export class DatabaseService {
       
       const placeholders = userIds.map((_, index) => `$${index + 1}`).join(',')
       const result = await this.pool.query(
-        `SELECT user_id, display_name FROM server_users WHERE user_id = ANY($1)`,
+        `SELECT user_id, display_name, profile_picture_link FROM server_users WHERE user_id = ANY($1)`,
         [userIds]
       )
       return result.rows
