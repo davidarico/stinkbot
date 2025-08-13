@@ -4398,8 +4398,48 @@ class WerewolfBot {
             // Only handle reactions with the custom emoji for this speed vote
             if (reaction.emoji.name !== customEmoji && reaction.emoji.toString() !== customEmoji) return;
 
+            // Check if the user has the "Alive" role
+            const guild = reaction.message.guild;
+            const member = await guild.members.fetch(user.id).catch(() => null);
+            
+            if (!member) {
+                console.log(`Could not fetch member ${user.tag} for reaction check`);
+                return;
+            }
+
+            const aliveRole = guild.roles.cache.find(r => r.name === 'Alive');
+            if (!aliveRole) {
+                console.log('Alive role not found in guild, allowing reaction');
+                return;
+            }
+
+            // If user doesn't have the Alive role, remove their reaction
+            if (!member.roles.cache.has(aliveRole.id)) {
+                await reaction.users.remove(user.id);
+                console.log(`Removed reaction from ${user.displayName} (${user.id}) - user does not have Alive role`);
+                
+                // Post message in mod-chat about the invalid reaction
+                try {
+                    const gameResult = await this.db.query(
+                        'SELECT mod_chat_channel_id FROM games WHERE server_id = $1 AND status = $2',
+                        [guild.id, 'active']
+                    );
+                    
+                    if (gameResult.rows.length > 0 && gameResult.rows[0].mod_chat_channel_id) {
+                        const modChatChannel = await this.client.channels.fetch(gameResult.rows[0].mod_chat_channel_id);
+                        if (modChatChannel) {
+                            await modChatChannel.send(`❌ ${user.displayName} tried to react to the speed vote but doesn't have the "Alive" role. Their reaction has been removed.`);
+                        }
+                    }
+                } catch (modChatError) {
+                    console.log(`Could not send message to mod-chat:`, modChatError.message);
+                }
+                return;
+            }
+
             // Remove the bot's initial reaction to keep the count clean
             // The bot's reaction doesn't count toward the target but helps users react
+            // Only remove bot reaction if the user is valid (has Alive role)
             await reaction.users.remove(this.client.user.id);
             
             console.log(`Removed bot reaction from speed vote message ${reaction.message.id} after ${user.tag} reacted with ${customEmoji}`);
