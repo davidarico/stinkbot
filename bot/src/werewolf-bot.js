@@ -596,6 +596,9 @@ class WerewolfBot {
             [game.id, user.id, displayName]
         );
 
+        // Check if user has a journal, create one if they don't
+        this.ensureUserHasJournal(message, user);
+
         // Assign "Signed Up" role
         await this.assignRole(message.member, 'Signed Up');
         await this.removeRole(message.member, 'Spectator');
@@ -3351,6 +3354,154 @@ class WerewolfBot {
         } catch (error) {
             console.error('Error creating journal:', error);
             await message.reply('❌ An error occurred while creating the journal.');
+        }
+    }
+
+    /**
+     * Ensure a user has a journal, create one if they don't
+     * This is a helper function used by handleSignUp to automatically create journals
+     */
+    async ensureUserHasJournal(message, user) {
+        const serverId = message.guild.id;
+        
+        try {
+            // Check if user already has a journal
+            const existingJournal = await this.db.query(
+                'SELECT channel_id FROM player_journals WHERE server_id = $1 AND user_id = $2',
+                [serverId, user.id]
+            );
+
+            if (existingJournal.rows.length > 0) {
+                // User already has a journal, verify the channel still exists
+                const journalChannel = await this.client.channels.fetch(existingJournal.rows[0].channel_id).catch(() => null);
+                if (journalChannel) {
+                    return; // Journal exists and channel is valid
+                }
+                // Channel doesn't exist, we'll create a new one
+            }
+
+            // Get the user's member object
+            const targetMember = await message.guild.members.fetch(user.id).catch(() => null);
+            if (!targetMember) {
+                console.error(`Could not fetch member ${user.tag} for journal creation`);
+                return;
+            }
+
+            // Get active game for category positioning
+            const gameResult = await this.db.query(
+                'SELECT * FROM games WHERE server_id = $1 ORDER BY game_number DESC LIMIT 1',
+                [serverId]
+            );
+
+            // Find or create the "Journals" category
+            let journalsCategory = message.guild.channels.cache.find(
+                channel => channel.type === ChannelType.GuildCategory && channel.name === 'Journals'
+            );
+
+            if (!journalsCategory) {
+                // Create the Journals category
+                journalsCategory = await message.guild.channels.create({
+                    name: 'Journals',
+                    type: ChannelType.GuildCategory,
+                });
+
+                // Position it under the current game but above other games
+                if (gameResult.rows.length > 0) {
+                    try {
+                        const currentGameCategory = await this.client.channels.fetch(gameResult.rows[0].category_id);
+                        if (currentGameCategory) {
+                            const targetPosition = currentGameCategory.position + 1;
+                            await journalsCategory.setPosition(targetPosition);
+                            console.log(`Positioned Journals category at position ${targetPosition}`);
+                        }
+                    } catch (error) {
+                        console.error('Error positioning Journals category:', error);
+                    }
+                }
+            }
+
+            // Create journal channel name
+            const journalChannelName = `${targetMember.displayName.toLowerCase().replace(/\s+/g, '-')}-journal`;
+
+            // Check if journal already exists
+            const existingJournalChannel = message.guild.channels.cache.find(
+                channel => channel.name === journalChannelName && channel.parent?.id === journalsCategory.id
+            );
+
+            if (existingJournalChannel) {
+                // Update database to link existing channel to user
+                await this.db.query(
+                    `INSERT INTO player_journals (server_id, user_id, channel_id) 
+                     VALUES ($1, $2, $3) 
+                     ON CONFLICT (server_id, user_id) 
+                     DO UPDATE SET channel_id = $3, created_at = CURRENT_TIMESTAMP`,
+                    [serverId, user.id, existingJournalChannel.id]
+                );
+                return;
+            }
+
+            // Get roles for permissions
+            const modRole = message.guild.roles.cache.find(r => r.name === 'Mod');
+            const spectatorRole = message.guild.roles.cache.find(r => r.name === 'Spectator');
+            const deadRole = message.guild.roles.cache.find(r => r.name === 'Dead');
+
+            // Create the journal channel with proper permissions
+            const journalChannel = await message.guild.channels.create({
+                name: journalChannelName,
+                type: ChannelType.GuildText,
+                parent: journalsCategory.id,
+                permissionOverwrites: [
+                    {
+                        id: message.guild.roles.everyone.id,
+                        deny: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
+                    },
+                    {
+                        id: user.id,
+                        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
+                    },
+                    ...(modRole ? [{
+                        id: modRole.id,
+                        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
+                    }] : []),
+                    ...(spectatorRole ? [{
+                        id: spectatorRole.id,
+                        allow: [PermissionFlagsBits.ViewChannel],
+                        deny: [PermissionFlagsBits.SendMessages],
+                    }] : []),
+                    ...(deadRole ? [{
+                        id: deadRole.id,
+                        allow: [PermissionFlagsBits.ViewChannel],
+                        deny: [PermissionFlagsBits.SendMessages],
+                    }] : [])
+                ],
+            });
+
+            // Send initial message to the journal
+            const embed = new EmbedBuilder()
+                .setTitle(`📔 ${targetMember.displayName}'s Journal`)
+                .setDescription(`Welcome to your personal journal, ${targetMember.displayName}!\n\nThis is your private space to:\n• Take notes during the game\n• Ask questions to the moderators\n• Record your thoughts and observations\n\n**Permissions:**\n• **You** can read and write\n• **Moderators** can read and write\n• **Spectators** can read only`)
+                .setColor(0x8B4513)
+                .setTimestamp();
+
+            await journalChannel.send({ embeds: [embed] });
+            
+            // Ping the user to notify them of their new journal
+            await journalChannel.send(`${targetMember} - Your journal has been created! 📔`);
+
+            // Save journal to database
+            await this.db.query(
+                `INSERT INTO player_journals (server_id, user_id, channel_id) 
+                 VALUES ($1, $2, $3) 
+                 ON CONFLICT (server_id, user_id) 
+                 DO UPDATE SET channel_id = $3, created_at = CURRENT_TIMESTAMP`,
+                [serverId, user.id, journalChannel.id]
+            );
+
+            console.log(`📔 Auto-created journal for ${targetMember.displayName} (${user.id})`);
+
+        } catch (error) {
+            console.error('Error ensuring user has journal:', error);
+            // Don't throw error to avoid breaking the signup process
         }
     }
 
