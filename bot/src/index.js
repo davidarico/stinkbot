@@ -2,6 +2,7 @@ const { Client, GatewayIntentBits, PermissionFlagsBits } = require('discord.js')
 const cron = require('node-cron');
 const db = require('./database');
 const WerewolfBot = require('./werewolf-bot');
+const AliveMentionDetector = require('./alive-mention-detector');
 
 // Configure dotenv based on NODE_ENV
 if (process.env.NODE_ENV !== 'production') {
@@ -28,10 +29,14 @@ if (!process.env.DISCORD_TOKEN) {
 }
 
 const werewolfBot = new WerewolfBot(client, db);
+const aliveMentionDetector = new AliveMentionDetector(client);
 
-client.once('ready', () => {
+client.once('ready', async () => {
     console.log(`🤖 ${client.user.tag} is online!`);
     console.log(`📊 Serving ${client.guilds.cache.size} servers`);
+    
+    // Initialize alive role detection
+    await aliveMentionDetector.initializeAliveRoles();
     
     // Set up daily member sync cron job (runs at 2 AM UTC every day)
     const memberSyncCron = cron.schedule('0 4 * * *', async () => {
@@ -62,6 +67,9 @@ client.once('ready', () => {
 
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
+    
+    // Handle alive role mentions first
+    await aliveMentionDetector.handleMessage(message);
     
     const prefix = process.env.BOT_PREFIX || 'Wolf.';
     if (!message.content.toLowerCase().startsWith(prefix.toLowerCase())) return;
@@ -97,6 +105,19 @@ client.on('error', (error) => {
 
 process.on('unhandledRejection', (error) => {
     console.error('Unhandled promise rejection:', error);
+});
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+    console.log('🛑 Shutting down gracefully...');
+    await aliveMentionDetector.close();
+    process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+    console.log('🛑 Shutting down gracefully...');
+    await aliveMentionDetector.close();
+    process.exit(0);
 });
 
 client.login(process.env.DISCORD_TOKEN);
