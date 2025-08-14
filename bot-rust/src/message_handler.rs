@@ -209,6 +209,7 @@ impl MessageHandler {
                         self.send_no_permission_error(ctx, msg).await?;
                     }
                 }
+                "role_configuration" => self.handle_role_configuration(ctx, msg, &bot).await?,
                 
                 // Unknown command - try AI response
                 _ => {
@@ -262,6 +263,7 @@ impl MessageHandler {
 • `Wolf.vote <player>` - Vote for elimination
 • `Wolf.retract` - Remove vote
 • `Wolf.alive` - List alive players
+• `Wolf.role_configuration` - Show current game role setup
             ")
             .color(0x0099ff)
             .footer(|f| f.text("Fast Rust implementation 🦀"));
@@ -1200,6 +1202,147 @@ Use `Wolf.settings <key> <value>` to modify
                 }
             }
         }
+        Ok(())
+    }
+
+    async fn handle_role_configuration(&self, ctx: &Context, msg: &Message, bot: &WerewolfBot) -> Result<()> {
+        let guild_id = msg.guild_id.unwrap().get();
+        
+        // Get the current game for this server
+        let client = bot.pool.get().await?;
+        let game_result = client.query(
+            "SELECT id, game_number, game_name, status 
+             FROM games 
+             WHERE server_id = $1 AND status IN ('signup', 'active') 
+             ORDER BY id DESC 
+             LIMIT 1",
+            &[&(guild_id as i64)]
+        ).await?;
+        
+        if game_result.is_empty() {
+            msg.reply(ctx, "❌ No active game found for this server.").await?;
+            return Ok(());
+        }
+        
+        let game = &game_result[0];
+        let game_id: i64 = game.get("id");
+        
+        // Get role configuration for this game
+        let role_result = client.query(
+            "SELECT gr.*, r.name as role_name, r.team as role_team, r.has_charges, r.default_charges, r.has_win_by_number, r.default_win_by_number, r.in_wolf_chat
+             FROM game_role gr 
+             JOIN roles r ON gr.role_id = r.id 
+             WHERE gr.game_id = $1
+             ORDER BY r.team, r.name",
+            &[&game_id]
+        ).await?;
+        
+        if role_result.is_empty() {
+            msg.reply(ctx, "❌ No role configuration found for the current game.").await?;
+            return Ok(());
+        }
+        
+        // Group roles by team and sort alphabetically
+        let mut town_roles = Vec::new();
+        let mut wolf_roles = Vec::new();
+        let mut neutral_roles = Vec::new();
+        
+        for row in &role_result {
+            let role_name: String = row.get("role_name");
+            let custom_name: Option<String> = row.get("custom_name");
+            let role_count: i32 = row.get("role_count");
+            let charges: Option<i32> = row.get("charges");
+            let win_by_number: Option<i32> = row.get("win_by_number");
+            let has_charges: bool = row.get("has_charges");
+            let has_win_by_number: bool = row.get("has_win_by_number");
+            let team: String = row.get("role_team");
+            
+            let display_name = custom_name.unwrap_or(role_name);
+            let charges_val = charges.unwrap_or(0);
+            let win_by_number_val = win_by_number.unwrap_or(0);
+            
+            let role_info = (display_name, role_count, charges_val, win_by_number_val, has_charges, has_win_by_number);
+            
+            match team.as_str() {
+                "town" => town_roles.push(role_info),
+                "wolf" => wolf_roles.push(role_info),
+                "neutral" => neutral_roles.push(role_info),
+                _ => {}
+            }
+        }
+        
+        // Sort each team alphabetically
+        town_roles.sort_by(|a, b| a.0.cmp(&b.0));
+        wolf_roles.sort_by(|a, b| a.0.cmp(&b.0));
+        neutral_roles.sort_by(|a, b| a.0.cmp(&b.0));
+        
+        // Build the embed
+        let mut embed = serenity::builder::CreateEmbed::default()
+            .title(format!("🎭 Role Configuration - Game {}", game.get::<i32, _>("game_number")))
+            .color(0x0099ff)
+            .timestamp(chrono::Utc::now());
+        
+        if let Some(game_name) = game.get::<Option<String>, _>("game_name") {
+            if let Some(name) = game_name {
+                embed = embed.description(format!("**{}**", name));
+            }
+        }
+        
+        // Add town roles
+        if !town_roles.is_empty() {
+            let mut town_text = String::new();
+            for (name, count, charges, win_by_number, has_charges, has_win_by_number) in &town_roles {
+                town_text.push_str(&format!("• **{}** ({})", name, count));
+                if *has_charges && *charges > 0 {
+                    town_text.push_str(&format!(" - {} charges", charges));
+                }
+                if *has_win_by_number && *win_by_number > 0 {
+                    town_text.push_str(&format!(" - Win by {}", win_by_number));
+                }
+                town_text.push('\n');
+            }
+            embed = embed.field("🏘️ Town Roles", town_text, false);
+        }
+        
+        // Add wolf roles
+        if !wolf_roles.is_empty() {
+            let mut wolf_text = String::new();
+            for (name, count, charges, win_by_number, has_charges, has_win_by_number) in &wolf_roles {
+                wolf_text.push_str(&format!("• **{}** ({})", name, count));
+                if *has_charges && *charges > 0 {
+                    wolf_text.push_str(&format!(" - {} charges", charges));
+                }
+                if *has_win_by_number && *win_by_number > 0 {
+                    wolf_text.push_str(&format!(" - Win by {}", win_by_number));
+                }
+                wolf_text.push('\n');
+            }
+            embed = embed.field("🐺 Wolf Roles", wolf_text, false);
+        }
+        
+        // Add neutral roles
+        if !neutral_roles.is_empty() {
+            let mut neutral_text = String::new();
+            for (name, count, charges, win_by_number, has_charges, has_win_by_number) in &neutral_roles {
+                neutral_text.push_str(&format!("• **{}** ({})", name, count));
+                if *has_charges && *charges > 0 {
+                    neutral_text.push_str(&format!(" - {} charges", charges));
+                }
+                if *has_win_by_number && *win_by_number > 0 {
+                    neutral_text.push_str(&format!(" - Win by {}", win_by_number));
+                }
+                neutral_text.push('\n');
+            }
+            embed = embed.field("⚖️ Neutral Roles", neutral_text, false);
+        }
+        
+        // Add summary
+        let total_roles = town_roles.len() + wolf_roles.len() + neutral_roles.len();
+        let total_count: i32 = role_result.iter().map(|row| row.get::<i32, _>("role_count")).sum();
+        
+        embed = embed.field("📊 Summary", format!("{} unique roles, {} total players", total_roles, total_count), false);
+        
+        msg.channel_id.send_message(ctx, serenity::builder::CreateMessage::new().embed(embed)).await?;
         Ok(())
     }
 }

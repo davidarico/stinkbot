@@ -142,7 +142,7 @@ class WerewolfBot {
         const command = args.shift().toLowerCase();
 
         // Commands that anyone can use
-        const playerCommands = ['in', 'out', 'vote', 'retract', 'alive', 'peed', 'help', 'meme', 'wolf_list', 'mylo'];
+        const playerCommands = ['in', 'out', 'vote', 'retract', 'alive', 'peed', 'help', 'meme', 'wolf_list', 'mylo', 'role_configuration'];
         
         // Check permissions for admin-only commands
         if (!playerCommands.includes(command) && !this.hasModeratorPermissions(message.member)) {
@@ -267,6 +267,9 @@ class WerewolfBot {
                     break;
                 case 'sync_members':
                     await this.handleSyncMembers(message);
+                    break;
+                case 'role_config':
+                    await this.handleRoleConfiguration(message);
                     break;
                 default:
                     const funnyResponse = await this.generateFunnyResponse(message.content.slice(prefix.length).trim().split(/ +/), message.author.displayName);
@@ -2192,37 +2195,37 @@ class WerewolfBot {
             ['ended', game.id]
         );
 
-                    // Reset all members to Spectator role
-            let resetMembersCount = 0;
-            try {
-                const spectatorRole = message.guild.roles.cache.find(r => r.name === 'Spectator');
-                if (spectatorRole) {
-                    // Fetch all members in the guild
-                    const members = await message.guild.members.fetch();
+        // Reset all members to Spectator role
+        let resetMembersCount = 0;
+        try {
+            const spectatorRole = message.guild.roles.cache.find(r => r.name === 'Spectator');
+            if (spectatorRole) {
+                // Fetch all members in the guild
+                const members = await message.guild.members.fetch();
+                
+                for (const [memberId, member] of members) {
+                    // Skip bots
+                    if (member.user.bot) continue;
                     
-                    for (const [memberId, member] of members) {
-                        // Skip bots
-                        if (member.user.bot) continue;
+                    try {
+                        // Remove all game-related roles
+                        await this.removeRole(member, 'Signed Up');
+                        await this.removeRole(member, 'Alive');
+                        await this.removeRole(member, 'Dead');
                         
-                        try {
-                            // Remove all game-related roles
-                            await this.removeRole(member, 'Signed Up');
-                            await this.removeRole(member, 'Alive');
-                            await this.removeRole(member, 'Dead');
-                            
-                            // Assign Spectator role
-                            await this.assignRole(member, 'Spectator');
-                            resetMembersCount++;
-                        } catch (error) {
-                            console.error(`Error resetting roles for member ${member.displayName}:`, error);
-                        }
+                        // Assign Spectator role
+                        await this.assignRole(member, 'Spectator');
+                        resetMembersCount++;
+                    } catch (error) {
+                        console.error(`Error resetting roles for member ${member.displayName}:`, error);
                     }
-                } else {
-                    console.log('Spectator role not found - skipping member role reset');
                 }
-            } catch (error) {
-                console.error('Error during member role reset:', error);
+            } else {
+                console.log('Spectator role not found - skipping member role reset');
             }
+        } catch (error) {
+            console.error('Error during member role reset:', error);
+        }
 
         // Remove Alive role's typing permissions from all channels in the game category
         try {
@@ -2472,6 +2475,7 @@ class WerewolfBot {
                        '`Wolf.vote @user` - Vote for a player (voting booth, day phase only)\n' +
                        '`Wolf.retract` - Retract your current vote\n' +
                        '`Wolf.alive` - Show all players currently alive\n' +
+                       '`Wolf.role_configuration` - Show current game role setup\n' +
                        '`Wolf.meme` - 😤 I dare you to try me\n' +
                        '`Wolf.help` - Show this help message', 
                 inline: false 
@@ -5901,6 +5905,165 @@ class WerewolfBot {
         } catch (error) {
             console.error('Error handling manual sync members command:', error);
             await message.reply('❌ An error occurred while processing the sync command.');
+        }
+    }
+
+    /**
+     * Handle role configuration command
+     */
+    async handleRoleConfiguration(message) {
+        try {
+            // Get the current game for this server
+            const gameQuery = `
+                SELECT id, game_number, game_name, status 
+                FROM games 
+                WHERE server_id = $1 AND status IN ('signup', 'active') 
+                ORDER BY id DESC 
+                LIMIT 1
+            `;
+            
+            const gameResult = await this.db.query(gameQuery, [message.guild.id]);
+            
+            if (gameResult.rows.length === 0) {
+                await message.reply('❌ No active game found for this server.');
+                return;
+            }
+            
+            const game = gameResult.rows[0];
+            
+            // Get role configuration for this game
+            const roleQuery = `
+                SELECT gr.*, r.name as role_name, r.team as role_team, r.has_charges, r.default_charges, r.has_win_by_number, r.default_win_by_number, r.in_wolf_chat
+                FROM game_role gr 
+                JOIN roles r ON gr.role_id = r.id 
+                WHERE gr.game_id = $1
+                ORDER BY r.team, r.name
+            `;
+            
+            const roleResult = await this.db.query(roleQuery, [game.id]);
+            
+            if (roleResult.rows.length === 0) {
+                await message.reply('❌ No role configuration found for the current game.');
+                return;
+            }
+            
+            // Group roles by team and sort alphabetically
+            const townRoles = [];
+            const wolfRoles = [];
+            const neutralRoles = [];
+            
+            roleResult.rows.forEach(row => {
+                const roleInfo = {
+                    name: row.custom_name || row.role_name,
+                    count: row.role_count,
+                    charges: row.charges || 0,
+                    winByNumber: row.win_by_number || 0,
+                    hasCharges: row.has_charges,
+                    hasWinByNumber: row.has_win_by_number
+                };
+                
+                switch (row.role_team) {
+                    case 'town':
+                        townRoles.push(roleInfo);
+                        break;
+                    case 'wolf':
+                        wolfRoles.push(roleInfo);
+                        break;
+                    case 'neutral':
+                        neutralRoles.push(roleInfo);
+                        break;
+                }
+            });
+            
+            // Sort each team alphabetically
+            townRoles.sort((a, b) => a.name.localeCompare(b.name));
+            wolfRoles.sort((a, b) => a.name.localeCompare(b.name));
+            neutralRoles.sort((a, b) => a.name.localeCompare(b.name));
+            
+            // Build the embed
+            const embed = new EmbedBuilder()
+                .setTitle(`🎭 Role Configuration - Game ${game.game_number}`)
+                .setColor(0x0099ff)
+                .setTimestamp();
+            
+            if (game.game_name) {
+                embed.setDescription(`**${game.game_name}**`);
+            }
+            
+            // Add town roles
+            if (townRoles.length > 0) {
+                let townText = '';
+                townRoles.forEach(role => {
+                    let roleText = `• **${role.name}`;
+                    if (role.count > 1) {
+                        roleText += ` (${role.count})`;
+                    }
+                    roleText += '**';
+                    if (role.hasCharges && role.charges > 0) {
+                        roleText += ` - ${role.charges} charges`;
+                    }
+                    if (role.hasWinByNumber && role.winByNumber > 0) {
+                        roleText += ` - Win by ${role.winByNumber}`;
+                    }
+                    townText += roleText + '\n';
+                });
+                embed.addFields({ name: '🏘️ Town', value: townText, inline: false });
+            }
+            
+            // Add wolf roles
+            if (wolfRoles.length > 0) {
+                let wolfText = '';
+                wolfRoles.forEach(role => {
+                    let roleText = `• **${role.name}`;
+                    if (role.count > 1) {
+                        roleText += ` (${role.count})`;
+                    }
+                    roleText += '**';
+                    if (role.hasCharges && role.charges > 0) {
+                        roleText += ` - ${role.charges} charges`;
+                    }
+                    if (role.hasWinByNumber && role.winByNumber > 0) {
+                        roleText += ` - Win by ${role.winByNumber}`;
+                    }
+                    wolfText += roleText + '\n';
+                });
+                embed.addFields({ name: '🐺 Wolves', value: wolfText, inline: false });
+            }
+            
+            // Add neutral roles
+            if (neutralRoles.length > 0) {
+                let neutralText = '';
+                neutralRoles.forEach(role => {
+                    let roleText = `• **${role.name}`;
+                    if (role.count > 1) {
+                        roleText += ` (${role.count})`;
+                    }
+                    roleText += '**';
+                    if (role.hasCharges && role.charges > 0) {
+                        roleText += ` - ${role.charges} charges`;
+                    }
+                    if (role.hasWinByNumber && role.winByNumber > 0) {
+                        roleText += ` - Win by ${role.winByNumber}`;
+                    }
+                    neutralText += roleText + '\n';
+                });
+                embed.addFields({ name: '⚖️ Neutrals', value: neutralText, inline: false });
+            }
+            
+            // Add summary
+            const totalCount = roleResult.rows.reduce((sum, row) => sum + row.role_count, 0);
+            
+            embed.addFields({ 
+                name: '📊 Summary', 
+                value: `${totalCount} Selected Roles`, 
+                inline: false 
+            });
+            
+            await message.reply({ embeds: [embed] });
+            
+        } catch (error) {
+            console.error('Error handling role configuration command:', error);
+            await message.reply('❌ An error occurred while fetching the role configuration.');
         }
     }
 
