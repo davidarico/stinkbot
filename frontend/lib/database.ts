@@ -211,21 +211,39 @@ export class DatabaseService {
           // Set charges and win_by_number from game_role table
           const gameRole = gameRoleMap.get(assignment.roleId)
           if (gameRole) {
-            // Set charges if the role has charges
+            // Set charges if the role has charges, otherwise clear them
             if (gameRole.charges !== undefined && gameRole.charges > 0) {
               await client.query(
                 'UPDATE players SET charges_left = $1 WHERE id = $2 AND game_id = $3',
                 [gameRole.charges, assignment.playerId, parseInt(gameId)]
               )
+            } else {
+              // Clear charges for roles that don't have them
+              await client.query(
+                'UPDATE players SET charges_left = NULL WHERE id = $1 AND game_id = $2',
+                [assignment.playerId, parseInt(gameId)]
+              )
             }
             
-            // Set win_by_number if the role has win_by_number
+            // Set win_by_number if the role has win_by_number, otherwise clear it
             if (gameRole.win_by_number !== undefined && gameRole.win_by_number > 0) {
               await client.query(
                 'UPDATE players SET win_by_number = $1 WHERE id = $2 AND game_id = $3',
                 [gameRole.win_by_number, assignment.playerId, parseInt(gameId)]
               )
+            } else {
+              // Clear win_by_number for roles that don't have it
+              await client.query(
+                'UPDATE players SET win_by_number = NULL WHERE id = $1 AND game_id = $2',
+                [assignment.playerId, parseInt(gameId)]
+              )
             }
+          } else {
+            // If no game role found, clear both charges and win_by_number
+            await client.query(
+              'UPDATE players SET charges_left = NULL, win_by_number = NULL WHERE id = $1 AND game_id = $2',
+              [assignment.playerId, parseInt(gameId)]
+            )
           }
         }
         
