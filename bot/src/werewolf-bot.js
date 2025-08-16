@@ -5,6 +5,10 @@ const OpenAI = require('openai');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const { Client } = require('@opensearch-project/opensearch');
 const { createAwsSigv4Signer } = require('@opensearch-project/opensearch/aws');
+const https = require('https');
+const http = require('http');
+const { URL } = require('url');
+const crypto = require('crypto');
 
 class WerewolfBot {
     constructor(client, db) {
@@ -73,6 +77,166 @@ class WerewolfBot {
         } else {
             this.openSearchClient = null;
         }
+    }
+
+    /**
+     * Download an image from a URL and return the buffer
+     * Note: Images are stored in memory only, not saved to disk
+     */
+    async downloadImage(url) {
+        return new Promise((resolve, reject) => {
+            const urlObj = new URL(url);
+            const protocol = urlObj.protocol === 'https:' ? https : http;
+            
+            const request = protocol.get(url, (response) => {
+                if (response.statusCode !== 200) {
+                    reject(new Error(`Failed to download image: ${response.statusCode}`));
+                    return;
+                }
+
+                const chunks = [];
+                response.on('data', (chunk) => {
+                    chunks.push(chunk);
+                });
+
+                response.on('end', () => {
+                    const buffer = Buffer.concat(chunks);
+                    resolve(buffer);
+                });
+            });
+
+            request.on('error', (error) => {
+                reject(error);
+            });
+
+            request.setTimeout(30000, () => {
+                request.destroy();
+                reject(new Error('Download timeout'));
+            });
+        });
+    }
+
+    /**
+     * Upload an image buffer to S3 and return the public URL
+     * Note: Images are uploaded directly from memory, no temporary files created
+     */
+    async uploadImageToS3(imageBuffer, originalUrl, messageId) {
+        if (!this.s3Client) {
+            throw new Error('S3 client not configured');
+        }
+
+        try {
+            // Use the specific bucket for images
+            const imageBucketName = 'stinkwolf-images';
+            
+            // Generate a unique filename based on message ID and original URL
+            const urlHash = crypto.createHash('md5').update(originalUrl).digest('hex');
+            const extension = this.getImageExtension(originalUrl);
+            const filename = `discord-images/${messageId}_${urlHash}${extension}`;
+
+            const uploadParams = {
+                Bucket: imageBucketName,
+                Key: filename,
+                Body: imageBuffer,
+                ContentType: this.getContentType(extension)
+            };
+
+            await this.s3Client.send(new PutObjectCommand(uploadParams));
+            
+            // Return the public S3 URL
+            return `https://${imageBucketName}.s3.${process.env.AWS_REGION}.amazonaws.com/${filename}`;
+        } catch (error) {
+            console.error('Error uploading image to S3:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get file extension from URL
+     */
+    getImageExtension(url) {
+        try {
+            const urlObj = new URL(url);
+            const pathname = urlObj.pathname;
+            const extension = pathname.split('.').pop().toLowerCase();
+            
+            // Validate extension is an image
+            const validExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
+            if (validExtensions.includes(extension)) {
+                return `.${extension}`;
+            }
+            
+            // Default to .jpg if no valid extension found
+            return '.jpg';
+        } catch (error) {
+            return '.jpg';
+        }
+    }
+
+    /**
+     * Get content type based on file extension
+     */
+    getContentType(extension) {
+        const contentTypes = {
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.png': 'image/png',
+            '.gif': 'image/gif',
+            '.webp': 'image/webp',
+            '.bmp': 'image/bmp'
+        };
+        return contentTypes[extension] || 'image/jpeg';
+    }
+
+    /**
+     * Process Discord image URLs in message content and replace with S3 URLs
+     */
+    async processDiscordImages(messageContent, messageId) {
+        if (!this.s3Client) {
+            return messageContent; // Return original content if S3 not configured
+        }
+
+        // Regex to match Discord CDN URLs (including query parameters)
+        const discordImageRegex = /https:\/\/cdn\.discordapp\.com\/attachments\/\d+\/\d+\/[^\s]+/g;
+        const matches = messageContent.match(discordImageRegex);
+        
+        if (!matches) {
+            return messageContent;
+        }
+
+        let processedContent = messageContent;
+        
+        for (const imageUrl of matches) {
+            let imageBuffer = null;
+            try {
+                console.log(`Processing Discord image: ${imageUrl}`);
+                
+                // Download the image to memory (no disk storage)
+                imageBuffer = await this.downloadImage(imageUrl);
+                
+                // Upload to S3
+                const s3Url = await this.uploadImageToS3(imageBuffer, imageUrl, messageId);
+                
+                // Replace the Discord URL with S3 URL
+                processedContent = processedContent.replace(imageUrl, s3Url);
+                
+                console.log(`Successfully processed image: ${imageUrl} -> ${s3Url}`);
+                
+                // Add a small delay to avoid overwhelming the APIs
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+            } catch (error) {
+                console.error(`Failed to process image ${imageUrl}:`, error);
+                // Keep the original URL if processing fails
+            } finally {
+                // Explicitly clear the buffer from memory
+                if (imageBuffer) {
+                    imageBuffer = null;
+                }
+            }
+        }
+        
+        return processedContent;
     }
 
     async generateFunnyResponse(command, username) {
@@ -540,6 +704,29 @@ class WerewolfBot {
             .setColor(0x00AE86);
 
         await message.reply({ embeds: [embed] });
+        
+        // Post management information in mod chat and pin it
+        const modManagementEmbed = new EmbedBuilder()
+            .setTitle('🌐 Game Management Information')
+            .setDescription('Use this information to manage the game through the website.')
+            .addFields(
+                { name: '🌐 Management URL', value: managementUrl, inline: false },
+                { name: '🔑 Password', value: `\`${category.id}\``, inline: true },
+                { name: '🆔 Game ID', value: `\`${gameId}\``, inline: true },
+                { name: '📊 Game Number', value: `\`${config.game_counter}\``, inline: true }
+            )
+            .setColor(0x00AE86);
+
+        const modManagementMessage = await modChat.send({ embeds: [modManagementEmbed] });
+        
+        // Pin the management message
+        try {
+            await modManagementMessage.pin();
+            console.log(`[DEBUG] Pinned mod management message ${modManagementMessage.id}`);
+        } catch (error) {
+            console.error('Error pinning mod management message:', error);
+            // Continue even if pinning fails
+        }
         
         const signupEmbed = new EmbedBuilder()
             .setTitle('🐺 Werewolf Game Signups')
@@ -5671,6 +5858,13 @@ class WerewolfBot {
 
             const categoryName = args.join(' ');
             await message.reply(`🗄️ Starting archive process for category: "${categoryName}". This may take a while...`);
+            
+            // Check if S3 is configured for image processing
+            if (this.s3Client) {
+                await message.channel.send(`🖼️ Image processing enabled - Discord images will be uploaded to S3 bucket 'stinkwolf-images'`);
+            } else {
+                await message.channel.send(`⚠️ S3 not configured - Discord images will be archived with original URLs (may expire)`);
+            }
 
             // Find the category by name
             const guild = message.guild;
@@ -5706,6 +5900,7 @@ class WerewolfBot {
             let totalMessages = 0;
             let indexedMessages = 0;
             let failedMessages = 0;
+            let processedImages = 0;
 
             // Process each channel
             for (const [channelId, channel] of channels) {
@@ -5735,9 +5930,74 @@ class WerewolfBot {
                             // Skip bot messages
                             if (msg.author.bot) continue;
 
+                            // Process Discord images in message content
+                            let processedContent = msg.content;
+                            if (msg.content && msg.content.includes('cdn.discordapp.com')) {
+                                try {
+                                    const originalContent = processedContent;
+                                    processedContent = await this.processDiscordImages(msg.content, msg.id);
+                                    // Count processed images by comparing content
+                                    if (processedContent !== originalContent) {
+                                        const imageMatches = (originalContent.match(/https:\/\/cdn\.discordapp\.com\/attachments\/\d+\/\d+\/[^\s]+/g) || []).length;
+                                        processedImages += imageMatches;
+                                    }
+                                } catch (error) {
+                                    console.error(`Error processing images in message ${msg.id}:`, error);
+                                    // Keep original content if processing fails
+                                }
+                            }
+
+                            // Process attachments (Discord images)
+                            let processedAttachments = [];
+                            if (msg.attachments.size > 0) {
+                                for (const attachment of msg.attachments.values()) {
+                                    let imageBuffer = null;
+                                    try {
+                                        // Check if it's a Discord CDN image
+                                        if (attachment.url && attachment.url.includes('cdn.discordapp.com')) {
+                                            // Download and upload to S3 (no disk storage)
+                                            imageBuffer = await this.downloadImage(attachment.url);
+                                            const s3Url = await this.uploadImageToS3(imageBuffer, attachment.url, msg.id);
+                                            
+                                            processedAttachments.push({
+                                                id: attachment.id,
+                                                name: attachment.name,
+                                                url: s3Url, // Use S3 URL instead of Discord URL
+                                                originalUrl: attachment.url, // Keep original for reference
+                                                size: attachment.size
+                                            });
+                                            
+                                            processedImages++;
+                                        } else {
+                                            // Keep non-Discord attachments as-is
+                                            processedAttachments.push({
+                                                id: attachment.id,
+                                                name: attachment.name,
+                                                url: attachment.url,
+                                                size: attachment.size
+                                            });
+                                        }
+                                    } catch (error) {
+                                        console.error(`Error processing attachment ${attachment.url}:`, error);
+                                        // Keep original attachment if processing fails
+                                        processedAttachments.push({
+                                            id: attachment.id,
+                                            name: attachment.name,
+                                            url: attachment.url,
+                                            size: attachment.size
+                                        });
+                                    } finally {
+                                        // Explicitly clear the buffer from memory
+                                        if (imageBuffer) {
+                                            imageBuffer = null;
+                                        }
+                                    }
+                                }
+                            }
+
                             const messageData = {
                                 messageId: msg.id,
-                                content: msg.content,
+                                content: processedContent,
                                 userId: msg.author.id,
                                 username: msg.author.username,
                                 displayName: msg.member ? msg.member.displayName : msg.author.username,
@@ -5747,13 +6007,7 @@ class WerewolfBot {
                                 categoryId: category.id,
                                 categoryName: category.name,
                                 replyToMessageId: msg.reference ? msg.reference.messageId : null,
-                                attachments: msg.attachments.size > 0 ? 
-                                    msg.attachments.map(att => ({
-                                        id: att.id,
-                                        name: att.name,
-                                        url: att.url,
-                                        size: att.size
-                                    })) : [],
+                                attachments: processedAttachments,
                                 embeds: msg.embeds.length > 0 ? 
                                     msg.embeds.map(embed => ({
                                         title: embed.title,
@@ -5767,8 +6021,8 @@ class WerewolfBot {
                                     })) : [],
                                 archivedAt: archivedAt,
                                 archivedBy: archivedBy,
-                                contentLength: msg.content.length,
-                                hasAttachments: msg.attachments.size > 0,
+                                contentLength: processedContent.length,
+                                hasAttachments: processedAttachments.length > 0,
                                 hasEmbeds: msg.embeds.length > 0,
                                 hasReactions: msg.reactions.cache.size > 0,
                                 isReply: msg.reference ? true : false
@@ -5877,7 +6131,8 @@ class WerewolfBot {
                     { name: 'Total Messages', value: totalMessages.toString(), inline: true },
                     { name: 'Indexed Messages', value: indexedMessages.toString(), inline: true },
                     { name: 'Failed Messages', value: failedMessages.toString(), inline: true },
-                    { name: 'Storage', value: 'OpenSearch', inline: true }
+                    { name: 'Images Processed', value: processedImages.toString(), inline: true },
+                    { name: 'Storage', value: 'OpenSearch + S3', inline: true }
                 )
                 .setColor(0x00AE86)
                 .setTimestamp();

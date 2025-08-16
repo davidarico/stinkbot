@@ -96,10 +96,14 @@ Wolf.archive <category-name>
 
 The bot will now:
 1. Fetch all messages from channels in the specified category
-2. Index each message individually to OpenSearch
-3. Skip bot messages automatically
-4. Create a summary file in S3 (if configured)
-5. Provide detailed statistics on the archiving process
+2. Process Discord images in message content and attachments:
+   - Download images from Discord CDN
+   - Upload to S3 bucket 'stinkwolf-images' for permanent storage
+   - Replace Discord URLs with permanent S3 URLs
+3. Index each message individually to OpenSearch
+4. Skip bot messages automatically
+5. Create a summary file in S3 (if configured)
+6. Provide detailed statistics on the archiving process including image processing
 
 ### Searching Archived Messages
 
@@ -135,6 +139,43 @@ npm run search-messages "response" --is-reply
 - `--size <number>`: Number of results (default: 20)
 - `--from <number>`: Starting offset (default: 0)
 
+## Image Processing
+
+The archive feature automatically processes Discord images to ensure they remain accessible after Discord CDN links expire:
+
+### How it Works
+1. **Detection**: Scans message content and attachments for Discord CDN URLs
+2. **Download**: Downloads images from Discord's CDN directly to memory (no disk storage)
+3. **Upload**: Uploads images to S3 bucket 'stinkwolf-images' with public read access
+4. **Replacement**: Replaces Discord URLs with permanent S3 URLs in the archived data
+5. **Cleanup**: Explicitly clears image buffers from memory after processing
+
+### S3 Storage Structure
+```
+stinkwolf-images/
+└── discord-images/
+    ├── message_id_hash1.jpg
+    ├── message_id_hash2.png
+    └── message_id_hash3.gif
+```
+
+### Requirements
+- AWS credentials configured (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`)
+- S3 bucket 'stinkwolf-images' must exist and be accessible
+- Bot must have permissions to upload to the bucket
+
+### Memory Management
+- **No Disk Storage**: Images are processed entirely in memory using Node.js Buffers
+- **No Temporary Files**: No files are created on the local filesystem
+- **Explicit Cleanup**: Image buffers are explicitly cleared from memory after processing
+- **Memory Efficient**: Large images are processed one at a time to minimize memory usage
+
+### Fallback Behavior
+If S3 is not configured or image processing fails:
+- Original Discord URLs are preserved in the archive
+- Images may become inaccessible when Discord CDN links expire
+- Archive process continues without interruption
+
 ## Data Structure
 
 Each message is indexed with the following structure:
@@ -156,7 +197,8 @@ Each message is indexed with the following structure:
     {
       "id": "attachment_id",
       "name": "filename.jpg",
-      "url": "https://cdn.discordapp.com/...",
+      "url": "https://stinkwolf-images.s3.region.amazonaws.com/discord-images/message_id_hash.jpg",
+      "originalUrl": "https://cdn.discordapp.com/...",
       "size": 12345
     }
   ],

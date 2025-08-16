@@ -64,7 +64,8 @@ export function BartenderCalculator({ players, gameRoles }: BartenderCalculatorP
     if (role.specialProperties?.toLowerCase().includes('appears as') || 
         role.specialProperties?.toLowerCase().includes('shows as')) return false
     
-    return true
+    // Bartender cannot appear in Bartender info
+    return roleName !== "Bartender"
   }
 
   // Get roles that are actually in play (assigned to players)

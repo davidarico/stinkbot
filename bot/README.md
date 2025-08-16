@@ -121,11 +121,14 @@ BOT_PREFIX=Wolf.
 OPENAI_API_KEY=your_openai_api_key_here
 
 # AWS S3 Configuration (optional)
-# For uploading archive files to S3
+# For uploading archive files to S3 and processing Discord images
 AWS_ACCESS_KEY_ID=your_aws_access_key_id_here
 AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key_here
 AWS_REGION=us-east-1
 AWS_S3_BUCKET_NAME=your-s3-bucket-name-here
+
+# Note: For image processing, the bot uses a hardcoded bucket name 'stinkwolf-images'
+# Make sure this bucket exists and is accessible with the provided credentials
 ```
 
 ### Discord Bot Setup
@@ -143,6 +146,44 @@ AWS_S3_BUCKET_NAME=your-s3-bucket-name-here
    - Read Message History
    - Embed Links
    - Read Messages/View Channels
+
+### S3 Bucket Setup (for Image Processing)
+
+If you want to enable automatic Discord image processing during archiving:
+
+1. Create an S3 bucket named `stinkwolf-images` in your AWS account
+2. Configure the bucket for public read access by adding a bucket policy:
+   ```json
+   {
+       "Version": "2012-10-17",
+       "Statement": [
+           {
+               "Sid": "PublicReadGetObject",
+               "Effect": "Allow",
+               "Principal": "*",
+               "Action": "s3:GetObject",
+               "Resource": "arn:aws:s3:::stinkwolf-images/*"
+           }
+       ]
+   }
+   ```
+3. Set up an IAM user with the following permissions:
+   ```json
+   {
+       "Version": "2012-10-17",
+       "Statement": [
+           {
+               "Effect": "Allow",
+                               "Action": [
+                    "s3:PutObject"
+                ],
+               "Resource": "arn:aws:s3:::stinkwolf-images/*"
+           }
+       ]
+   }
+   ```
+4. Add the IAM user credentials to your `.env` file
+5. Test the setup with: `npm run test-images`
 
 ## 🎮 Commands
 
@@ -186,7 +227,7 @@ Commands are divided into two categories: **Player Commands** (available to ever
 | `Wolf.speed <number>` | ⚡ Start a speed vote with target number of reactions (use "abort" to cancel) |
 | `Wolf.recovery` | 🔄 Recovery mode - migrate from manual game management to bot control |
 | `Wolf.issues` | 🐛 Display current known issues and bugs |
-| `Wolf.archive <category-name>` | 🗄️ Archive all messages from a game category to JSON (with optional S3 upload) |
+| `Wolf.archive <category-name>` | 🗄️ Archive all messages from a game category to OpenSearch (with Discord image processing and S3 upload) |
 | `Wolf.refresh` | 🔄 **Reset server** (delete channels, reset roles to Spectator) |
 
 > ⚠️ **Warning**: The `refresh` command will delete ALL text channels except #general, delete ALL categories, reset game counter to 1, end any active games, and reset all members to Spectator role. This action cannot be undone! Use only for testing!
