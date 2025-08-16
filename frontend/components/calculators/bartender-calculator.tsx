@@ -53,6 +53,9 @@ export function BartenderCalculator({ players, gameRoles }: BartenderCalculatorP
     const untargetableRoles = ['Sleepwalker', 'Orphan']
     if (untargetableRoles.includes(roleName)) return false
     
+    // Lone Wolf cannot appear in Bartender results
+    if (roleName === 'Lone Wolf') return false
+    
     // Check immunities for untargetable properties
     if (role.immunities?.toLowerCase().includes('untargetable')) return false
     
@@ -64,8 +67,13 @@ export function BartenderCalculator({ players, gameRoles }: BartenderCalculatorP
     if (role.specialProperties?.toLowerCase().includes('appears as') || 
         role.specialProperties?.toLowerCase().includes('shows as')) return false
     
-    // Bartender cannot appear in Bartender info
-    return roleName !== "Bartender"
+    // Bartender cannot appear in Bartender info unless there are multiple Bartenders
+    if (roleName === "Bartender") {
+      const bartenderCount = players.filter(p => p.role === "Bartender").length
+      return bartenderCount > 1
+    }
+    
+    return true
   }
 
   // Get roles that are actually in play (assigned to players)
@@ -266,7 +274,7 @@ export function BartenderCalculator({ players, gameRoles }: BartenderCalculatorP
 
   const copyResults = async () => {
     if (results) {
-      await navigator.clipboard.writeText(resultRoles.join(" / "))
+      await navigator.clipboard.writeText(`You get ${selectedPlayer} drunk and discover they are ${resultRoles.join(" / ")}.`)
       toast({
         title: "Copied!",
         description: "Results copied to clipboard",
