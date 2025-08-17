@@ -6019,7 +6019,7 @@ class WerewolfBot {
                                 channelId: msg.channel.id,
                                 channelName: msg.channel.name,
                                 categoryId: category.id,
-                                categoryName: category.name,
+                                category: category.name,
                                 replyToMessageId: msg.reference ? msg.reference.messageId : null,
                                 attachments: processedAttachments,
                                 embeds: msg.embeds.length > 0 ? 

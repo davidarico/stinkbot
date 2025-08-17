@@ -113,13 +113,18 @@ async function setupOpenSearch() {
                             // User information
                             userId: { type: 'keyword' },
                             username: { type: 'keyword' },
-                            displayName: { type: 'text' },
+                            displayName: { 
+                                type: 'text',
+                                fields: {
+                                    keyword: { type: 'keyword' }
+                                }
+                            },
                             
                             // Channel information
                             channelId: { type: 'keyword' },
                             channelName: { type: 'keyword' },
+                            category: { type: 'keyword' },
                             categoryId: { type: 'keyword' },
-                            categoryName: { type: 'keyword' },
                             
                             // Message metadata
                             replyToMessageId: { type: 'keyword' },
@@ -155,7 +160,12 @@ async function setupOpenSearch() {
                                 properties: {
                                     userId: { type: 'keyword' },
                                     username: { type: 'keyword' },
-                                    displayName: { type: 'text' }
+                                    displayName: { 
+                                        type: 'text',
+                                        fields: {
+                                            keyword: { type: 'keyword' }
+                                        }
+                                    }
                                 }
                             },
                             
@@ -177,53 +187,6 @@ async function setupOpenSearch() {
         // Test the connection
         const health = await client.cluster.health();
         console.log('🏥 Cluster health:', health.body);
-
-        // Create a test document to verify everything works
-        const testDoc = {
-            messageId: 'test-message-123',
-            content: 'This is a test message for OpenSearch setup',
-            timestamp: new Date().toISOString(),
-            userId: 'test-user-123',
-            username: 'testuser',
-            displayName: 'Test User',
-            channelId: 'test-channel-123',
-            channelName: 'test-channel',
-            categoryId: 'test-category-123',
-            categoryName: 'test-category',
-            archivedAt: new Date().toISOString(),
-            archivedBy: {
-                userId: 'test-archiver-123',
-                username: 'testarchiver',
-                displayName: 'Test Archiver'
-            },
-            contentLength: 45,
-            hasAttachments: false,
-            hasEmbeds: false,
-            hasReactions: false,
-            isReply: false
-        };
-
-        await client.index({
-            index: 'messages',
-            body: testDoc
-        });
-
-        console.log('✅ Test document indexed successfully');
-
-        // Perform a test search
-        const searchResult = await client.search({
-            index: 'messages',
-            body: {
-                query: {
-                    match: {
-                        content: 'test message'
-                    }
-                }
-            }
-        });
-
-        console.log('🔍 Test search completed successfully');
-        console.log(`📊 Found ${searchResult.body.hits.total.value} documents`);
 
         console.log('🎉 OpenSearch setup completed successfully!');
         console.log('📝 You can now use the archive command to save messages to OpenSearch');

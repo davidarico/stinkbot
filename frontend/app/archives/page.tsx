@@ -393,6 +393,35 @@ export default function ArchivesPage() {
                 <p className="text-gray-400">No messages found matching your search criteria</p>
               </div>
             )}
+
+            {/* Bottom Pagination */}
+            {results.length > 0 && totalPages > 1 && (
+              <div className="flex justify-center items-center gap-4 mt-8 py-4 border-t border-gray-700">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                  onClick={() => handlePageChange(filters.page - 1)}
+                  disabled={filters.page <= 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                
+                <span className="text-sm text-gray-300">
+                  Page {filters.page} of {totalPages}
+                </span>
+                
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                  onClick={() => handlePageChange(filters.page + 1)}
+                  disabled={filters.page >= totalPages}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
           </>
         )}
       </div>

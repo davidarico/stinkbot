@@ -143,7 +143,7 @@ async function migrateS3Archives() {
                         channelId: msg.channelId,
                         channelName: msg.channelName,
                         categoryId: archiveData.categoryId,
-                        categoryName: archiveData.category,
+                        category: archiveData.category,
                         replyToMessageId: msg.replyToMessageId,
                         attachments: msg.attachments || [],
                         embeds: msg.embeds || [],

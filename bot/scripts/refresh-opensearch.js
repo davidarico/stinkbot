@@ -131,13 +131,18 @@ async function refreshOpenSearch() {
                         // User information
                         userId: { type: 'keyword' },
                         username: { type: 'keyword' },
-                        displayName: { type: 'text' },
+                        displayName: { 
+                            type: 'text',
+                            fields: {
+                                keyword: { type: 'keyword' }
+                            }
+                        },
                         
                         // Channel information
                         channelId: { type: 'keyword' },
                         channelName: { type: 'keyword' },
+                        category: { type: 'keyword' },
                         categoryId: { type: 'keyword' },
-                        categoryName: { type: 'keyword' },
                         
                         // Message metadata
                         replyToMessageId: { type: 'keyword' },
@@ -173,7 +178,12 @@ async function refreshOpenSearch() {
                             properties: {
                                 userId: { type: 'keyword' },
                                 username: { type: 'keyword' },
-                                displayName: { type: 'text' }
+                                displayName: { 
+                                    type: 'text',
+                                    fields: {
+                                        keyword: { type: 'keyword' }
+                                    }
+                                }
                             }
                         },
                         
