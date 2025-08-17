@@ -48,15 +48,55 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Replace user IDs with display names in the aggregations
+    // Get usernames for fallback by fetching sample messages for each user ID
+    const usernameMap: { [key: string]: string } = {}
+    
+    for (const userId of userIds) {
+      if (!userDisplayNames[userId]) {
+        // Get a sample message for this user to extract their username
+        const sampleQuery = {
+          size: 1,
+          query: {
+            term: { userId: userId }
+          }
+        }
+        
+        try {
+          const sampleResponse = await openSearchClient.search({
+            index: 'messages',
+            body: sampleQuery
+          })
+          
+          if (sampleResponse.body.hits.hits.length > 0) {
+            const username = sampleResponse.body.hits.hits[0]._source.username
+            usernameMap[userId] = username
+          }
+        } catch (error) {
+          console.error(`Error fetching sample message for user ${userId}:`, error)
+        }
+      }
+    }
+
+    // Replace user IDs with display names in the aggregations, fallback to username
     const updatedAggregations = {
       ...response.body.aggregations,
       users: {
         ...response.body.aggregations.users,
-        buckets: response.body.aggregations.users.buckets.map((bucket: any) => ({
-          ...bucket,
-          key: userDisplayNames[bucket.key] || bucket.key // Fallback to user ID if display name not found
-        }))
+        buckets: response.body.aggregations.users.buckets
+          .map((bucket: any) => {
+            const displayName = userDisplayNames[bucket.key]
+            if (displayName) {
+              return { ...bucket, key: displayName }
+            } else {
+              // Fallback to username from archived messages
+              const username = usernameMap[bucket.key]
+              return { ...bucket, key: username || `User ${bucket.key}` }
+            }
+          })
+          .sort((a: any, b: any) => {
+            // Sort alphabetically by display name
+            return a.key.localeCompare(b.key, undefined, { numeric: true, sensitivity: 'base' })
+          })
       }
     }
 
