@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { openSearchClient } from '@/lib/opensearch'
+import { db } from '@/lib/database'
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
         },
         users: {
           terms: { 
-            field: 'displayName.keyword',
+            field: 'userId',
             size: 100,
             order: { _count: 'desc' }
           }
@@ -35,8 +36,32 @@ export async function GET(request: NextRequest) {
       body: searchBody
     })
 
+    // Get user IDs from aggregations
+    const userIds = response.body.aggregations.users.buckets.map((bucket: any) => bucket.key)
+    
+    // Fetch current display names from server_users table
+    let userDisplayNames: { [key: string]: string } = {}
+    if (userIds.length > 0) {
+      const serverUsers = await db.getServerUsersByUserIds(userIds)
+      userDisplayNames = Object.fromEntries(
+        serverUsers.map(user => [user.user_id, user.display_name])
+      )
+    }
+
+    // Replace user IDs with display names in the aggregations
+    const updatedAggregations = {
+      ...response.body.aggregations,
+      users: {
+        ...response.body.aggregations.users,
+        buckets: response.body.aggregations.users.buckets.map((bucket: any) => ({
+          ...bucket,
+          key: userDisplayNames[bucket.key] || bucket.key // Fallback to user ID if display name not found
+        }))
+      }
+    }
+
     return NextResponse.json({
-      aggregations: response.body.aggregations
+      aggregations: updatedAggregations
     })
   } catch (error) {
     console.error('OpenSearch aggregations error:', error)

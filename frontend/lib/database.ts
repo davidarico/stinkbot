@@ -795,6 +795,19 @@ export class DatabaseService {
     }
   }
 
+  async getServerUsersByDisplayName(displayName: string) {
+    try {
+      const result = await this.pool.query(
+        `SELECT user_id, display_name, profile_picture_link FROM server_users WHERE display_name = $1`,
+        [displayName]
+      )
+      return result.rows
+    } catch (error) {
+      console.error('Error fetching server users by display name:', error)
+      throw error
+    }
+  }
+
   async getCoupleChat(gameId: string) {
     try {
       const result = await this.pool.query(

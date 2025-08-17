@@ -36,14 +36,15 @@ export async function GET(request: NextRequest) {
     }
 
     if (user) {
-      must.push({
-        bool: {
-          should: [
-            { term: { username: user } },
-            { term: { displayName: user } }
-          ]
-        }
-      })
+      // Find the user ID that corresponds to this display name
+      const serverUsers = await db.getServerUsersByDisplayName(user)
+      if (serverUsers.length > 0) {
+        const userIds = serverUsers.map(u => u.user_id)
+        must.push({ terms: { userId: userIds } })
+      } else {
+        // Fallback: try to match by display name directly
+        must.push({ term: { 'displayName.keyword': user } })
+      }
     }
 
     const searchBody = {
