@@ -174,9 +174,9 @@ If you want to enable automatic Discord image processing during archiving:
        "Statement": [
            {
                "Effect": "Allow",
-                               "Action": [
-                    "s3:PutObject"
-                ],
+               "Action": [
+                   "s3:PutObject"
+               ],
                "Resource": "arn:aws:s3:::stinkwolf-images/*"
            }
        ]
@@ -184,6 +184,8 @@ If you want to enable automatic Discord image processing during archiving:
    ```
 4. Add the IAM user credentials to your `.env` file
 5. Test the setup with: `npm run test-images`
+
+**Image Storage**: Images are stored using the message ID as the filename (e.g., `message_id.jpg`) to prevent duplicates when re-archiving categories. For messages with multiple images, additional images use `_1`, `_2`, etc. suffixes.
 
 ## 🎮 Commands
 
@@ -386,7 +388,8 @@ AWS_S3_BUCKET_NAME=your-s3-bucket-name-here
 ```
 
 **S3 Storage Structure:**
-- Files are uploaded to: `archives/archive_<category-name>_<timestamp>.json`
+- Files are uploaded to: `archives/<category-name>_<category-id>.json`
+- Files overwrite previous backups to prevent duplicates
 - Public URLs are provided in the completion message
 - Local backup is always created regardless of S3 configuration
 
@@ -397,7 +400,8 @@ AWS_S3_BUCKET_NAME=your-s3-bucket-name-here
 - **Rate limiting**: Built-in delays to respect Discord API limits
 - **Error handling**: Continues processing even if individual channels fail
 - **Progress updates**: Real-time status messages during processing
-- **Dual storage**: S3 upload + local backup for redundancy
+- **Dual storage**: OpenSearch indexing + S3 backup for redundancy
+- **Consistent backups**: S3 files use `<category-name>_<category-id>.json` format to prevent duplicates
 
 ## 🔧 Development
 
@@ -434,6 +438,9 @@ npm start        # Start the bot in production mode
 npm run dev      # Start with auto-restart (development)
 npm test         # Run the test suite
 npm run db:refresh  # Refresh database schema (⚠️ deletes all data!)
+npm run setup-opensearch  # Set up OpenSearch index
+npm run test-opensearch   # Test OpenSearch connection
+npm run migrate-archives  # Migrate S3 archive files to OpenSearch
 ```
 
 ### Database Management

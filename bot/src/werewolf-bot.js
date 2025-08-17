@@ -124,7 +124,7 @@ class WerewolfBot {
      * Upload an image buffer to S3 and return the public URL
      * Note: Images are uploaded directly from memory, no temporary files created
      */
-    async uploadImageToS3(imageBuffer, originalUrl, messageId) {
+    async uploadImageToS3(imageBuffer, originalUrl, messageId, imageIndex = 0) {
         if (!this.s3Client) {
             throw new Error('S3 client not configured');
         }
@@ -133,10 +133,11 @@ class WerewolfBot {
             // Use the specific bucket for images
             const imageBucketName = 'stinkwolf-images';
             
-            // Generate a unique filename based on message ID and original URL
-            const urlHash = crypto.createHash('md5').update(originalUrl).digest('hex');
+            // Generate filename using message ID and index to handle multiple images per message
             const extension = this.getImageExtension(originalUrl);
-            const filename = `discord-images/${messageId}_${urlHash}${extension}`;
+            const filename = imageIndex === 0 
+                ? `discord-images/${messageId}${extension}`
+                : `discord-images/${messageId}_${imageIndex}${extension}`;
 
             const uploadParams = {
                 Bucket: imageBucketName,
@@ -209,6 +210,7 @@ class WerewolfBot {
         }
 
         let processedContent = messageContent;
+        let imageIndex = 0;
         
         for (const imageUrl of matches) {
             let imageBuffer = null;
@@ -219,10 +221,12 @@ class WerewolfBot {
                 imageBuffer = await this.downloadImage(imageUrl);
                 
                 // Upload to S3
-                const s3Url = await this.uploadImageToS3(imageBuffer, imageUrl, messageId);
+                const s3Url = await this.uploadImageToS3(imageBuffer, imageUrl, messageId, imageIndex);
                 
                 // Replace the Discord URL with S3 URL
                 processedContent = processedContent.replace(imageUrl, s3Url);
+                
+                imageIndex++;
                 
                 console.log(`Successfully processed image: ${imageUrl} -> ${s3Url}`);
                 
@@ -5954,6 +5958,7 @@ class WerewolfBot {
                             // Process attachments (Discord images)
                             let processedAttachments = [];
                             if (msg.attachments.size > 0) {
+                                let attachmentIndex = 0;
                                 for (const attachment of msg.attachments.values()) {
                                     let imageBuffer = null;
                                     try {
@@ -5961,7 +5966,7 @@ class WerewolfBot {
                                         if (attachment.url && attachment.url.includes('cdn.discordapp.com')) {
                                             // Download and upload to S3 (no disk storage)
                                             imageBuffer = await this.downloadImage(attachment.url);
-                                            const s3Url = await this.uploadImageToS3(imageBuffer, attachment.url, msg.id);
+                                            const s3Url = await this.uploadImageToS3(imageBuffer, attachment.url, msg.id, attachmentIndex);
                                             
                                             processedAttachments.push({
                                                 id: attachment.id,
@@ -5972,6 +5977,7 @@ class WerewolfBot {
                                             });
                                             
                                             processedImages++;
+                                            attachmentIndex++;
                                         } else {
                                             // Keep non-Discord attachments as-is
                                             processedAttachments.push({
@@ -5980,6 +5986,7 @@ class WerewolfBot {
                                                 url: attachment.url,
                                                 size: attachment.size
                                             });
+                                            attachmentIndex++;
                                         }
                                     } catch (error) {
                                         console.error(`Error processing attachment ${attachment.url}:`, error);
@@ -6106,8 +6113,9 @@ class WerewolfBot {
                         failedMessages: failedMessages
                     };
 
-                    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-                    const filename = `archive_summary_${categoryName.replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}.json`;
+                    // Create filename using category name and ID for consistent overwriting
+                    const safeCategoryName = categoryName.replace(/[^a-zA-Z0-9]/g, '_');
+                    const filename = `${safeCategoryName}_${category.id}.json`;
                     const jsonContent = JSON.stringify(archiveSummary, null, 2);
 
                     const uploadParams = {
@@ -6120,7 +6128,7 @@ class WerewolfBot {
                     await this.s3Client.send(new PutObjectCommand(uploadParams));
                     s3Url = `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/archives/${filename}`;
                     
-                    await message.channel.send(`☁️ Archive summary uploaded to S3: \`${filename}\``);
+                    await message.channel.send(`☁️ Archive backup uploaded to S3: \`${filename}\` (overwrites previous backup)`);
                 } catch (s3Error) {
                     console.error('Error uploading summary to S3:', s3Error);
                 }

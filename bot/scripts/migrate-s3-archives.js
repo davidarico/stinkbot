@@ -1,14 +1,13 @@
 const { Client } = require('@opensearch-project/opensearch');
 const { createAwsSigv4Signer } = require('@opensearch-project/opensearch/aws');
-const fs = require('fs');
-const path = require('path');
+const { S3Client, ListObjectsV2Command, GetObjectCommand } = require('@aws-sdk/client-s3');
 require('dotenv').config();
 
-async function migrateLocalArchives() {
-    console.log('🔄 Starting migration of local archive files to OpenSearch...');
+async function migrateS3Archives() {
+    console.log('🔄 Starting migration of S3 archive files to OpenSearch...');
 
     // Validate required environment variables
-    const requiredEnvVars = ['OPENSEARCH_DOMAIN_ENDPOINT'];
+    const requiredEnvVars = ['OPENSEARCH_DOMAIN_ENDPOINT', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_REGION', 'AWS_S3_BUCKET_NAME'];
 
     for (const envVar of requiredEnvVars) {
         if (!process.env[envVar]) {
@@ -16,6 +15,15 @@ async function migrateLocalArchives() {
             process.exit(1);
         }
     }
+
+    // Create S3 client
+    const s3Client = new S3Client({
+        region: process.env.AWS_REGION,
+        credentials: {
+            accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+        }
+    });
 
     // Create OpenSearch client
     const endpoint = process.env.OPENSEARCH_DOMAIN_ENDPOINT;
@@ -40,20 +48,10 @@ async function migrateLocalArchives() {
             console.log('⚠️ No basic authentication credentials provided (OS_BASIC_USER/OS_BASIC_PASS)');
         }
         
-        // Local OpenSearch instance - no AWS authentication
         client = new Client(clientConfig);
     } else {
         console.log('☁️ Detected AWS OpenSearch instance');
         
-        // AWS OpenSearch instance - validate AWS credentials
-        const awsRequiredVars = ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_REGION'];
-        for (const envVar of awsRequiredVars) {
-            if (!process.env[envVar]) {
-                console.error(`❌ Missing required AWS environment variable: ${envVar}`);
-                process.exit(1);
-            }
-        }
-
         // Create OpenSearch client with AWS credentials
         client = new Client({
             ...createAwsSigv4Signer({
@@ -71,31 +69,55 @@ async function migrateLocalArchives() {
     }
 
     try {
-        // Find all archive files in the current directory
-        const archiveFiles = fs.readdirSync('.')
-            .filter(file => file.startsWith('archive_') && file.endsWith('.json'))
-            .map(file => path.resolve(file));
+        // List all JSON files in the archives folder of S3 bucket
+        console.log(`📁 Scanning S3 bucket: ${process.env.AWS_S3_BUCKET_NAME}/archives/`);
+        
+        const listCommand = new ListObjectsV2Command({
+            Bucket: process.env.AWS_S3_BUCKET_NAME,
+            Prefix: 'archives/',
+            MaxKeys: 1000
+        });
 
-        if (archiveFiles.length === 0) {
-            console.log('📁 No archive files found in current directory');
+        const listResponse = await s3Client.send(listCommand);
+        
+        if (!listResponse.Contents || listResponse.Contents.length === 0) {
+            console.log('📁 No archive files found in S3 bucket');
             return;
         }
 
-        console.log(`📁 Found ${archiveFiles.length} archive files to migrate`);
+        // Filter for JSON files
+        const jsonFiles = listResponse.Contents.filter(obj => 
+            obj.Key && obj.Key.endsWith('.json') && obj.Key.startsWith('archives/')
+        );
+
+        if (jsonFiles.length === 0) {
+            console.log('📁 No JSON archive files found in S3 bucket');
+            return;
+        }
+
+        console.log(`📁 Found ${jsonFiles.length} archive files to migrate`);
 
         let totalArchivesProcessed = 0;
         let totalMessagesIndexed = 0;
         let totalMessagesFailed = 0;
 
-        for (const filePath of archiveFiles) {
+        for (const s3Object of jsonFiles) {
             try {
-                console.log(`\n📂 Processing: ${path.basename(filePath)}`);
+                const filename = s3Object.Key.split('/').pop();
+                console.log(`\n📂 Processing: ${filename}`);
                 
-                const fileContent = fs.readFileSync(filePath, 'utf8');
+                // Download the file from S3
+                const getCommand = new GetObjectCommand({
+                    Bucket: process.env.AWS_S3_BUCKET_NAME,
+                    Key: s3Object.Key
+                });
+
+                const getResponse = await s3Client.send(getCommand);
+                const fileContent = await getResponse.Body.transformToString('utf8');
                 const archiveData = JSON.parse(fileContent);
 
                 if (!archiveData.channels || !Array.isArray(archiveData.channels)) {
-                    console.log(`⚠️ Skipping ${path.basename(filePath)} - invalid format`);
+                    console.log(`⚠️ Skipping ${filename} - invalid format`);
                     continue;
                 }
 
@@ -181,7 +203,7 @@ async function migrateLocalArchives() {
                 totalMessagesFailed += archiveMessagesFailed;
 
             } catch (fileError) {
-                console.error(`❌ Error processing ${path.basename(filePath)}:`, fileError.message);
+                console.error(`❌ Error processing ${s3Object.Key}:`, fileError.message);
             }
         }
 
@@ -199,7 +221,7 @@ async function migrateLocalArchives() {
 
 // Run if called directly
 if (require.main === module) {
-    migrateLocalArchives();
+    migrateS3Archives();
 }
 
-module.exports = { migrateLocalArchives };
+module.exports = { migrateS3Archives };

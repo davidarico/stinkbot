@@ -90,6 +90,11 @@ The application connects to a PostgreSQL database with the following key tables:
    # Create .env.local file
    DATABASE_URL=your_postgresql_connection_string
    NODE_ENV=development
+   
+   # OpenSearch Configuration (if using archives feature)
+   OPENSEARCH_DOMAIN_ENDPOINT=http://localhost:9200
+   OS_BASIC_USER=your_username
+   OS_BASIC_PASS=your_plain_text_password
    ```
 
 3. Set up OpenSearch (if using archives feature):

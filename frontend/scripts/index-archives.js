@@ -4,7 +4,8 @@ const path = require('path');
 require('dotenv').config();
 
 async function indexArchives() {
-    console.log('📚 Indexing archive files into OpenSearch...');
+    console.log('📚 Indexing local archive files into OpenSearch...');
+    console.log('⚠️ Note: This script works with local archive files. For S3 archives, use the bot migration script.');
 
     // Create OpenSearch client with optional basic authentication
     const clientConfig = {

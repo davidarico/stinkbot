@@ -124,7 +124,7 @@ The bot will now:
    - Replace Discord URLs with permanent S3 URLs
 3. Index each message individually to OpenSearch
 4. Skip bot messages automatically
-5. Create a summary file in S3 (if configured)
+5. Create a backup summary file in S3 (if configured) using format `<category-name>_<category-id>.json`
 6. Provide detailed statistics on the archiving process including image processing
 
 ### Searching Archived Messages
@@ -173,13 +173,29 @@ The archive feature automatically processes Discord images to ensure they remain
 5. **Cleanup**: Explicitly clears image buffers from memory after processing
 
 ### S3 Storage Structure
+
+#### Image Storage
 ```
 stinkwolf-images/
 └── discord-images/
-    ├── message_id_hash1.jpg
-    ├── message_id_hash2.png
-    └── message_id_hash3.gif
+    ├── message_id1.jpg
+    ├── message_id2.png
+    ├── message_id3_1.gif
+    └── message_id3_2.jpg
 ```
+
+**Note**: Images are stored using the message ID as the filename to prevent duplicates when re-archiving categories. For messages with multiple images, additional images use `_1`, `_2`, etc. suffixes.
+
+#### Archive Backup Files
+```
+your-archive-bucket/
+└── archives/
+    ├── category_name_123456789.json
+    ├── another_category_987654321.json
+    └── game_category_456789123.json
+```
+
+**Note**: Archive backup files use the format `<category-name>_<category-id>.json` to prevent duplicate backups. Each new archive operation overwrites the previous backup for the same category.
 
 ### Requirements
 - AWS credentials configured (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`)
@@ -335,9 +351,28 @@ curl -u username:password -X GET "http://your-opensearch-endpoint/_cat/indices?v
 curl -u username:password -X GET "http://your-opensearch-endpoint/messages/_mapping"
 ```
 
-## Migration from Local Files
+## Migration from S3 Archives
 
-If you have existing local archive files, you can create a migration script to index them to OpenSearch. The data structure is compatible with the new format.
+If you have existing archive files in S3, you can migrate them to OpenSearch using the migration script:
+
+```bash
+npm run migrate-archives
+```
+
+This script will:
+1. Scan your S3 bucket for archive files in the `archives/` folder
+2. Download each JSON file from S3
+3. Index all messages to OpenSearch
+4. Provide detailed statistics on the migration process
+
+**Required Environment Variables:**
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- `AWS_REGION`
+- `AWS_S3_BUCKET_NAME`
+- `OPENSEARCH_DOMAIN_ENDPOINT`
+
+The script supports both local OpenSearch instances (with basic auth) and AWS OpenSearch domains.
 
 ## Security
 

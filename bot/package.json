@@ -15,7 +15,7 @@
     "setup-opensearch": "node scripts/setup-opensearch.js",
     "test-opensearch": "node scripts/test-opensearch-connection.js",
     "search-messages": "node scripts/search-messages.js",
-    "migrate-archives": "node scripts/migrate-local-archives.js"
+    "migrate-archives": "node scripts/migrate-s3-archives.js"
   },
   "keywords": [
     "discord",
