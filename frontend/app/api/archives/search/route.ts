@@ -11,7 +11,10 @@ export async function GET(request: NextRequest) {
     const user = searchParams.get('user') || ''
     const page = parseInt(searchParams.get('page') || '1')
     const size = parseInt(searchParams.get('size') || '20')
+    const jumpToMessageId = searchParams.get('jumpToMessageId') || ''
     const from = (page - 1) * size
+
+  
 
     // Build the search query
     const must: any[] = []
@@ -47,6 +50,9 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Determine sort order based on whether we're jumping to a specific message
+    const sortOrder = jumpToMessageId ? 'asc' : 'desc' // asc for chronological reading, desc for normal browsing
+    
     const searchBody = {
       query: {
         bool: {
@@ -54,7 +60,7 @@ export async function GET(request: NextRequest) {
         }
       },
       sort: [
-        { timestamp: { order: 'desc' } }
+        { timestamp: { order: sortOrder } }
       ],
       from,
       size,
@@ -76,6 +82,44 @@ export async function GET(request: NextRequest) {
       body: searchBody
     })
 
+    // If jumping to a specific message, find the correct page
+    let targetPage = page
+    if (jumpToMessageId) {
+        try {
+          // Get the target message directly by its OpenSearch document ID
+          const targetResponse = await openSearchClient.get({
+            index: 'messages',
+            id: jumpToMessageId
+          })
+          
+          if (targetResponse.body.found) {
+            const targetTimestamp = targetResponse.body._source.timestamp
+            
+            // Now count messages before this timestamp in chronological order
+            const countQuery = {
+              query: {
+                bool: {
+                  must: [
+                    ...must,
+                    { range: { timestamp: { lt: targetTimestamp } } }
+                  ]
+                }
+              }
+            }
+            
+            const countResponse = await openSearchClient.search({
+              index: 'messages',
+              body: countQuery
+            })
+            
+            const messagesBeforeTarget = countResponse.body.hits.total.value
+            targetPage = Math.floor(messagesBeforeTarget / size) + 1
+          }
+        } catch (error) {
+          console.error('Error finding target page:', error)
+        }
+      }
+
     // Get updated display names and profile pictures from database
     const hits = response.body.hits.hits
     const userIds = [...new Set(hits.map((hit: any) => hit._source.userId))]
@@ -96,7 +140,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       hits: response.body.hits,
-      aggregations: response.body.aggregations
+      aggregations: response.body.aggregations,
+      targetPage: jumpToMessageId ? targetPage : null
     })
   } catch (error) {
     console.error('OpenSearch search error:', error)

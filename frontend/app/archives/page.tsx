@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -53,6 +53,7 @@ interface SearchResponse {
     channels?: { buckets: Array<{ key: string; doc_count: number }> }
     users?: { buckets: Array<{ key: string; doc_count: number }> }
   }
+  targetPage?: number | null
 }
 
 export default function ArchivesPage() {
@@ -70,8 +71,8 @@ export default function ArchivesPage() {
   const [games, setGames] = useState<Array<{ key: string; count: number }>>([])
   const [channels, setChannels] = useState<Array<{ key: string; count: number }>>([])
   const [users, setUsers] = useState<Array<{ key: string; count: number }>>([])
-  const [selectedMessage, setSelectedMessage] = useState<SearchResult | null>(null)
-  const [messageContext, setMessageContext] = useState<SearchResult[]>([])
+  const [jumpToMessage, setJumpToMessage] = useState<SearchResult | null>(null)
+  const jumpToMessageRef = useRef<SearchResult | null>(null)
 
   const ITEMS_PER_PAGE = 20
 
@@ -82,6 +83,33 @@ export default function ArchivesPage() {
   useEffect(() => {
     searchMessages()
   }, [filters])
+
+  // Scroll to target message when jumping to a specific message
+  useEffect(() => {
+    if (jumpToMessage && results.length > 0) {
+      // Find the target message in the results
+      const targetIndex = results.findIndex(result => result._id === jumpToMessage._id)
+      if (targetIndex !== -1) {
+        // Scroll to the message after a short delay to ensure DOM is ready
+        setTimeout(() => {
+          const messageElement = document.getElementById(`message-${jumpToMessage._id}`)
+          if (messageElement) {
+            messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            // Add a temporary highlight effect
+            messageElement.classList.add('ring-2', 'ring-blue-500', 'ring-opacity-50')
+            setTimeout(() => {
+              messageElement.classList.remove('ring-2', 'ring-blue-500', 'ring-opacity-50')
+            }, 3000)
+          }
+        }, 100)
+      }
+      // Clear the jump target after a delay to ensure search completes
+      setTimeout(() => {
+        setJumpToMessage(null)
+        jumpToMessageRef.current = null
+      }, 500)
+    }
+  }, [results, jumpToMessage])
 
   const loadAggregations = async () => {
     try {
@@ -110,6 +138,11 @@ export default function ArchivesPage() {
         size: ITEMS_PER_PAGE.toString()
       })
 
+      // Add jump to message parameter if we're jumping to a specific message
+      if (jumpToMessageRef.current) {
+        params.append('jumpToMessageId', jumpToMessageRef.current._id)
+      }
+
       const response = await fetch(`/api/archives/search?${params}`)
       const data: SearchResponse = await response.json()
       
@@ -122,20 +155,46 @@ export default function ArchivesPage() {
     }
   }
 
-  const loadMessageContext = async (message: SearchResult) => {
-    setSelectedMessage(message)
+  const handleJumpToMessage = async (message: SearchResult) => {
+    // Store the target message in both state and ref
+    setJumpToMessage(message)
+    jumpToMessageRef.current = message
+    
+    // Calculate the correct page first
     try {
       const params = new URLSearchParams({
-        channelId: message._source.channelId,
-        timestamp: message._source.timestamp,
-        limit: '10'
+        query: '',
+        game: '',
+        channel: message._source.channelName,
+        user: '',
+        page: '1',
+        size: ITEMS_PER_PAGE.toString(),
+        jumpToMessageId: message._id
       })
 
-      const response = await fetch(`/api/archives/context?${params}`)
-      const data = await response.json()
-      setMessageContext(data.messages)
+      const response = await fetch(`/api/archives/search?${params}`)
+      const data: SearchResponse = await response.json()
+      
+      // Set filters with the correct page
+      const newFilters = {
+        query: '',
+        game: 'all',
+        channel: message._source.channelName,
+        user: 'all',
+        page: data.targetPage || 1
+      }
+      
+      setFilters(newFilters)
     } catch (error) {
-      console.error('Error loading message context:', error)
+      console.error('Error calculating target page:', error)
+      // Fallback to page 1
+      setFilters({
+        query: '',
+        game: 'all',
+        channel: message._source.channelName,
+        user: 'all',
+        page: 1
+      })
     }
   }
 
@@ -280,7 +339,11 @@ export default function ArchivesPage() {
 
             <div className="space-y-4">
               {results.map((result) => (
-                <Card key={result._id} className="hover:shadow-md transition-shadow bg-gray-800 border-gray-700">
+                <Card 
+                  key={result._id} 
+                  id={`message-${result._id}`}
+                  className="hover:shadow-md transition-shadow bg-gray-800 border-gray-700"
+                >
                   <CardContent className="p-4">
                     <div className="flex items-start gap-3">
                       <Avatar className="h-8 w-8">
@@ -376,9 +439,9 @@ export default function ArchivesPage() {
                       <div className="flex-shrink-0">
                         <button
                           className="text-blue-400 hover:text-blue-300 text-sm font-medium transition-colors"
-                          onClick={() => loadMessageContext(result)}
+                          onClick={() => handleJumpToMessage(result)}
                         >
-                          View Context
+                          Jump to Message
                         </button>
                       </div>
                     </div>
@@ -426,125 +489,7 @@ export default function ArchivesPage() {
         )}
       </div>
 
-      {/* Message Context Modal */}
-      {selectedMessage && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-800 rounded-lg shadow-lg max-w-4xl w-full max-h-[80vh] overflow-hidden border border-gray-700">
-            <div className="p-6 border-b border-gray-700">
-              <div className="flex justify-between items-center">
-                <h2 className="text-xl font-semibold text-white">Message Context</h2>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-gray-400 hover:text-white hover:bg-gray-700"
-                  onClick={() => {
-                    setSelectedMessage(null)
-                    setMessageContext([])
-                  }}
-                >
-                  ×
-                </Button>
-              </div>
-              <p className="text-sm text-gray-400 mt-1">
-                Messages around {format(new Date(selectedMessage._source.timestamp), 'MMM d, yyyy HH:mm')} in #{selectedMessage._source.channelName}
-              </p>
-            </div>
-            
-            <div className="p-6 overflow-y-auto max-h-[60vh]">
-              <div className="space-y-4">
-                {messageContext.map((msg) => (
-                  <div
-                    key={msg._id}
-                    className={`p-3 rounded-lg border ${
-                      msg._id === selectedMessage._id ? 'bg-blue-600/20 border-blue-500' : 'bg-gray-700/50 border-gray-600'
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <Avatar className="h-6 w-6">
-                        {msg._source.profilePictureLink ? (
-                          <img 
-                            src={msg._source.profilePictureLink} 
-                            alt={`${msg._source.displayName || msg._source.username}'s avatar`}
-                            className="h-6 w-6 rounded-full object-cover"
-                          />
-                        ) : (
-                          <AvatarFallback className="text-xs bg-gray-600 text-white">
-                            {msg._source.displayName?.charAt(0) || '?'}
-                          </AvatarFallback>
-                        )}
-                      </Avatar>
-                      
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-medium text-xs text-white">
-                            {msg._source.displayName || msg._source.username}
-                          </span>
-                          <span className="text-xs text-gray-400">
-                            {format(new Date(msg._source.timestamp), 'HH:mm:ss')}
-                          </span>
-                        </div>
-                        
-                        <div className="text-sm text-gray-200">
-                          {msg._source.content || (
-                            (msg._source.attachments && msg._source.attachments.some((a: any) => {
-                              if (!a.url) return false
-                              const extension = a.url.split('.').pop()?.toLowerCase()
-                              return ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension || '')
-                            })) ? 
-                            null : 
-                            <span className="text-gray-400 italic">No text content</span>
-                          )}
-                        </div>
-                        
-                        {/* Display media content in context */}
-                        {msg._source.content && extractMediaFromContent(msg._source.content).length > 0 && (
-                          <MediaDisplay 
-                            media={extractMediaFromContent(msg._source.content)} 
-                            className="mt-2"
-                          />
-                        )}
-                        
-                        {/* Display image attachments directly in context */}
-                        {msg._source.attachments && msg._source.attachments.length > 0 && (
-                          <div className="mt-2 space-y-2">
-                            {msg._source.attachments
-                              .filter((attachment: any) => {
-                                if (!attachment.url) return false
-                                const extension = attachment.url.split('.').pop()?.toLowerCase()
-                                return ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension || '')
-                              })
-                              .map((attachment: any, index: number) => {
-                                const extension = attachment.url.split('.').pop()?.toLowerCase()
-                                const isGif = extension === 'gif'
-                                
-                                return (
-                                  <div key={index} className="relative group">
-                                    <img
-                                      src={attachment.url}
-                                      alt={attachment.filename || 'Image'}
-                                      className="rounded-lg max-w-full max-h-64 object-contain cursor-pointer transition-all duration-200"
-                                    />
-                                    {isGif && (
-                                      <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
-                                        GIF
-                                      </div>
-                                    )}
-                                  </div>
-                                )
-                              })}
-                          </div>
-                        )}
-                        
 
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
       </div>
     </div>
   )
