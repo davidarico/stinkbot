@@ -194,7 +194,7 @@ export default function ArchivesPage() {
                   <SelectItem value="all" className="text-white hover:bg-gray-600">All games</SelectItem>
                   {games.map((game) => (
                     <SelectItem key={game.key} value={game.key} className="text-white hover:bg-gray-600">
-                      {game.key} ({game.count})
+                      {game.key}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -211,7 +211,7 @@ export default function ArchivesPage() {
                   <SelectItem value="all" className="text-white hover:bg-gray-600">All channels</SelectItem>
                   {channels.map((channel) => (
                     <SelectItem key={channel.key} value={channel.key} className="text-white hover:bg-gray-600">
-                      #{channel.key} ({channel.count})
+                      #{channel.key}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -228,7 +228,7 @@ export default function ArchivesPage() {
                   <SelectItem value="all" className="text-white hover:bg-gray-600">All users</SelectItem>
                   {users.map((user) => (
                     <SelectItem key={user.key} value={user.key} className="text-white hover:bg-gray-600">
-                      {user.key} ({user.count})
+                      {user.key}
                     </SelectItem>
                   ))}
                 </SelectContent>
