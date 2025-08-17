@@ -5865,7 +5865,7 @@ class WerewolfBot {
             }
 
             const categoryName = args.join(' ');
-            await message.reply(`🗄️ Starting archive process for category: "${categoryName}". This may take a while...`);
+            await message.reply(`🗄️ Starting full archive process for category: "${categoryName}". This may take a while...`);
             
             // Check if S3 is configured for image processing
             if (this.s3Client) {
@@ -5909,6 +5909,9 @@ class WerewolfBot {
             let indexedMessages = 0;
             let failedMessages = 0;
             let processedImages = 0;
+            
+            // Store processed messages for S3 backup
+            const processedChannelsData = [];
 
             // Process each channel
             for (const [channelId, channel] of channels) {
@@ -6051,6 +6054,26 @@ class WerewolfBot {
 
                     console.log(`Fetched ${fetchedCount} messages from ${channel.name}`);
                     totalMessages += fetchedCount;
+                    
+                    // Store processed messages for S3 backup (reuse the data we already have)
+                    processedChannelsData.push({
+                        channelName: channel.name,
+                        messageCount: messagesToIndex.length,
+                        messages: messagesToIndex.map(msg => ({
+                            messageId: msg.messageId,
+                            content: msg.content,
+                            userId: msg.userId,
+                            username: msg.username,
+                            displayName: msg.displayName,
+                            timestamp: msg.timestamp,
+                            channelId: msg.channelId,
+                            channelName: msg.channelName,
+                            replyToMessageId: msg.replyToMessageId,
+                            attachments: msg.attachments,
+                            embeds: msg.embeds,
+                            reactions: msg.reactions
+                        }))
+                    });
 
                     // Index messages in batches to OpenSearch
                     if (messagesToIndex.length > 0) {
@@ -6098,25 +6121,25 @@ class WerewolfBot {
                 }
             }
 
-            // Create backup JSON file for S3 (optional)
+            // Create full archive JSON file for S3 (disaster recovery backup)
             let s3Url = null;
             if (this.s3Client && process.env.AWS_S3_BUCKET_NAME) {
                 try {
-                    const archiveSummary = {
+                    console.log('📦 Creating full archive backup for disaster recovery...');
+                    
+                    // Use the already processed messages (no need to re-fetch!)
+                    const archiveData = {
                         category: categoryName,
                         categoryId: category.id,
                         archivedAt: archivedAt,
                         archivedBy: archivedBy,
-                        totalChannels: channels.size,
-                        totalMessages: totalMessages,
-                        indexedMessages: indexedMessages,
-                        failedMessages: failedMessages
+                        channels: processedChannelsData
                     };
 
                     // Create filename using category name and ID for consistent overwriting
                     const safeCategoryName = categoryName.replace(/[^a-zA-Z0-9]/g, '_');
                     const filename = `${safeCategoryName}_${category.id}.json`;
-                    const jsonContent = JSON.stringify(archiveSummary, null, 2);
+                    const jsonContent = JSON.stringify(archiveData, null, 2);
 
                     const uploadParams = {
                         Bucket: process.env.AWS_S3_BUCKET_NAME,
@@ -6128,9 +6151,9 @@ class WerewolfBot {
                     await this.s3Client.send(new PutObjectCommand(uploadParams));
                     s3Url = `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/archives/${filename}`;
                     
-                    await message.channel.send(`☁️ Archive backup uploaded to S3: \`${filename}\` (overwrites previous backup)`);
+                    await message.channel.send(`☁️ Full archive backup uploaded to S3: \`${filename}\` (disaster recovery backup)`);
                 } catch (s3Error) {
-                    console.error('Error uploading summary to S3:', s3Error);
+                    console.error('Error uploading archive to S3:', s3Error);
                 }
             }
 
@@ -6144,6 +6167,7 @@ class WerewolfBot {
                     { name: 'Indexed Messages', value: indexedMessages.toString(), inline: true },
                     { name: 'Failed Messages', value: failedMessages.toString(), inline: true },
                     { name: 'Images Processed', value: processedImages.toString(), inline: true },
+                    { name: 'Backup Type', value: 'Full Archive (Disaster Recovery)', inline: true },
                     { name: 'Storage', value: 'OpenSearch + S3', inline: true }
                 )
                 .setColor(0x00AE86)
