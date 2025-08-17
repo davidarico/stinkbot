@@ -44,15 +44,19 @@ class WerewolfBot {
             
             // Check if this is a local endpoint (no AWS authentication needed)
             if (endpoint.includes('localhost') || endpoint.includes('127.0.0.1') || endpoint.startsWith('http://')) {
-                // Local OpenSearch instance - no AWS authentication
-                this.openSearchClient = new Client({
-                    node: endpoint,
-                    // Optional: Add basic auth if your local instance requires it
-                    // auth: {
-                    //     username: process.env.OPENSEARCH_USERNAME || 'admin',
-                    //     password: process.env.OPENSEARCH_PASSWORD || 'admin'
-                    // }
-                });
+                // Local OpenSearch instance - check for basic authentication
+                const clientConfig = {
+                    node: endpoint
+                };
+
+                if (process.env.OS_BASIC_USER && process.env.OS_BASIC_PASS) {
+                    clientConfig.auth = {
+                        username: process.env.OS_BASIC_USER,
+                        password: process.env.OS_BASIC_PASS
+                    };
+                }
+
+                this.openSearchClient = new Client(clientConfig);
             } else {
                 // AWS OpenSearch instance - use AWS authentication
                 if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && process.env.AWS_REGION) {

@@ -25,15 +25,23 @@ async function migrateLocalArchives() {
     if (endpoint.includes('localhost') || endpoint.includes('127.0.0.1') || endpoint.startsWith('http://')) {
         console.log('🏠 Detected local OpenSearch instance');
         
+        // Check for basic authentication credentials
+        const clientConfig = {
+            node: endpoint
+        };
+
+        if (process.env.OS_BASIC_USER && process.env.OS_BASIC_PASS) {
+            console.log('🔐 Using basic authentication');
+            clientConfig.auth = {
+                username: process.env.OS_BASIC_USER,
+                password: process.env.OS_BASIC_PASS
+            };
+        } else {
+            console.log('⚠️ No basic authentication credentials provided (OS_BASIC_USER/OS_BASIC_PASS)');
+        }
+        
         // Local OpenSearch instance - no AWS authentication
-        client = new Client({
-            node: endpoint,
-            // Optional: Add basic auth if your local instance requires it
-            // auth: {
-            //     username: process.env.OPENSEARCH_USERNAME || 'admin',
-            //     password: process.env.OPENSEARCH_PASSWORD || 'admin'
-            // }
-        });
+        client = new Client(clientConfig);
     } else {
         console.log('☁️ Detected AWS OpenSearch instance');
         

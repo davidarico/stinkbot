@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Client } from '@opensearch-project/opensearch'
-
-const client = new Client({
-  node: 'http://localhost:9200'
-})
+import { openSearchClient } from '@/lib/opensearch'
 
 export async function GET(request: NextRequest) {
   try {
@@ -34,7 +30,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const response = await client.search({
+    const response = await openSearchClient.search({
       index: 'messages',
       body: searchBody
     })

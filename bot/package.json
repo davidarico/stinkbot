@@ -13,6 +13,7 @@
     "alive-status": "node scripts/alive-mentions-status.js",
     "db:refresh": "node -e \"require('dotenv').config(); const { execSync } = require('child_process'); execSync('psql -h ' + process.env.PG_HOST + ' -p ' + process.env.PG_PORT + ' -U ' + process.env.PG_USER + ' -d ' + process.env.PG_DATABASE + ' -f database_setup.sql', { stdio: 'inherit' });\"",
     "setup-opensearch": "node scripts/setup-opensearch.js",
+    "test-opensearch": "node scripts/test-opensearch-connection.js",
     "search-messages": "node scripts/search-messages.js",
     "migrate-archives": "node scripts/migrate-local-archives.js"
   },

@@ -1,12 +1,25 @@
 const { Client } = require('@opensearch-project/opensearch');
+require('dotenv').config();
 
 async function setupOpenSearch() {
     console.log('🔧 Setting up OpenSearch for frontend...');
 
-    // Create OpenSearch client for localhost
-    const client = new Client({
-        node: 'http://localhost:9200'
-    });
+    // Create OpenSearch client with optional basic authentication
+    const clientConfig = {
+        node: process.env.OPENSEARCH_DOMAIN_ENDPOINT || 'http://localhost:9200'
+    };
+
+    if (process.env.OS_BASIC_USER && process.env.OS_BASIC_PASS) {
+        console.log('🔐 Using basic authentication');
+        clientConfig.auth = {
+            username: process.env.OS_BASIC_USER,
+            password: process.env.OS_BASIC_PASS
+        };
+    } else {
+        console.log('⚠️ No basic authentication credentials provided (OS_BASIC_USER/OS_BASIC_PASS)');
+    }
+
+    const client = new Client(clientConfig);
 
     try {
         // Check if the index already exists

@@ -15,6 +15,28 @@ The bot now supports archiving Discord messages directly to OpenSearch instead o
 
 ### 1. Environment Variables
 
+#### Basic Authentication Support
+
+The bot now supports basic authentication for OpenSearch instances that require username/password authentication. This is particularly useful for:
+
+- Local OpenSearch instances with security enabled
+- Self-hosted OpenSearch clusters with basic auth
+- OpenSearch instances behind authentication proxies
+
+To enable basic authentication, add these environment variables:
+
+```bash
+# Basic authentication credentials
+OS_BASIC_USER=your_username
+OS_BASIC_PASS=your_plain_text_password
+```
+
+**Important**: The `OS_BASIC_PASS` should be the plain text password, not a hash. If your OpenSearch instance uses bcrypt or other hashed passwords, you'll need to provide the original plain text password that was used to create the hash.
+
+**Note**: The bot will automatically detect if basic authentication credentials are provided and use them when connecting to local OpenSearch instances. For AWS OpenSearch, AWS IAM authentication is still used regardless of these settings.
+
+### 2. Environment Variables
+
 Add the following environment variables to your `.env` file:
 
 #### For AWS OpenSearch:
@@ -37,8 +59,8 @@ AWS_S3_BUCKET_NAME=your-archive-bucket
 OPENSEARCH_DOMAIN_ENDPOINT=http://localhost:9200
 
 # Optional: Basic authentication if your local instance requires it
-# OPENSEARCH_USERNAME=admin
-# OPENSEARCH_PASSWORD=admin
+OS_BASIC_USER=user1
+OS_BASIC_PASS=your_password_here
 ```
 
 ### 2. Install Dependencies
@@ -278,12 +300,18 @@ Each message is indexed with the following structure:
    - Check OpenSearch domain endpoint
    - Ensure domain is accessible from your network
 
-2. **Indexing Errors**
+2. **Authentication Errors (401 Unauthorized)**
+   - Verify `OS_BASIC_USER` and `OS_BASIC_PASS` are set correctly
+   - Ensure `OS_BASIC_PASS` is the plain text password, not a hash
+   - Test credentials manually with curl: `curl -u username:password http://your-opensearch-endpoint`
+   - Check if your OpenSearch instance requires a different authentication method
+
+3. **Indexing Errors**
    - Check OpenSearch cluster health
    - Verify index mapping is correct
    - Monitor cluster resource usage
 
-3. **Search Errors**
+4. **Search Errors**
    - Validate search query syntax
    - Check filter parameter values
    - Ensure index exists and is accessible
@@ -291,14 +319,20 @@ Each message is indexed with the following structure:
 ### Debug Commands
 
 ```bash
-# Test OpenSearch connection
+# Test OpenSearch connection with authentication
+npm run test-opensearch
+
+# Set up OpenSearch index
 npm run setup-opensearch
 
-# Check index health
-curl -X GET "https://your-domain.region.es.amazonaws.com/_cat/indices?v"
+# Test basic authentication manually
+curl -u username:password http://your-opensearch-endpoint
 
-# View index mapping
-curl -X GET "https://your-domain.region.es.amazonaws.com/messages/_mapping"
+# Check index health (with auth)
+curl -u username:password -X GET "http://your-opensearch-endpoint/_cat/indices?v"
+
+# View index mapping (with auth)
+curl -u username:password -X GET "http://your-opensearch-endpoint/messages/_mapping"
 ```
 
 ## Migration from Local Files
