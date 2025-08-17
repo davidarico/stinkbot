@@ -24,11 +24,13 @@ const MEDIA_PATTERNS = {
   // Direct video files
   directVideo: /https?:\/\/[^\/\s]+\.(mp4|webm|mov|avi)(\?[^\/\s]*)?$/i,
   
+  // S3 hosted images/videos
+  s3: /https?:\/\/[^\/\s]+\.s3\.[^\/\s]+\/[^\/\s]+\.(jpg|jpeg|png|gif|webp|mp4|webm|mov)(\?[^\/\s]*)?$/i,
+  
   // YouTube videos
   youtube: /https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)/i,
   
-  // Discord CDN attachments
-  discord: /https?:\/\/cdn\.discordapp\.com\/attachments\/[^\/\s]+/i,
+
   
   // Reddit media
   reddit: /https?:\/\/(?:www\.)?reddit\.com\/r\/[^\/]+\/comments\/[^\/]+\/[^\/]+/i
@@ -103,6 +105,26 @@ export function extractMediaFromContent(content: string): MediaInfo[] {
       continue
     }
     
+    // Check for S3 hosted media
+    const s3Match = trimmedLine.match(MEDIA_PATTERNS.s3)
+    if (s3Match) {
+      const extension = s3Match[1].toLowerCase()
+      if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension)) {
+        media.push({
+          type: extension === 'gif' ? 'gif' : 'image',
+          url: trimmedLine,
+          title: `Image (${extension.toUpperCase()})`
+        })
+      } else if (['mp4', 'webm', 'mov'].includes(extension)) {
+        media.push({
+          type: 'video',
+          url: trimmedLine,
+          title: `Video (${extension.toUpperCase()})`
+        })
+      }
+      continue
+    }
+    
     // Check for YouTube videos
     const youtubeMatch = trimmedLine.match(MEDIA_PATTERNS.youtube)
     if (youtubeMatch) {
@@ -115,27 +137,7 @@ export function extractMediaFromContent(content: string): MediaInfo[] {
       continue
     }
     
-    // Check for Discord CDN attachments
-    const discordMatch = trimmedLine.match(MEDIA_PATTERNS.discord)
-    if (discordMatch) {
-      const extension = trimmedLine.split('.').pop()?.toLowerCase()
-      if (extension) {
-        if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension)) {
-          media.push({
-            type: extension === 'gif' ? 'gif' : 'image',
-            url: trimmedLine,
-            title: `Discord Attachment (${extension.toUpperCase()})`
-          })
-        } else if (['mp4', 'webm', 'mov'].includes(extension)) {
-          media.push({
-            type: 'video',
-            url: trimmedLine,
-            title: `Discord Video (${extension.toUpperCase()})`
-          })
-        }
-      }
-      continue
-    }
+
     
     // Check for Reddit media
     const redditMatch = trimmedLine.match(MEDIA_PATTERNS.reddit)
@@ -160,7 +162,7 @@ export function getMediaType(url: string): 'image' | 'video' | 'gif' | 'embed' |
   if (MEDIA_PATTERNS.tenor.test(url) || MEDIA_PATTERNS.giphy.test(url)) {
     return 'gif'
   }
-  if (MEDIA_PATTERNS.imgur.test(url) || MEDIA_PATTERNS.directImage.test(url) || MEDIA_PATTERNS.discord.test(url)) {
+  if (MEDIA_PATTERNS.imgur.test(url) || MEDIA_PATTERNS.directImage.test(url) || MEDIA_PATTERNS.s3.test(url)) {
     const extension = url.split('.').pop()?.toLowerCase()
     return extension === 'gif' ? 'gif' : 'image'
   }

@@ -312,39 +312,65 @@ export default function ArchivesPage() {
                           <span className="text-xs text-gray-400">
                             {result._source.channelName}
                           </span>
-                          <Badge variant="outline" className="text-xs border-gray-600 text-gray-300">
-                            {result._source.category}
-                          </Badge>
+                          {result._source.category && (
+                            <Badge variant="outline" className="text-xs border-gray-600 text-gray-300">
+                              {result._source.category}
+                            </Badge>
+                          )}
                         </div>
                         
                         <div className="text-sm mb-3 text-gray-200">
                           {result._source.content || (
+                            (result._source.attachments && result._source.attachments.some((a: any) => {
+                              if (!a.url) return false
+                              const extension = a.url.split('.').pop()?.toLowerCase()
+                              return ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension || '')
+                            })) ? 
+                            null : 
                             <span className="text-gray-400 italic">No text content</span>
                           )}
                         </div>
                         
                         {/* Display media content */}
-                        {result._source.content && (
+                        {result._source.content && extractMediaFromContent(result._source.content).length > 0 && (
                           <MediaDisplay 
                             media={extractMediaFromContent(result._source.content)} 
                             className="mt-3"
                           />
                         )}
                         
-                        {/* Display Discord attachments if any */}
+                        {/* Display image attachments directly */}
                         {result._source.attachments && result._source.attachments.length > 0 && (
-                          <div className="mt-3">
-                            <MediaDisplay 
-                              media={result._source.attachments.map((attachment: any) => ({
-                                type: attachment.content_type?.startsWith('image/') ? 'image' : 
-                                      attachment.content_type?.startsWith('video/') ? 'video' : 'embed',
-                                url: attachment.url,
-                                title: attachment.filename || 'Discord Attachment'
-                              }))}
-                              className="mt-2"
-                            />
+                          <div className="mt-3 space-y-2">
+                            {result._source.attachments
+                              .filter((attachment: any) => {
+                                if (!attachment.url) return false
+                                const extension = attachment.url.split('.').pop()?.toLowerCase()
+                                return ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension || '')
+                              })
+                              .map((attachment: any, index: number) => {
+                                const extension = attachment.url.split('.').pop()?.toLowerCase()
+                                const isGif = extension === 'gif'
+                                
+                                return (
+                                  <div key={index} className="relative group">
+                                    <img
+                                      src={attachment.url}
+                                      alt={attachment.filename || 'Image'}
+                                      className="rounded-lg max-w-full max-h-96 object-contain cursor-pointer transition-all duration-200"
+                                    />
+                                    {isGif && (
+                                      <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
+                                        GIF
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })}
                           </div>
                         )}
+                        
+
                       </div>
                       
                       <div className="flex-shrink-0">
@@ -431,32 +457,56 @@ export default function ArchivesPage() {
                         
                         <div className="text-sm text-gray-200">
                           {msg._source.content || (
+                            (msg._source.attachments && msg._source.attachments.some((a: any) => {
+                              if (!a.url) return false
+                              const extension = a.url.split('.').pop()?.toLowerCase()
+                              return ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension || '')
+                            })) ? 
+                            null : 
                             <span className="text-gray-400 italic">No text content</span>
                           )}
                         </div>
                         
                         {/* Display media content in context */}
-                        {msg._source.content && (
+                        {msg._source.content && extractMediaFromContent(msg._source.content).length > 0 && (
                           <MediaDisplay 
                             media={extractMediaFromContent(msg._source.content)} 
                             className="mt-2"
                           />
                         )}
                         
-                        {/* Display Discord attachments in context */}
+                        {/* Display image attachments directly in context */}
                         {msg._source.attachments && msg._source.attachments.length > 0 && (
-                          <div className="mt-2">
-                            <MediaDisplay 
-                              media={msg._source.attachments.map((attachment: any) => ({
-                                type: attachment.content_type?.startsWith('image/') ? 'image' : 
-                                      attachment.content_type?.startsWith('video/') ? 'video' : 'embed',
-                                url: attachment.url,
-                                title: attachment.filename || 'Discord Attachment'
-                              }))}
-                              className="mt-1"
-                            />
+                          <div className="mt-2 space-y-2">
+                            {msg._source.attachments
+                              .filter((attachment: any) => {
+                                if (!attachment.url) return false
+                                const extension = attachment.url.split('.').pop()?.toLowerCase()
+                                return ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension || '')
+                              })
+                              .map((attachment: any, index: number) => {
+                                const extension = attachment.url.split('.').pop()?.toLowerCase()
+                                const isGif = extension === 'gif'
+                                
+                                return (
+                                  <div key={index} className="relative group">
+                                    <img
+                                      src={attachment.url}
+                                      alt={attachment.filename || 'Image'}
+                                      className="rounded-lg max-w-full max-h-64 object-contain cursor-pointer transition-all duration-200"
+                                    />
+                                    {isGif && (
+                                      <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
+                                        GIF
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })}
                           </div>
                         )}
+                        
+
                       </div>
                     </div>
                   </div>
