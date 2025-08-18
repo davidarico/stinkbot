@@ -222,6 +222,8 @@ Commands are divided into two categories: **Player Commands** (available to ever
 | `Wolf.journal_owner` | 👤 Show who owns the current journal channel (use in journal) |
 | `Wolf.journal_unlink` | 🔓 Unlink the current journal from its owner (use in journal) |
 | `Wolf.journal_assign @user` | 🎯 Assign the current journal to a specific user (use in journal) |
+| `Wolf.balance_journals` | 📚 Balance journals across categories (handles Discord's 50 channel limit) |
+| `Wolf.populate_journals [number]` | 🧪 Create test journals for testing the balancing system |
 | `Wolf.role_assign` | 🎭 Randomly assign roles from a provided list to all signed-up players |
 | `Wolf.roles_list` | 📋 Display all assigned roles for players in the current game |
 | `Wolf.server` | 🖥️ Display detailed server information for logging and debugging |
@@ -275,6 +277,38 @@ Commands are divided into two categories: **Player Commands** (available to ever
    Wolf.end
    # Requires confirmation
    ```
+
+## 📔 Journal System
+
+The bot includes a comprehensive journal system for players to take notes and communicate with moderators.
+
+### Journal Features
+
+- **Personal journals**: Each player gets their own private channel
+- **Automatic creation**: Journals are created when players sign up or manually with `Wolf.journal @user`
+- **Permission management**: Players can read/write, moderators can read/write, spectators can read only
+- **Database tracking**: All journals are tracked in the database for persistence
+
+### Journal Balancing
+
+Discord has a 50-channel limit per category. When you approach this limit, use `Wolf.balance_journals` to:
+
+- **Automatically split** journals into multiple categories when needed
+- **Alphabetically organize** all journals within categories
+- **Create smart category names** like "Journals (A-L)" and "Journals (M-Z)"
+- **Preserve all permissions** when moving channels
+
+**Scenarios**:
+- **< 50 journals**: Stays in single category, just alphabetized
+- **50+ journals**: Splits into multiple categories to stay well under the Discord limit
+  - **50 journals**: Splits into 2 categories of 25 each
+  - **75 journals**: Splits into 2 categories of 38 each
+  - **100 journals**: Splits into 2 categories of 50 each
+  - **120+ journals**: Splits into 3+ categories as needed
+
+**Testing**: Use `Wolf.populate_journals [number]` to create test journals for testing the balancing system.
+
+For detailed documentation, see [Journal Balancing System](docs/journal-balancing.md).
 
 ## 🎭 Role System
 

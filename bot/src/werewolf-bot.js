@@ -404,6 +404,12 @@ class WerewolfBot {
                 case 'my_journal':
                     await this.handleMyJournal(message);
                     break;
+                case 'balance_journals':
+                    await this.handleBalanceJournals(message);
+                    break;
+                case 'populate_journals':
+                    await this.handlePopulateJournals(message, args);
+                    break;
                 case 'ia':
                     await this.handleIA(message, args);
                     break;
@@ -2703,7 +2709,9 @@ class WerewolfBot {
                            '`Wolf.journal_link` - 🔗 Link existing journals to players\n' +
                            '`Wolf.journal_owner` - 👤 Show journal owner (use in journal)\n' +
                            '`Wolf.journal_unlink` - 🔓 Unlink journal (use in journal)\n' +
-                           '`Wolf.journal_assign @user` - 🎯 Assign journal to user (use in journal)', 
+                           '`Wolf.journal_assign @user` - 🎯 Assign journal to user (use in journal)\n' +
+                           '`Wolf.balance_journals` - 📚 Balance journals across categories (50 channel limit)\n' +
+                           '`Wolf.populate_journals [number]` - 🧪 Create test journals for testing', 
                     inline: false 
                 },
                 { 
@@ -5171,6 +5179,309 @@ class WerewolfBot {
         } catch (error) {
             console.error('Error finding user journal:', error);
             await message.reply('❌ An error occurred while looking for your journal.');
+        }
+    }
+
+    async handleBalanceJournals(message) {
+        const serverId = message.guild.id;
+
+        // Check if user has moderator permissions
+        if (!this.hasModeratorPermissions(message.member)) {
+            return message.reply('❌ You need moderator permissions to use this command.');
+        }
+
+        try {
+            // Get all journal categories
+            const journalCategories = message.guild.channels.cache.filter(
+                channel => channel.type === ChannelType.GuildCategory && 
+                (channel.name === 'Journals' || channel.name.startsWith('Journals ('))
+            );
+
+            if (journalCategories.size === 0) {
+                return message.reply('❌ No journal categories found. Create some journals first with `Wolf.journal @user`.');
+            }
+
+            // Get all journal channels from all categories
+            const allJournalChannels = [];
+            for (const category of journalCategories.values()) {
+                const categoryChannels = message.guild.channels.cache.filter(
+                    channel => channel.parent?.id === category.id && channel.name.endsWith('-journal')
+                );
+                allJournalChannels.push(...categoryChannels.values());
+            }
+
+            if (allJournalChannels.length === 0) {
+                return message.reply('❌ No journal channels found in any journal categories.');
+            }
+
+            // Sort journals alphabetically by display name (extracted from channel name)
+            allJournalChannels.sort((a, b) => {
+                const nameA = a.name.replace('-journal', '').toLowerCase();
+                const nameB = b.name.replace('-journal', '').toLowerCase();
+                return nameA.localeCompare(nameB);
+            });
+
+            const totalJournals = allJournalChannels.length;
+            const maxChannelsPerCategory = 50;
+
+            // If we have less than 50 journals, just alphabetize in current structure
+            if (totalJournals < maxChannelsPerCategory) {
+                await this.alphabetizeJournalsInCategory(message.guild, journalCategories.first());
+                return message.reply(`✅ Journals are already properly organized! Found ${totalJournals} journals in a single category. All journals have been alphabetized.`);
+            }
+
+            // We need to split into multiple categories (50+ journals, including exactly 50)
+            // This ensures we stay well under the Discord limit
+            // For exactly 50 journals, we split into 2 categories of 25 each
+            const numCategoriesNeeded = totalJournals >= maxChannelsPerCategory ? Math.max(2, Math.ceil(totalJournals / maxChannelsPerCategory)) : 1;
+
+            // We need to split into multiple categories
+            const journalsPerCategory = Math.ceil(totalJournals / numCategoriesNeeded);
+            
+            // Create new categories if needed
+            const newCategories = [];
+            for (let i = 0; i < numCategoriesNeeded; i++) {
+                const startIndex = i * journalsPerCategory;
+                const endIndex = Math.min((i + 1) * journalsPerCategory, totalJournals);
+                const startJournal = allJournalChannels[startIndex];
+                const endJournal = allJournalChannels[endIndex - 1];
+                
+                // Extract display names for category naming
+                const startName = startJournal.name.replace('-journal', '').toUpperCase();
+                const endName = endJournal.name.replace('-journal', '').toUpperCase();
+                
+                // Get first letter of start and last letter of end
+                const startLetter = startName.charAt(0);
+                const endLetter = endName.charAt(0);
+                
+                const categoryName = `Journals (${startLetter}-${endLetter})`;
+                
+                // Check if category already exists
+                let category = message.guild.channels.cache.find(
+                    channel => channel.type === ChannelType.GuildCategory && channel.name === categoryName
+                );
+                
+                if (!category) {
+                    // Create new category
+                    category = await message.guild.channels.create({
+                        name: categoryName,
+                        type: ChannelType.GuildCategory,
+                    });
+                    
+                    // Position it near other journal categories
+                    const existingJournalsCategory = message.guild.channels.cache.find(
+                        channel => channel.type === ChannelType.GuildCategory && channel.name === 'Journals'
+                    );
+                    if (existingJournalsCategory) {
+                        await category.setPosition(existingJournalsCategory.position + 1);
+                    }
+                }
+                
+                newCategories.push(category);
+            }
+
+            // Move journals to their appropriate categories
+            let movedCount = 0;
+            for (let i = 0; i < numCategoriesNeeded; i++) {
+                const startIndex = i * journalsPerCategory;
+                const endIndex = Math.min((i + 1) * journalsPerCategory, totalJournals);
+                const categoryJournals = allJournalChannels.slice(startIndex, endIndex);
+                
+                for (const journal of categoryJournals) {
+                    if (journal.parent?.id !== newCategories[i].id) {
+                        await journal.setParent(newCategories[i].id);
+                        movedCount++;
+                    }
+                }
+            }
+
+            // Clean up old empty categories (except the original 'Journals' category)
+            for (const category of journalCategories.values()) {
+                if (category.name !== 'Journals' && category.children?.cache.size === 0) {
+                    await category.delete();
+                }
+            }
+
+            const embed = new EmbedBuilder()
+                .setTitle('📚 Journal Categories Balanced')
+                .setDescription(`Successfully reorganized ${totalJournals} journals into ${numCategoriesNeeded} categories.`)
+                .addFields(
+                    { name: 'Total Journals', value: totalJournals.toString(), inline: true },
+                    { name: 'Categories Created', value: numCategoriesNeeded.toString(), inline: true },
+                    { name: 'Journals Moved', value: movedCount.toString(), inline: true }
+                )
+                .setColor(0x00AE86);
+
+            // Add category breakdown
+            let categoryBreakdown = '';
+            for (let i = 0; i < newCategories.length; i++) {
+                const startIndex = i * journalsPerCategory;
+                const endIndex = Math.min((i + 1) * journalsPerCategory, totalJournals);
+                const startJournal = allJournalChannels[startIndex];
+                const endJournal = allJournalChannels[endIndex - 1];
+                const startName = startJournal.name.replace('-journal', '').toUpperCase();
+                const endName = endJournal.name.replace('-journal', '').toUpperCase();
+                const startLetter = startName.charAt(0);
+                const endLetter = endName.charAt(0);
+                const journalCount = endIndex - startIndex;
+                
+                categoryBreakdown += `• **${newCategories[i].name}**: ${journalCount} journals (${startLetter}-${endLetter})\n`;
+            }
+            
+            embed.addFields({ name: 'Category Breakdown', value: categoryBreakdown });
+
+            await message.reply({ embeds: [embed] });
+
+        } catch (error) {
+            console.error('Error balancing journals:', error);
+            await message.reply('❌ An error occurred while balancing journals.');
+        }
+    }
+
+    async alphabetizeJournalsInCategory(guild, category) {
+        if (!category || category.children?.cache.size === 0) return;
+
+        const journalChannels = category.children.cache.filter(
+            channel => channel.name.endsWith('-journal')
+        );
+
+        if (journalChannels.size === 0) return;
+
+        // Sort journals alphabetically
+        const sortedJournals = journalChannels.sort((a, b) => {
+            const nameA = a.name.replace('-journal', '').toLowerCase();
+            const nameB = b.name.replace('-journal', '').toLowerCase();
+            return nameA.localeCompare(nameB);
+        });
+
+        // Move journals to their correct positions
+        let position = 0;
+        for (const journal of sortedJournals.values()) {
+            if (journal.position !== position) {
+                await journal.setPosition(position);
+            }
+            position++;
+        }
+    }
+
+    async handlePopulateJournals(message, args) {
+        if (process.env.NODE_ENV !== 'development') {
+            return message.reply('❌ This command is only available in development mode.');
+        }
+
+        // Parse number of journals to create (default 50 if not specified)
+        let numJournals = 50;
+        if (args.length > 0) {
+            const parsed = parseInt(args[0]);
+            if (!isNaN(parsed) && parsed > 0 && parsed <= 100) {
+                numJournals = parsed;
+            } else {
+                return message.reply('❌ Please specify a number between 1 and 100. Usage: `Wolf.populate_journals [number]`');
+            }
+        }
+
+        try {
+            // Find or create the "Journals" category
+            let journalsCategory = message.guild.channels.cache.find(
+                channel => channel.type === ChannelType.GuildCategory && channel.name === 'Journals'
+            );
+
+            if (!journalsCategory) {
+                // Create the Journals category
+                journalsCategory = await message.guild.channels.create({
+                    name: 'Journals',
+                    type: ChannelType.GuildCategory,
+                });
+            }
+
+            // Get roles for permissions
+            const modRole = message.guild.roles.cache.find(r => r.name === 'Mod');
+            const spectatorRole = message.guild.roles.cache.find(r => r.name === 'Spectator');
+            const deadRole = message.guild.roles.cache.find(r => r.name === 'Dead');
+
+            const createdChannels = [];
+            const failedChannels = [];
+
+            // Create test journals with random letter prefixes for better testing
+            const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+            for (let i = 1; i <= numJournals; i++) {
+                try {
+                    // Generate a random letter prefix
+                    const randomLetter = letters[Math.floor(Math.random() * letters.length)];
+                    const testName = `${randomLetter}TestUser${i.toString().padStart(3, '0')}`;
+                    const journalChannelName = `${testName.toLowerCase()}-journal`;
+
+                    // Check if journal already exists
+                    const existingJournal = message.guild.channels.cache.find(
+                        channel => channel.name === journalChannelName && channel.parent?.id === journalsCategory.id
+                    );
+
+                    if (existingJournal) {
+                        failedChannels.push(`${testName} (already exists)`);
+                        continue;
+                    }
+
+                    // Create the journal channel
+                    const journalChannel = await message.guild.channels.create({
+                        name: journalChannelName,
+                        type: ChannelType.GuildText,
+                        parent: journalsCategory.id,
+                        permissionOverwrites: [
+                            {
+                                id: message.guild.roles.everyone.id,
+                                deny: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
+                            },
+                            ...(modRole ? [{
+                                id: modRole.id,
+                                allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
+                            }] : [])
+                        ],
+                    });
+
+                    // Send initial message to the journal
+                    const embed = new EmbedBuilder()
+                        .setTitle(`📔 ${testName}'s Journal`)
+                        .setDescription(`This is a test journal for ${testName}.\n\nThis journal was created for testing the journal balancing system.`)
+                        .setColor(0x8B4513)
+                        .setTimestamp();
+
+                    await journalChannel.send({ embeds: [embed] });
+
+                    createdChannels.push(testName);
+                    
+                    // Add a small delay to avoid rate limiting
+                    await new Promise(resolve => setTimeout(resolve, 100));
+
+                } catch (error) {
+                    console.error(`Error creating test journal ${i}:`, error);
+                    const randomLetter = letters[Math.floor(Math.random() * letters.length)];
+                    failedChannels.push(`${randomLetter}TestUser${i.toString().padStart(3, '0')} (error: ${error.message})`);
+                }
+            }
+
+            const embed = new EmbedBuilder()
+                .setTitle('🧪 Test Journals Created')
+                .setDescription(`Created ${createdChannels.length} test journals for testing the balance system.`)
+                .addFields(
+                    { name: 'Successfully Created', value: createdChannels.length.toString(), inline: true },
+                    { name: 'Failed', value: failedChannels.length.toString(), inline: true },
+                    { name: 'Total Requested', value: numJournals.toString(), inline: true }
+                )
+                .setColor(0x00AE86);
+
+            if (failedChannels.length > 0) {
+                embed.addFields({
+                    name: 'Failed Journals',
+                    value: failedChannels.slice(0, 10).join('\n') + (failedChannels.length > 10 ? `\n... and ${failedChannels.length - 10} more` : ''),
+                    inline: false
+                });
+            }
+
+            await message.reply({ embeds: [embed] });
+
+        } catch (error) {
+            console.error('Error populating journals:', error);
+            await message.reply('❌ An error occurred while creating test journals.');
         }
     }
 
