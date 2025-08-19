@@ -224,6 +224,7 @@ Commands are divided into two categories: **Player Commands** (available to ever
 | `Wolf.journal_assign @user` | 🎯 Assign the current journal to a specific user (use in journal) |
 | `Wolf.balance_journals` | 📚 Balance journals across categories (handles Discord's 50 channel limit) |
 | `Wolf.populate_journals [number]` | 🧪 Create test journals for testing the balancing system |
+
 | `Wolf.role_assign` | 🎭 Randomly assign roles from a provided list to all signed-up players |
 | `Wolf.roles_list` | 📋 Display all assigned roles for players in the current game |
 | `Wolf.server` | 🖥️ Display detailed server information for logging and debugging |
@@ -291,12 +292,18 @@ The bot includes a comprehensive journal system for players to take notes and co
 
 ### Journal Balancing
 
-Discord has a 50-channel limit per category. When you approach this limit, use `Wolf.balance_journals` to:
+Discord has a 50-channel limit per category. The system automatically handles this by:
 
-- **Automatically split** journals into multiple categories when needed
-- **Alphabetically organize** all journals within categories
-- **Create smart category names** like "Journals (A-L)" and "Journals (M-Z)"
-- **Preserve all permissions** when moving channels
+- **Proactively preventing Discord limits** by splitting at 49+ journals before creating new ones
+- **User-friendly notifications** when splits are about to occur
+- **Automatically placing** new journals in the appropriate category based on alphabetical order
+- **Automatically rebalancing** categories when needed to maintain equal distribution
+- **Automatically splitting** journals into multiple categories when approaching the 50-journal limit
+- **Creating smart category names** like "Journals (A-L)" and "Journals (M-Z)"
+- **Preserving all permissions** when moving channels
+- **Automatic alphabetical ordering** - categories are created in the correct order from the start
+
+You can also manually rebalance using `Wolf.balance_journals` if needed.
 
 **Scenarios**:
 - **< 50 journals**: Stays in single category, just alphabetized

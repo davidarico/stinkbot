@@ -36,6 +36,8 @@ Category Breakdown:
 • Journals (N-Z): 37 journals (N-Z)
 ```
 
+
+
 ### `Wolf.populate_journals [number]`
 
 **Purpose**: Create test journals for testing the balancing system.
@@ -53,6 +55,14 @@ Category Breakdown:
 
 ## How the Balancing Works
 
+### Automatic Journal Placement
+When journals are created (via `Wolf.in` or `Wolf.journal @user`), the system automatically:
+- **Proactively checks for splitting needs** before creating new journals (at 49+ journals)
+- **Alerts users when a split is incoming** with a clear notification message
+- **Places new journals in the appropriate category** based on alphabetical order
+- **Rebalances categories** if needed to maintain equal distribution
+- **Splits categories** if any category exceeds 50 journals
+
 ### Scenario 1: Less than 50 journals
 - Journals stay in the original "Journals" category
 - All journals are alphabetized within the category
@@ -66,6 +76,25 @@ Category Breakdown:
 - **120+ journals**: Splits into 3+ categories as needed
 - Each category contains approximately equal numbers of journals
 - Category names reflect the alphabetical range: `Journals (A-L)`, `Journals (M-Z)`, etc.
+
+### Proactive Splitting
+The system proactively prevents hitting the Discord limit by:
+- **Monitoring journal count** and triggering splits at 49+ journals
+- **Alerting users** with a clear notification when a split is about to occur
+- **Performing splits before** creating new journals to maintain smooth operation
+- **Automatically alphabetizing** newly created journals within their categories
+
+### Automatic Rebalancing
+The system automatically rebalances when:
+- A new journal is created and would cause uneven distribution
+- Any category exceeds the target number of journals per category
+- Any category approaches the 50-journal Discord limit
+
+### Category Organization
+- **Smart Category Creation**: The system renames the existing "Journals" category to "Journals (A-L)" and creates new categories like "Journals (M-Z)"
+- **Automatic Alphabetical Order**: Categories are created in the correct alphabetical order from the start
+- **Alphabetical Journal Order**: Within each category, journals are sorted alphabetically by their display names
+- **No Reordering Needed**: Categories are positioned correctly during creation, eliminating the need for manual reordering
 
 ## Best Practices
 

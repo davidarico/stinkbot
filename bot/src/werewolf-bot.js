@@ -408,8 +408,8 @@ class WerewolfBot {
                     await this.handleBalanceJournals(message);
                     break;
                 case 'populate_journals':
-                    await this.handlePopulateJournals(message, args);
-                    break;
+                await this.handlePopulateJournals(message, args);
+                break;
                 case 'ia':
                     await this.handleIA(message, args);
                     break;
@@ -3498,14 +3498,15 @@ class WerewolfBot {
         const game = gameResult.rows[0];
 
         try {
-            // Find or create the "Journals" category
-            let journalsCategory = message.guild.channels.cache.find(
-                channel => channel.type === ChannelType.GuildCategory && channel.name === 'Journals'
-            );
+            // Proactively check if we need to split journals before creating a new one
+            const splitPerformed = await this.checkAndProactivelySplitJournals(message.guild, message);
+            
+            // Find the appropriate journal category for this user (may have changed after split)
+            let targetCategory = await this.findAppropriateJournalCategory(message.guild, targetMember.displayName);
 
-            if (!journalsCategory) {
-                // Create the Journals category
-                journalsCategory = await message.guild.channels.create({
+            if (!targetCategory) {
+                // Create the main Journals category if no categories exist
+                targetCategory = await message.guild.channels.create({
                     name: 'Journals',
                     type: ChannelType.GuildCategory,
                 });
@@ -3515,7 +3516,7 @@ class WerewolfBot {
                     const currentGameCategory = await this.client.channels.fetch(game.category_id);
                     if (currentGameCategory) {
                         const targetPosition = currentGameCategory.position + 1;
-                        await journalsCategory.setPosition(targetPosition);
+                        await targetCategory.setPosition(targetPosition);
                         console.log(`Positioned Journals category at position ${targetPosition}`);
                     }
                 } catch (error) {
@@ -3528,7 +3529,7 @@ class WerewolfBot {
 
             // Check if journal already exists
             const existingJournal = message.guild.channels.cache.find(
-                channel => channel.name === journalChannelName && channel.parent?.id === journalsCategory.id
+                channel => channel.name === journalChannelName && channel.parent?.id === targetCategory.id
             );
 
             if (existingJournal) {
@@ -3544,7 +3545,7 @@ class WerewolfBot {
             const journalChannel = await message.guild.channels.create({
                 name: journalChannelName,
                 type: ChannelType.GuildText,
-                parent: journalsCategory.id,
+                parent: targetCategory.id,
                 permissionOverwrites: [
                     {
                         id: message.guild.roles.everyone.id,
@@ -3604,6 +3605,10 @@ class WerewolfBot {
 
             await message.reply({ embeds: [successEmbed] });
 
+            // After creating the journal, alphabetize it within its category and check if we need to rebalance
+            await this.alphabetizeJournalsInCategory(message.guild, targetCategory);
+            await this.checkAndRebalanceJournals(message.guild);
+
         } catch (error) {
             console.error('Error creating journal:', error);
             await message.reply('❌ An error occurred while creating the journal.');
@@ -3640,20 +3645,21 @@ class WerewolfBot {
                 return;
             }
 
+            // Proactively check if we need to split journals before creating a new one
+            const splitPerformed = await this.checkAndProactivelySplitJournals(message.guild);
+            
             // Get active game for category positioning
             const gameResult = await this.db.query(
                 'SELECT * FROM games WHERE server_id = $1 ORDER BY game_number DESC LIMIT 1',
                 [serverId]
             );
 
-            // Find or create the "Journals" category
-            let journalsCategory = message.guild.channels.cache.find(
-                channel => channel.type === ChannelType.GuildCategory && channel.name === 'Journals'
-            );
+            // Find the appropriate journal category for this user (may have changed after split)
+            let targetCategory = await this.findAppropriateJournalCategory(message.guild, targetMember.displayName);
 
-            if (!journalsCategory) {
-                // Create the Journals category
-                journalsCategory = await message.guild.channels.create({
+            if (!targetCategory) {
+                // Create the main Journals category if no categories exist
+                targetCategory = await message.guild.channels.create({
                     name: 'Journals',
                     type: ChannelType.GuildCategory,
                 });
@@ -3664,7 +3670,7 @@ class WerewolfBot {
                         const currentGameCategory = await this.client.channels.fetch(gameResult.rows[0].category_id);
                         if (currentGameCategory) {
                             const targetPosition = currentGameCategory.position + 1;
-                            await journalsCategory.setPosition(targetPosition);
+                            await targetCategory.setPosition(targetPosition);
                             console.log(`Positioned Journals category at position ${targetPosition}`);
                         }
                     } catch (error) {
@@ -3678,7 +3684,7 @@ class WerewolfBot {
 
             // Check if journal already exists
             const existingJournalChannel = message.guild.channels.cache.find(
-                channel => channel.name === journalChannelName && channel.parent?.id === journalsCategory.id
+                channel => channel.name === journalChannelName && channel.parent?.id === targetCategory.id
             );
 
             if (existingJournalChannel) {
@@ -3702,7 +3708,7 @@ class WerewolfBot {
             const journalChannel = await message.guild.channels.create({
                 name: journalChannelName,
                 type: ChannelType.GuildText,
-                parent: journalsCategory.id,
+                parent: targetCategory.id,
                 permissionOverwrites: [
                     {
                         id: message.guild.roles.everyone.id,
@@ -3751,6 +3757,10 @@ class WerewolfBot {
             );
 
             console.log(`📔 Auto-created journal for ${targetMember.displayName} (${user.id})`);
+
+            // After creating the journal, alphabetize it within its category and check if we need to rebalance
+            await this.alphabetizeJournalsInCategory(message.guild, targetCategory);
+            await this.checkAndRebalanceJournals(message.guild);
 
         } catch (error) {
             console.error('Error ensuring user has journal:', error);
@@ -5238,8 +5248,14 @@ class WerewolfBot {
             // We need to split into multiple categories
             const journalsPerCategory = Math.ceil(totalJournals / numCategoriesNeeded);
             
-            // Create new categories if needed
+            // Handle category creation/renaming for proper alphabetical order
             const newCategories = [];
+            
+            // Find the original "Journals" category
+            const originalJournalsCategory = message.guild.channels.cache.find(
+                channel => channel.type === ChannelType.GuildCategory && channel.name === 'Journals'
+            );
+            
             for (let i = 0; i < numCategoriesNeeded; i++) {
                 const startIndex = i * journalsPerCategory;
                 const endIndex = Math.min((i + 1) * journalsPerCategory, totalJournals);
@@ -5256,24 +5272,30 @@ class WerewolfBot {
                 
                 const categoryName = `Journals (${startLetter}-${endLetter})`;
                 
-                // Check if category already exists
-                let category = message.guild.channels.cache.find(
-                    channel => channel.type === ChannelType.GuildCategory && channel.name === categoryName
-                );
+                let category;
                 
-                if (!category) {
-                    // Create new category
-                    category = await message.guild.channels.create({
-                        name: categoryName,
-                        type: ChannelType.GuildCategory,
-                    });
-                    
-                    // Position it near other journal categories
-                    const existingJournalsCategory = message.guild.channels.cache.find(
-                        channel => channel.type === ChannelType.GuildCategory && channel.name === 'Journals'
+                if (i === 0 && originalJournalsCategory) {
+                    // For the first category, rename the existing "Journals" category
+                    await originalJournalsCategory.setName(categoryName);
+                    category = originalJournalsCategory;
+                    console.log(`📝 Renamed "Journals" to "${categoryName}"`);
+                } else {
+                    // For subsequent categories, create new ones
+                    category = message.guild.channels.cache.find(
+                        channel => channel.type === ChannelType.GuildCategory && channel.name === categoryName
                     );
-                    if (existingJournalsCategory) {
-                        await category.setPosition(existingJournalsCategory.position + 1);
+                    
+                    if (!category) {
+                        // Create new category
+                        category = await message.guild.channels.create({
+                            name: categoryName,
+                            type: ChannelType.GuildCategory,
+                        });
+                        
+                        // Position it after the previous category (which is now properly named)
+                        if (i > 0 && newCategories[i - 1]) {
+                            await category.setPosition(newCategories[i - 1].position + 1);
+                        }
                     }
                 }
                 
@@ -5293,6 +5315,9 @@ class WerewolfBot {
                         movedCount++;
                     }
                 }
+                
+                // Alphabetize journals within this category
+                await this.alphabetizeJournalsInCategory(message.guild, newCategories[i]);
             }
 
             // Clean up old empty categories (except the original 'Journals' category)
@@ -5363,6 +5388,8 @@ class WerewolfBot {
             position++;
         }
     }
+
+
 
     async handlePopulateJournals(message, args) {
         if (process.env.NODE_ENV !== 'development') {
@@ -5482,6 +5509,341 @@ class WerewolfBot {
         } catch (error) {
             console.error('Error populating journals:', error);
             await message.reply('❌ An error occurred while creating test journals.');
+        }
+    }
+
+    /**
+     * Find the appropriate journal category for a new journal based on alphabetical order
+     */
+    async findAppropriateJournalCategory(guild, displayName) {
+        try {
+            // Get all journal categories
+            const journalCategories = guild.channels.cache.filter(
+                channel => channel.type === ChannelType.GuildCategory && 
+                (channel.name === 'Journals' || channel.name.startsWith('Journals ('))
+            );
+
+            if (journalCategories.size === 0) {
+                return null; // No categories exist yet
+            }
+
+            // Get all journal channels from all categories
+            const allJournalChannels = [];
+            for (const category of journalCategories.values()) {
+                const categoryChannels = guild.channels.cache.filter(
+                    channel => channel.parent?.id === category.id && channel.name.endsWith('-journal')
+                );
+                allJournalChannels.push(...categoryChannels.values());
+            }
+
+            // If we have less than 50 journals total, use the main Journals category
+            if (allJournalChannels.length < 50) {
+                return journalCategories.find(cat => cat.name === 'Journals');
+            }
+
+            // Sort all journals alphabetically
+            allJournalChannels.sort((a, b) => {
+                const nameA = a.name.replace('-journal', '').toLowerCase();
+                const nameB = b.name.replace('-journal', '').toLowerCase();
+                return nameA.localeCompare(nameB);
+            });
+
+            // Find where the new journal would fit alphabetically
+            const newJournalName = displayName.toLowerCase().replace(/\s+/g, '-');
+            let insertIndex = 0;
+            for (let i = 0; i < allJournalChannels.length; i++) {
+                const existingName = allJournalChannels[i].name.replace('-journal', '').toLowerCase();
+                if (newJournalName.localeCompare(existingName) > 0) {
+                    insertIndex = i + 1;
+                } else {
+                    break;
+                }
+            }
+
+            // Calculate which category this journal would belong to
+            const maxChannelsPerCategory = 50;
+            const numCategoriesNeeded = Math.max(2, Math.ceil((allJournalChannels.length + 1) / maxChannelsPerCategory));
+            const journalsPerCategory = Math.ceil((allJournalChannels.length + 1) / numCategoriesNeeded);
+            const targetCategoryIndex = Math.floor(insertIndex / journalsPerCategory);
+
+            // Find the appropriate category
+            if (targetCategoryIndex === 0) {
+                // First category - could be "Journals" or "Journals (A-L)"
+                const firstCategory = journalCategories.find(cat => 
+                    cat.name === 'Journals' || cat.name.startsWith('Journals (A-')
+                );
+                return firstCategory;
+            } else {
+                // Find category by index
+                const sortedCategories = journalCategories.sort((a, b) => {
+                    const aName = a.name;
+                    const bName = b.name;
+                    return aName.localeCompare(bName);
+                });
+                
+                if (targetCategoryIndex < sortedCategories.size) {
+                    return sortedCategories.at(targetCategoryIndex);
+                }
+            }
+
+            // Fallback to main Journals category
+            return journalCategories.find(cat => cat.name === 'Journals');
+
+        } catch (error) {
+            console.error('Error finding appropriate journal category:', error);
+            // Fallback to main Journals category
+            return guild.channels.cache.find(
+                channel => channel.type === ChannelType.GuildCategory && channel.name === 'Journals'
+            );
+        }
+    }
+
+    /**
+     * Proactively check if we're approaching the journal threshold and split if needed
+     * This is called before creating new journals to prevent hitting the 50-channel limit
+     */
+    async checkAndProactivelySplitJournals(guild, message = null) {
+        try {
+            // Get all journal categories
+            const journalCategories = guild.channels.cache.filter(
+                channel => channel.type === ChannelType.GuildCategory && 
+                (channel.name === 'Journals' || channel.name.startsWith('Journals ('))
+            );
+
+            if (journalCategories.size === 0) {
+                return false; // No journal categories exist yet
+            }
+
+            // Get all journal channels from all categories
+            const allJournalChannels = [];
+            for (const category of journalCategories.values()) {
+                const categoryChannels = guild.channels.cache.filter(
+                    channel => channel.parent?.id === category.id && channel.name.endsWith('-journal')
+                );
+                allJournalChannels.push(...categoryChannels.values());
+            }
+
+            const totalJournals = allJournalChannels.length;
+            const maxChannelsPerCategory = 50;
+            const thresholdForSplitting = 49; // Split when we're about to hit the limit
+
+            // Check if we're approaching the threshold
+            if (totalJournals >= thresholdForSplitting) {
+                // Calculate how many categories we'll need after adding one more journal
+                const futureTotalJournals = totalJournals + 1;
+                const numCategoriesNeeded = futureTotalJournals >= maxChannelsPerCategory ? Math.max(2, Math.ceil(futureTotalJournals / maxChannelsPerCategory)) : 1;
+                
+                // Check if we need to split (if we'll have more categories than we currently do)
+                const currentNumCategories = journalCategories.size;
+                
+                if (numCategoriesNeeded > currentNumCategories) {
+                    // We need to split! Alert the user and proceed
+                    if (message) {
+                        const alertEmbed = new EmbedBuilder()
+                            .setTitle('⚠️ Journal Split Incoming')
+                            .setDescription(`We're approaching the Discord channel limit (${totalJournals}/50 journals).\n\n**Splitting journals into ${numCategoriesNeeded} categories to maintain organization...**\n\nThis will take a moment. Please wait.`)
+                            .addFields(
+                                { name: 'Current Journals', value: totalJournals.toString(), inline: true },
+                                { name: 'New Categories', value: numCategoriesNeeded.toString(), inline: true }
+                            )
+                            .setColor(0xFFA500)
+                            .setTimestamp();
+
+                        await message.reply({ embeds: [alertEmbed] });
+                    }
+
+                    console.log(`⚠️ Proactively splitting ${totalJournals} journals into ${numCategoriesNeeded} categories to prevent hitting Discord limit...`);
+                    
+                    // Perform the split using the existing rebalancing logic
+                    await this.performJournalRebalancing(guild, allJournalChannels, journalCategories);
+                    
+                    return true; // Split was performed
+                }
+            }
+
+            return false; // No split needed
+        } catch (error) {
+            console.error('Error in checkAndProactivelySplitJournals:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Perform the actual journal rebalancing operation
+     * This is extracted from checkAndRebalanceJournals to be reusable
+     */
+    async performJournalRebalancing(guild, allJournalChannels, journalCategories) {
+        // Sort journals alphabetically
+        allJournalChannels.sort((a, b) => {
+            const nameA = a.name.replace('-journal', '').toLowerCase();
+            const nameB = b.name.replace('-journal', '').toLowerCase();
+            return nameA.localeCompare(nameB);
+        });
+
+        const totalJournals = allJournalChannels.length;
+        const maxChannelsPerCategory = 50;
+
+        // If we have less than 50 journals, just alphabetize in current structure
+        if (totalJournals < maxChannelsPerCategory) {
+            // Find the main Journals category
+            const mainCategory = journalCategories.find(cat => cat.name === 'Journals');
+            if (mainCategory) {
+                await this.alphabetizeJournalsInCategory(guild, mainCategory);
+            }
+            return;
+        }
+
+        // We need to split into multiple categories (50+ journals, including exactly 50)
+        // For exactly 50 journals, we split into 2 categories of 25 each
+        const numCategoriesNeeded = totalJournals >= maxChannelsPerCategory ? Math.max(2, Math.ceil(totalJournals / maxChannelsPerCategory)) : 1;
+        const journalsPerCategory = Math.ceil(totalJournals / numCategoriesNeeded);
+
+        // Check if we need to rebalance (if any category has more than the target number)
+        let needsRebalancing = false;
+        for (const category of journalCategories.values()) {
+            const categoryChannels = guild.channels.cache.filter(
+                channel => channel.parent?.id === category.id && channel.name.endsWith('-journal')
+            );
+            if (categoryChannels.size > journalsPerCategory) {
+                needsRebalancing = true;
+                break;
+            }
+        }
+
+        // If any category is over the limit, we need to rebalance
+        for (const category of journalCategories.values()) {
+            const categoryChannels = guild.channels.cache.filter(
+                channel => channel.parent?.id === category.id && channel.name.endsWith('-journal')
+            );
+            if (categoryChannels.size > maxChannelsPerCategory) {
+                needsRebalancing = true;
+                break;
+            }
+        }
+
+        if (!needsRebalancing) {
+            return; // No rebalancing needed
+        }
+
+        console.log(`🔄 Rebalancing ${totalJournals} journals into ${numCategoriesNeeded} categories...`);
+
+        // Handle category creation/renaming for proper alphabetical order
+        const newCategories = [];
+        
+        // Find the original "Journals" category
+        const originalJournalsCategory = guild.channels.cache.find(
+            channel => channel.type === ChannelType.GuildCategory && channel.name === 'Journals'
+        );
+        
+        for (let i = 0; i < numCategoriesNeeded; i++) {
+            const startIndex = i * journalsPerCategory;
+            const endIndex = Math.min((i + 1) * journalsPerCategory, totalJournals);
+            const startJournal = allJournalChannels[startIndex];
+            const endJournal = allJournalChannels[endIndex - 1];
+            
+            // Extract display names for category naming
+            const startName = startJournal.name.replace('-journal', '').toUpperCase();
+            const endName = endJournal.name.replace('-journal', '').toUpperCase();
+            
+            // Get first letter of start and last letter of end
+            const startLetter = startName.charAt(0);
+            const endLetter = endName.charAt(0);
+            
+            const categoryName = `Journals (${startLetter}-${endLetter})`;
+            
+            let category;
+            
+            if (i === 0 && originalJournalsCategory) {
+                // For the first category, rename the existing "Journals" category
+                await originalJournalsCategory.setName(categoryName);
+                category = originalJournalsCategory;
+                console.log(`📝 Renamed "Journals" to "${categoryName}"`);
+            } else {
+                // For subsequent categories, create new ones
+                category = guild.channels.cache.find(
+                    channel => channel.type === ChannelType.GuildCategory && channel.name === categoryName
+                );
+                
+                if (!category) {
+                    // Create new category
+                    category = await guild.channels.create({
+                        name: categoryName,
+                        type: ChannelType.GuildCategory,
+                    });
+                    
+                    // Position it after the previous category (which is now properly named)
+                    if (i > 0 && newCategories[i - 1]) {
+                        await category.setPosition(newCategories[i - 1].position + 1);
+                    }
+                }
+            }
+            
+            newCategories.push(category);
+        }
+
+        // Move journals to their appropriate categories
+        let movedCount = 0;
+        for (let i = 0; i < numCategoriesNeeded; i++) {
+            const startIndex = i * journalsPerCategory;
+            const endIndex = Math.min((i + 1) * journalsPerCategory, totalJournals);
+            const categoryJournals = allJournalChannels.slice(startIndex, endIndex);
+            
+            for (const journal of categoryJournals) {
+                if (journal.parent?.id !== newCategories[i].id) {
+                    await journal.setParent(newCategories[i].id);
+                    movedCount++;
+                }
+            }
+            
+            // Alphabetize journals within this category
+            await this.alphabetizeJournalsInCategory(guild, newCategories[i]);
+        }
+
+        // Clean up old empty categories (except the original 'Journals' category)
+        for (const category of journalCategories.values()) {
+            if (category.name !== 'Journals' && category.children?.cache.size === 0) {
+                await category.delete();
+            }
+        }
+
+        console.log(`✅ Rebalanced ${totalJournals} journals: moved ${movedCount} journals into ${numCategoriesNeeded} categories`);
+    }
+
+    /**
+     * Check if journals need rebalancing and automatically rebalance if needed
+     * This is called after creating new journals to maintain optimal distribution
+     */
+    async checkAndRebalanceJournals(guild) {
+        try {
+            // Get all journal categories
+            const journalCategories = guild.channels.cache.filter(
+                channel => channel.type === ChannelType.GuildCategory && 
+                (channel.name === 'Journals' || channel.name.startsWith('Journals ('))
+            );
+
+            if (journalCategories.size === 0) {
+                return; // No journal categories exist yet
+            }
+
+            // Get all journal channels from all categories
+            const allJournalChannels = [];
+            for (const category of journalCategories.values()) {
+                const categoryChannels = guild.channels.cache.filter(
+                    channel => channel.parent?.id === category.id && channel.name.endsWith('-journal')
+                );
+                allJournalChannels.push(...categoryChannels.values());
+            }
+
+            if (allJournalChannels.length === 0) {
+                return; // No journal channels exist
+            }
+
+            // Use the extracted rebalancing logic
+            await this.performJournalRebalancing(guild, allJournalChannels, journalCategories);
+
+        } catch (error) {
+            console.error('Error in checkAndRebalanceJournals:', error);
+            // Don't throw error to avoid breaking journal creation
         }
     }
 
