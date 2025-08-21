@@ -302,7 +302,7 @@ class WerewolfBot {
             return null;
         }
     }
-
+    
     async handleMessage(message) {
         // Check if message starts with prefix (case insensitive)
         const prefix = process.env.BOT_PREFIX || 'Wolf.';
@@ -408,8 +408,8 @@ class WerewolfBot {
                     await this.handleBalanceJournals(message);
                     break;
                 case 'populate_journals':
-                await this.handlePopulateJournals(message, args);
-                break;
+                    await this.handlePopulateJournals(message, args);
+                    break;
                 case 'ia':
                     await this.handleIA(message, args);
                     break;
@@ -428,6 +428,17 @@ class WerewolfBot {
                 case 'get_votes':
                     await this.handleGetVotes(message);
                     break;
+                case 'archive':
+                    await this.handleArchive(message, args);
+                    break;
+                case 'sync_members':
+                    await this.handleSyncMembers(message);
+                    break;
+                case 'role_config':
+                    await this.handleRoleConfiguration(message);
+                    break;
+
+                // Meme commands
                 case 'meme':
                     await this.handleMeme(message);
                     break;
@@ -439,15 +450,6 @@ class WerewolfBot {
                     break;
                 case 'wolf_list':
                     await message.reply('The wolf list? Are we still doing this? Stop talking about the wolf list.');
-                    break;
-                case 'archive':
-                    await this.handleArchive(message, args);
-                    break;
-                case 'sync_members':
-                    await this.handleSyncMembers(message);
-                    break;
-                case 'role_config':
-                    await this.handleRoleConfiguration(message);
                     break;
                 default:
                     const funnyResponse = await this.generateFunnyResponse(message.content.slice(prefix.length).trim().split(/ +/), message.author.displayName);
@@ -466,6 +468,11 @@ class WerewolfBot {
     hasModeratorPermissions(member) {
         return member.permissions.has(PermissionFlagsBits.ManageChannels) || 
                member.permissions.has(PermissionFlagsBits.Administrator);
+    }
+
+    isPublicChannel(message) {
+        const channelName = message.channel.name.toLowerCase();
+        return !channelName.includes('dead-chat') && !channelName.includes('mod-chat');
     }
 
     async assignRole(member, roleName) {
@@ -3012,14 +3019,6 @@ class WerewolfBot {
         }
     }
 
-    async handleTodo(message) {
-        const embed = new EmbedBuilder()
-            .setTitle('🐛 Issues and Bugs')
-            .setDescription(fs.readFileSync('./TODO.md', 'utf-8'))
-
-        await message.reply({ embeds: [embed] });
-    }
-
     async handleRecovery(message) {
         const serverId = message.guild.id;
         
@@ -4976,6 +4975,10 @@ class WerewolfBot {
     }
 
     async handleRolesList(message) {
+        if (this.isPublicChannel(message)) {
+            return message.reply('WOAH! You trying to scuff the game? Wrong channel buddy!');
+        }
+
         const serverId = message.guild.id;
 
         // Get active game
@@ -6876,6 +6879,10 @@ class WerewolfBot {
      * Handle role configuration command
      */
     async handleRoleConfiguration(message) {
+        if (this.isPublicChannel(message)) {
+            return message.reply('WOAH! You trying to scuff the game? Wrong channel buddy!');
+        }
+
         try {
             // Get the current game for this server
             const gameQuery = `
