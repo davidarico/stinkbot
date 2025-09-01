@@ -446,7 +446,7 @@ class WerewolfBot {
                     await message.reply('💦 IM PISSING REALLY HARD AND ITS REALLY COOL 💦');
                     break;
                 case 'mylo':
-                    await message.reply('Mylo can maybe backpedal to Orphan if we need to if this doesn\'t land')
+                    await message.reply('Mylo can maybe backpedal to Orphan if we need to if this doesn\'t land');
                     break;
                 case 'wolf_list':
                     await message.reply('The wolf list? Are we still doing this? Stop talking about the wolf list.');
@@ -770,6 +770,87 @@ class WerewolfBot {
             'UPDATE games SET signup_message_id = $1 WHERE id = $2',
             [signupMessage.id, gameId]
         );
+
+        // Move all journal categories to be positioned after the new game category for better organization
+        try {
+            const journalCategories = message.guild.channels.cache.filter(
+                channel => channel.type === ChannelType.GuildCategory && 
+                (channel.name === 'Journals' || channel.name.startsWith('Journals ('))
+            );
+
+            if (journalCategories.size > 0) {
+                console.log(`Moving ${journalCategories.size} journal categories after new game category`);
+                
+                // Sort journal categories alphabetically
+                const sortedJournalCategories = Array.from(journalCategories.values()).sort((a, b) => {
+                    return a.name.localeCompare(b.name);
+                });
+                
+                // Move each journal category to be positioned after the game category in alphabetical order
+                let position = category.position + 1;
+                for (const journalCategory of sortedJournalCategories) {
+                    // Move the journal category
+                    await journalCategory.setPosition(position);
+                    console.log(`Moved journal category "${journalCategory.name}" to position ${position}`);
+                    
+                    // Poll for position confirmation with 10 second timeout
+                    let confirmed = false;
+                    let attempts = 0;
+                    const maxAttempts = 10; // 10 seconds total
+                    
+                    while (!confirmed && attempts < maxAttempts) {
+                        // Wait 1 second before checking
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        
+                        // Refresh the Discord cache
+                        await message.guild.channels.fetch();
+                        
+                        // Check if the position has been updated
+                        const refreshedCategory = message.guild.channels.cache.get(journalCategory.id);
+                        if (refreshedCategory && refreshedCategory.position === position) {
+                            console.log(`✅ Confirmed "${journalCategory.name}" is now at position ${position} (attempt ${attempts + 1})`);
+                            confirmed = true;
+                        } else {
+                            attempts++;
+                            console.log(`⏳ Waiting for "${journalCategory.name}" to reach position ${position}... (attempt ${attempts}/${maxAttempts})`);
+                        }
+                    }
+                    
+                    if (!confirmed) {
+                        console.warn(`⚠️ "${journalCategory.name}" may not have moved to position ${position} correctly after ${maxAttempts} attempts`);
+                    }
+                    
+                    position++;
+                }
+                
+                // Final verification after all moves are complete
+                await message.guild.channels.fetch();
+                const finalJournalCategories = message.guild.channels.cache.filter(
+                    channel => channel.type === ChannelType.GuildCategory && 
+                    (channel.name === 'Journals' || channel.name.startsWith('Journals ('))
+                );
+                
+                const finalPositions = Array.from(finalJournalCategories.values())
+                    .sort((a, b) => a.position - b.position)
+                    .map(cat => `${cat.name} (pos: ${cat.position})`);
+                
+                console.log(`Final journal category positions: ${finalPositions.join(', ')}`);
+                
+                // Check if they're properly grouped after the new game
+                const newGamePosition = category.position;
+                const journalPositions = Array.from(finalJournalCategories.values()).map(cat => cat.position);
+                const allAfterNewGame = journalPositions.every(pos => pos > newGamePosition);
+                
+                if (allAfterNewGame) {
+                    console.log(`✅ All journal categories are properly positioned after the new game`);
+                } else {
+                    console.warn(`⚠️ Some journal categories may not be positioned correctly after the new game`);
+                }
+            }
+        } catch (error) {
+            console.error('Error moving journal categories after game category:', error);
+            // Continue even if moving journal categories fails - game is still created successfully
+        }
     }
 
     async handleSignUp(message) {
@@ -1059,25 +1140,27 @@ class WerewolfBot {
             permissionOverwrites: [
                 {
                     id: message.guild.roles.everyone.id,
-                    deny: ['ViewChannel', 'SendMessages']
+                    deny: ['ViewChannel', 'SendMessages', 'CreatePublicThreads', 'CreatePrivateThreads', 'SendMessagesInThreads']
                 },
                 {
                     id: aliveRole.id,
-                    allow: ['ViewChannel', 'SendMessages']
+                    allow: ['ViewChannel', 'SendMessages'],
+                    deny: ['CreatePublicThreads', 'CreatePrivateThreads', 'SendMessagesInThreads']
                 },
                 {
                     id: deadRole.id,
                     allow: ['ViewChannel'],
-                    deny: ['SendMessages']
+                    deny: ['SendMessages', 'CreatePublicThreads', 'CreatePrivateThreads', 'SendMessagesInThreads']
                 },
                 {
                     id: spectatorRole.id,
                     allow: ['ViewChannel'],
-                    deny: ['SendMessages']
+                    deny: ['SendMessages', 'CreatePublicThreads', 'CreatePrivateThreads', 'SendMessagesInThreads']
                 },
                 {
                     id: modRole.id,
-                    allow: ['ViewChannel', 'SendMessages']
+                    allow: ['ViewChannel', 'SendMessages'],
+                    deny: ['CreatePublicThreads', 'CreatePrivateThreads', 'SendMessagesInThreads']
                 }
             ]
         });
@@ -5305,8 +5388,10 @@ class WerewolfBot {
                 newCategories.push(category);
             }
 
-            // Move journals to their appropriate categories
+            // First, move all journals to their appropriate categories
             let movedCount = 0;
+            const movedJournals = []; // Track moved journals and their original permissions
+            
             for (let i = 0; i < numCategoriesNeeded; i++) {
                 const startIndex = i * journalsPerCategory;
                 const endIndex = Math.min((i + 1) * journalsPerCategory, totalJournals);
@@ -5314,12 +5399,102 @@ class WerewolfBot {
                 
                 for (const journal of categoryJournals) {
                     if (journal.parent?.id !== newCategories[i].id) {
+                        // Store current permission overrides before moving the channel
+                        const currentPermissions = journal.permissionOverwrites.cache;
+                        
+                        // Move the channel to the new category
                         await journal.setParent(newCategories[i].id);
                         movedCount++;
+                        
+                        // Store the journal and its permissions for later restoration
+                        movedJournals.push({
+                            journal: journal,
+                            permissions: currentPermissions,
+                            targetCategory: newCategories[i]
+                        });
+                        
+                        console.log(`Moved journal "${journal.name}" to category "${newCategories[i].name}"`);
+                    }
+                }
+            }
+            
+            // Now wait for Discord to process all the moves, then restore permissions
+            if (movedJournals.length > 0) {
+                console.log(`Waiting for Discord to process ${movedJournals.length} journal moves...`);
+                
+                // Poll for all moves to be recognized
+                let allMovesConfirmed = false;
+                let attempts = 0;
+                const maxAttempts = 15; // 15 seconds total
+                
+                while (!allMovesConfirmed && attempts < maxAttempts) {
+                    // Wait 1 second before checking
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    
+                    // Refresh the Discord cache
+                    await message.guild.channels.fetch();
+                    
+                    // Check if all moves have been processed
+                    allMovesConfirmed = true;
+                    for (const movedJournal of movedJournals) {
+                        const refreshedJournal = message.guild.channels.cache.get(movedJournal.journal.id);
+                        if (!refreshedJournal || refreshedJournal.parent?.id !== movedJournal.targetCategory.id) {
+                            allMovesConfirmed = false;
+                            break;
+                        }
+                    }
+                    
+                    attempts++;
+                    if (!allMovesConfirmed) {
+                        console.log(`⏳ Waiting for Discord to process journal moves... (attempt ${attempts}/${maxAttempts})`);
                     }
                 }
                 
-                // Alphabetize journals within this category
+                if (allMovesConfirmed) {
+                    console.log(`✅ All journal moves confirmed, restoring permissions...`);
+                    
+                    // Now restore permissions for all moved journals
+                    for (const movedJournal of movedJournals) {
+                        try {
+                            for (const [id, permission] of movedJournal.permissions) {
+                                const permissionData = {};
+                                
+                                // Check each permission flag and set it appropriately
+                                const permissions = [
+                                    PermissionFlagsBits.ViewChannel,
+                                    PermissionFlagsBits.SendMessages,
+                                    PermissionFlagsBits.ReadMessageHistory,
+                                    PermissionFlagsBits.AttachFiles,
+                                    PermissionFlagsBits.EmbedLinks,
+                                    PermissionFlagsBits.UseExternalEmojis,
+                                    PermissionFlagsBits.AddReactions
+                                ];
+                                
+                                for (const perm of permissions) {
+                                    if (permission.allow.has(perm)) {
+                                        permissionData[perm] = true;
+                                    } else if (permission.deny.has(perm)) {
+                                        permissionData[perm] = false;
+                                    }
+                                    // If neither allow nor deny, don't set the permission (inherits from category)
+                                }
+                                
+                                if (Object.keys(permissionData).length > 0) {
+                                    await movedJournal.journal.permissionOverwrites.edit(id, permissionData);
+                                }
+                            }
+                            console.log(`✅ Restored permissions for journal channel: ${movedJournal.journal.name}`);
+                        } catch (permissionError) {
+                            console.error(`⚠️ Warning: Could not restore permissions for journal channel ${movedJournal.journal.name}:`, permissionError);
+                        }
+                    }
+                } else {
+                    console.warn(`⚠️ Not all journal moves were confirmed after ${maxAttempts} attempts`);
+                }
+            }
+            
+            // Alphabetize journals within each category
+            for (let i = 0; i < numCategoriesNeeded; i++) {
                 await this.alphabetizeJournalsInCategory(message.guild, newCategories[i]);
             }
 
@@ -5459,11 +5634,22 @@ class WerewolfBot {
                         permissionOverwrites: [
                             {
                                 id: message.guild.roles.everyone.id,
-                                deny: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
+                                deny: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.CreatePublicThreads, PermissionFlagsBits.CreatePrivateThreads, PermissionFlagsBits.SendMessagesInThreads],
                             },
                             ...(modRole ? [{
                                 id: modRole.id,
                                 allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
+                                deny: [PermissionFlagsBits.CreatePublicThreads, PermissionFlagsBits.CreatePrivateThreads, PermissionFlagsBits.SendMessagesInThreads],
+                            }] : []),
+                            ...(spectatorRole ? [{
+                                id: spectatorRole.id,
+                                allow: [PermissionFlagsBits.ViewChannel],
+                                deny: [PermissionFlagsBits.SendMessages, PermissionFlagsBits.CreatePublicThreads, PermissionFlagsBits.CreatePrivateThreads, PermissionFlagsBits.SendMessagesInThreads],
+                            }] : []),
+                            ...(deadRole ? [{
+                                id: deadRole.id,
+                                allow: [PermissionFlagsBits.ViewChannel],
+                                deny: [PermissionFlagsBits.SendMessages, PermissionFlagsBits.CreatePublicThreads, PermissionFlagsBits.CreatePrivateThreads, PermissionFlagsBits.SendMessagesInThreads],
                             }] : [])
                         ],
                     });
@@ -5786,6 +5972,8 @@ class WerewolfBot {
 
         // Move journals to their appropriate categories
         let movedCount = 0;
+        const movedJournals = []; // Track moved journals and their original permissions
+        
         for (let i = 0; i < numCategoriesNeeded; i++) {
             const startIndex = i * journalsPerCategory;
             const endIndex = Math.min((i + 1) * journalsPerCategory, totalJournals);
@@ -5793,12 +5981,109 @@ class WerewolfBot {
             
             for (const journal of categoryJournals) {
                 if (journal.parent?.id !== newCategories[i].id) {
+                    // Store current permission overrides before moving the channel
+                    const currentPermissions = journal.permissionOverwrites.cache;
+                    
+                    // Move the channel to the new category
                     await journal.setParent(newCategories[i].id);
                     movedCount++;
+                    
+                    // Store the journal and its permissions for later restoration
+                    movedJournals.push({
+                        journal: journal,
+                        permissions: currentPermissions,
+                        targetCategory: newCategories[i]
+                    });
+                    
+                    console.log(`Moved journal "${journal.name}" to category "${newCategories[i].name}"`);
+                }
+            }
+        }
+        
+        // Now wait for Discord to process all the moves, then restore permissions
+        if (movedJournals.length > 0) {
+            console.log(`Waiting for Discord to process ${movedJournals.length} journal moves...`);
+            
+            // Poll for all moves to be recognized
+            let allMovesConfirmed = false;
+            let attempts = 0;
+            const maxAttempts = 15; // 15 seconds total
+            
+            while (!allMovesConfirmed && attempts < maxAttempts) {
+                // Wait 1 second before checking
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // Refresh the Discord cache
+                await guild.channels.fetch();
+                
+                // Check if all moves have been processed
+                allMovesConfirmed = true;
+                for (const movedJournal of movedJournals) {
+                    const refreshedJournal = guild.channels.cache.get(movedJournal.journal.id);
+                    if (!refreshedJournal || refreshedJournal.parent?.id !== movedJournal.targetCategory.id) {
+                        allMovesConfirmed = false;
+                        break;
+                    }
+                }
+                
+                attempts++;
+                if (!allMovesConfirmed) {
+                    console.log(`⏳ Waiting for Discord to process journal moves... (attempt ${attempts}/${maxAttempts})`);
                 }
             }
             
-            // Alphabetize journals within this category
+            if (allMovesConfirmed) {
+                console.log(`✅ All journal moves confirmed, restoring permissions...`);
+                
+                // Now restore permissions for all moved journals using fresh references
+                for (const movedJournal of movedJournals) {
+                    try {
+                        // Get a fresh reference to the channel after the move
+                        const freshJournal = guild.channels.cache.get(movedJournal.journal.id);
+                        if (!freshJournal) {
+                            console.warn(`⚠️ Could not find fresh reference for journal ${movedJournal.journal.name}`);
+                            continue;
+                        }
+                        
+                        for (const [id, permission] of movedJournal.permissions) {
+                            const permissionData = {};
+                            
+                            // Check each permission flag and set it appropriately
+                            const permissions = [
+                                PermissionFlagsBits.ViewChannel,
+                                PermissionFlagsBits.SendMessages,
+                                PermissionFlagsBits.ReadMessageHistory,
+                                PermissionFlagsBits.AttachFiles,
+                                PermissionFlagsBits.EmbedLinks,
+                                PermissionFlagsBits.UseExternalEmojis,
+                                PermissionFlagsBits.AddReactions
+                            ];
+                            
+                            for (const perm of permissions) {
+                                if (permission.allow.has(perm)) {
+                                    permissionData[perm] = true;
+                                } else if (permission.deny.has(perm)) {
+                                    permissionData[perm] = false;
+                                }
+                                // If neither allow nor deny, don't set the permission (inherits from category)
+                            }
+                            
+                            if (Object.keys(permissionData).length > 0) {
+                                await freshJournal.permissionOverwrites.edit(id, permissionData);
+                            }
+                        }
+                        console.log(`✅ Restored permissions for journal channel: ${movedJournal.journal.name}`);
+                    } catch (permissionError) {
+                        console.error(`⚠️ Warning: Could not restore permissions for journal channel ${movedJournal.journal.name}:`, permissionError);
+                    }
+                }
+            } else {
+                console.warn(`⚠️ Not all journal moves were confirmed after ${maxAttempts} attempts`);
+            }
+        }
+        
+        // Alphabetize journals within each category
+        for (let i = 0; i < numCategoriesNeeded; i++) {
             await this.alphabetizeJournalsInCategory(guild, newCategories[i]);
         }
 
