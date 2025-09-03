@@ -451,6 +451,9 @@ class WerewolfBot {
                 case 'wolf_list':
                     await message.reply('The wolf list? Are we still doing this? Stop talking about the wolf list.');
                     break;
+                case 'lockdown':
+                    await this.handleLockdown(message, args);
+                    break;
                 default:
                     const funnyResponse = await this.generateFunnyResponse(message.content.slice(prefix.length).trim().split(/ +/), message.author.displayName);
                     if (funnyResponse) {
@@ -2790,7 +2793,9 @@ class WerewolfBot {
                 { 
                     name: '🔧 Channel & Phase Management', 
                     value: '`Wolf.add_channel <n>` - Create additional channel in game category\n' +
-                           '`Wolf.create_vote` - 🗳️ Manually create a voting message (voting booth only)', 
+                           '`Wolf.create_vote` - 🗳️ Manually create a voting message (voting booth only)\n' +
+                           '`Wolf.lockdown` - 🔒 Lock down townsquare and memos (alive players cannot speak)\n' +
+                           '`Wolf.lockdown lift` - 🔓 Lift lockdown and restore normal permissions', 
                     inline: false 
                 },
                 { 
@@ -7418,6 +7423,104 @@ class WerewolfBot {
             
         } catch (error) {
             console.error('❌ Error during daily member sync:', error);
+        }
+    }
+
+    async handleLockdown(message, args) {
+        const serverId = message.guild.id;
+        
+        try {
+            // Get the active game
+            const activeGameResult = await this.db.query(
+                'SELECT * FROM games WHERE server_id = $1 AND status IN ($2, $3) ORDER BY id DESC LIMIT 1',
+                [serverId, 'signup', 'active']
+            );
+
+            if (activeGameResult.rows.length === 0) {
+                await message.reply('❌ No active game found for this server.');
+                return;
+            }
+
+            const game = activeGameResult.rows[0];
+            
+            // Get the alive role
+            const aliveRole = message.guild.roles.cache.find(r => r.name === 'Alive');
+
+            if (!aliveRole) {
+                await message.reply('❌ Could not find the alive role for this server.');
+                return;
+            }
+
+            // Check if this is a lift command
+            if (args.length > 0 && args[0].toLowerCase() === 'lift') {
+                // Lift lockdown - restore normal permissions
+                await this.setChannelPermissions(game, aliveRole, true, message);
+                
+                // Send lift message to townsquare
+                if (game.town_square_channel_id) {
+                    try {
+                        const townSquareChannel = await this.client.channels.fetch(game.town_square_channel_id);
+                        if (townSquareChannel) {
+                            await townSquareChannel.send('🔓 **Lockdown has been lifted, enjoy your time in the yard**');
+                        }
+                    } catch (error) {
+                        console.error('Error sending lift message to townsquare:', error);
+                    }
+                }
+                
+                await message.reply('🔓 Lockdown lifted! Players can now speak in townsquare and memos.');
+            } else {
+                // Apply lockdown - restrict message permissions
+                await this.setChannelPermissions(game, aliveRole, false, message);
+                
+                // Send lockdown message to townsquare
+                if (game.town_square_channel_id) {
+                    try {
+                        const townSquareChannel = await this.client.channels.fetch(game.town_square_channel_id);
+                        if (townSquareChannel) {
+                            await townSquareChannel.send('🔒 **Lockdown!** Looks like the inmates were getting too rowdy');
+                        }
+                    } catch (error) {
+                        console.error('Error sending lockdown message to townsquare:', error);
+                    }
+                }
+                
+                await message.reply('🔒 Lockdown applied! Players can no longer speak in townsquare and memos.');
+            }
+            
+        } catch (error) {
+            console.error('Error handling lockdown command:', error);
+            await message.reply('❌ An error occurred while processing the lockdown command.');
+        }
+    }
+
+    async setChannelPermissions(game, aliveRole, allowMessages, message) {
+        const channels = [];
+        
+        // Add townsquare channel
+        if (game.town_square_channel_id) {
+            channels.push(game.town_square_channel_id);
+        }
+        
+        // Add memos channel
+        if (game.memos_channel_id) {
+            channels.push(game.memos_channel_id);
+        }
+
+        // Update permissions for each channel
+        for (const channelId of channels) {
+            try {
+                const channel = await this.client.channels.fetch(channelId);
+                if (channel) {
+                    await channel.permissionOverwrites.edit(aliveRole.id, {
+                        ViewChannel: true,
+                        SendMessages: allowMessages
+                    });
+                    console.log(`Updated ${channel.name} permissions: Alive role can send messages = ${allowMessages}`);
+                }
+            } catch (error) {
+                console.error(`Error updating permissions for channel ${channelId}:`, error);
+            }
         }
     }
 
