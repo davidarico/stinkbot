@@ -2774,7 +2774,8 @@ class WerewolfBot {
                        '`Wolf.alive` - Show all players currently alive\n' +
                        '`Wolf.role_configuration` - Show current game role setup\n' +
                        '`Wolf.meme` - 😤 I dare you to try me\n' +
-                       '`Wolf.help` - Show this help message', 
+                       '`Wolf.help` - Show this help message\n' +
+                       '`Wolf.feedback` - Submit feedback to Stinky',
                 inline: false 
             }
         );
