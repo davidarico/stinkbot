@@ -779,6 +779,20 @@ export class DatabaseService {
     }
   }
 
+  async getAdminSetting(settingKey: string): Promise<string | null> {
+    try {
+      const result = await this.pool.query(
+        'SELECT setting_value FROM admin_settings WHERE setting_key = $1',
+        [settingKey]
+      )
+      return result.rows.length > 0 ? result.rows[0].setting_value : null
+    } catch (error) {
+      console.error('Error fetching admin setting:', error)
+
+      throw error
+    }
+  }
+
   async getServerUsersByUserIds(userIds: string[]) {
     try {
       if (userIds.length === 0) return []
@@ -791,6 +805,19 @@ export class DatabaseService {
       return result.rows
     } catch (error) {
       console.error('Error fetching server users by user IDs:', error)
+      throw error
+    }
+  }
+
+  async updateAdminSetting(settingKey: string, settingValue: string) {
+    try {
+      await this.pool.query(
+        'INSERT INTO admin_settings (setting_key, setting_value) VALUES ($1, $2) ON CONFLICT (setting_key) DO UPDATE SET setting_value = $2, updated_at = CURRENT_TIMESTAMP',
+        [settingKey, settingValue]
+      )
+      return { success: true }
+    } catch (error) {
+      console.error('Error updating admin setting:', error)
       throw error
     }
   }

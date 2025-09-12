@@ -1,7 +1,16 @@
 -- Werewolf Discord Bot Database Schema
--- Generated automatically on 2025-08-13T01:41:58.510Z
+-- Generated automatically on 2025-09-12T21:53:28.985Z
 -- This file shows the current database structure with table comments
 -- Run this after migrations to get the latest schema
+
+CREATE TABLE admin_settings (
+    id SERIAL PRIMARY KEY,
+    setting_key VARCHAR(100) NOT NULL,
+    setting_value TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(setting_key)
+);
 
 -- Table to store additional game channels (such as couple chat)
 CREATE TABLE game_channels (
