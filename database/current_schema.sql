@@ -1,5 +1,5 @@
 -- Werewolf Discord Bot Database Schema
--- Generated automatically on 2025-09-12T21:53:28.985Z
+-- Generated automatically on 2025-09-12T22:57:38.718Z
 -- This file shows the current database structure with table comments
 -- Run this after migrations to get the latest schema
 
@@ -10,6 +10,16 @@ CREATE TABLE admin_settings (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(setting_key)
+);
+
+-- Stores user feedback submitted through Discord bot commands
+CREATE TABLE feedback (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(20) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
+    feedback_text TEXT NOT NULL,
+    server_id VARCHAR(20) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Table to store additional game channels (such as couple chat)
@@ -96,6 +106,17 @@ CREATE TABLE games (
     is_themed BOOLEAN DEFAULT FALSE,
     theme_name VARCHAR(100) DEFAULT NULL,
     UNIQUE(game_number, server_id)
+);
+
+-- Stores development tasks for the kanban board
+CREATE TABLE kanban_tasks (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'todo',
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE night_action (

@@ -943,6 +943,156 @@ export class DatabaseService {
     }
   }
 
+  // Kanban task methods
+  async getKanbanTasks() {
+    try {
+      const result = await this.pool.query(
+        'SELECT * FROM kanban_tasks ORDER BY status, position, created_at'
+      )
+      return result.rows
+    } catch (error) {
+      console.error('Error fetching kanban tasks:', error)
+      throw error
+    }
+  }
+
+  async createKanbanTask(title: string, description?: string, status: string = 'todo') {
+    try {
+      // Get the next position for this status
+      const positionResult = await this.pool.query(
+        'SELECT COALESCE(MAX(position), 0) + 1 as next_position FROM kanban_tasks WHERE status = $1',
+        [status]
+      )
+      const nextPosition = positionResult.rows[0].next_position
+
+      const result = await this.pool.query(
+        'INSERT INTO kanban_tasks (title, description, status, position) VALUES ($1, $2, $3, $4) RETURNING *',
+        [title, description || null, status, nextPosition]
+      )
+      return { success: true, task: result.rows[0] }
+    } catch (error) {
+      console.error('Error creating kanban task:', error)
+      throw error
+    }
+  }
+
+  async updateKanbanTask(id: number, updates: {
+    title?: string
+    description?: string
+    status?: string
+    position?: number
+  }) {
+    try {
+      const updateFields = []
+      const values = []
+      let paramCount = 1
+
+      if (updates.title !== undefined) {
+        updateFields.push(`title = $${paramCount}`)
+        values.push(updates.title)
+        paramCount++
+      }
+      if (updates.description !== undefined) {
+        updateFields.push(`description = $${paramCount}`)
+        values.push(updates.description)
+        paramCount++
+      }
+      if (updates.status !== undefined) {
+        updateFields.push(`status = $${paramCount}`)
+        values.push(updates.status)
+        paramCount++
+      }
+      if (updates.position !== undefined) {
+        updateFields.push(`position = $${paramCount}`)
+        values.push(updates.position)
+        paramCount++
+      }
+
+      if (updateFields.length === 0) {
+        return { success: false, message: 'No updates provided' }
+      }
+
+      updateFields.push(`updated_at = CURRENT_TIMESTAMP`)
+      values.push(id)
+
+      const result = await this.pool.query(
+        `UPDATE kanban_tasks SET ${updateFields.join(', ')} WHERE id = $${paramCount} RETURNING *`,
+        values
+      )
+
+      if (result.rows.length === 0) {
+        return { success: false, message: 'Task not found' }
+      }
+
+      return { success: true, task: result.rows[0] }
+    } catch (error) {
+      console.error('Error updating kanban task:', error)
+      throw error
+    }
+  }
+
+  async deleteKanbanTask(id: number) {
+    try {
+      const result = await this.pool.query(
+        'DELETE FROM kanban_tasks WHERE id = $1 RETURNING *',
+        [id]
+      )
+
+      if (result.rows.length === 0) {
+        return { success: false, message: 'Task not found' }
+      }
+
+      return { success: true, task: result.rows[0] }
+    } catch (error) {
+      console.error('Error deleting kanban task:', error)
+      throw error
+    }
+  }
+
+  // Feedback methods
+  async getFeedback() {
+    try {
+      const result = await this.pool.query(
+        'SELECT * FROM feedback ORDER BY created_at ASC'
+      )
+      return result.rows
+    } catch (error) {
+      console.error('Error fetching feedback:', error)
+      throw error
+    }
+  }
+
+  async createFeedback(userId: string, displayName: string, feedbackText: string, serverId: string) {
+    try {
+      const result = await this.pool.query(
+        'INSERT INTO feedback (user_id, display_name, feedback_text, server_id) VALUES ($1, $2, $3, $4) RETURNING *',
+        [userId, displayName, feedbackText, serverId]
+      )
+      return { success: true, feedback: result.rows[0] }
+    } catch (error) {
+      console.error('Error creating feedback:', error)
+      throw error
+    }
+  }
+
+  async deleteFeedback(id: number) {
+    try {
+      const result = await this.pool.query(
+        'DELETE FROM feedback WHERE id = $1 RETURNING *',
+        [id]
+      )
+
+      if (result.rows.length === 0) {
+        return { success: false, message: 'Feedback not found' }
+      }
+
+      return { success: true, feedback: result.rows[0] }
+    } catch (error) {
+      console.error('Error deleting feedback:', error)
+      throw error
+    }
+  }
+
   // Cleanup method to close the pool
   async close() {
     await this.pool.end()

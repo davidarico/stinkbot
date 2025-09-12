@@ -85,27 +85,41 @@ export async function GET(request: NextRequest) {
     // If jumping to a specific message, find the correct page
     let targetPage = page
     if (jumpToMessageId) {
+        console.log('🎯 API: Calculating page for jumpToMessageId:', jumpToMessageId)
         try {
-          // Get the target message directly by its OpenSearch document ID
-          const targetResponse = await openSearchClient.get({
+          // Get the target message by its Discord message ID
+          const targetSearchResponse = await openSearchClient.search({
             index: 'messages',
-            id: jumpToMessageId
+            body: {
+              query: {
+                term: {
+                  messageId: jumpToMessageId
+                }
+              },
+              size: 1
+            }
           })
           
-          if (targetResponse.body.found) {
-            const targetTimestamp = targetResponse.body._source.timestamp
+          if (targetSearchResponse.body.hits.hits.length > 0) {
+            const targetMessage = targetSearchResponse.body.hits.hits[0]
+            const targetTimestamp = targetMessage._source.timestamp
+          
+            console.log('📅 API: Target message timestamp:', targetTimestamp)
             
-            // Now count messages before this timestamp in chronological order
+            // Count messages before this timestamp in the same order as the main search
+            // Since normal search is desc (newest first), we count messages with timestamps > target
             const countQuery = {
               query: {
                 bool: {
                   must: [
                     ...must,
-                    { range: { timestamp: { lt: targetTimestamp } } }
+                    { range: { timestamp: { gt: targetTimestamp } } }
                   ]
                 }
               }
             }
+            
+            console.log('🔍 API: Count query:', JSON.stringify(countQuery, null, 2))
             
             const countResponse = await openSearchClient.search({
               index: 'messages',
@@ -114,9 +128,18 @@ export async function GET(request: NextRequest) {
             
             const messagesBeforeTarget = countResponse.body.hits.total.value
             targetPage = Math.floor(messagesBeforeTarget / size) + 1
+            
+            console.log('📊 API: Page calculation:', {
+              messagesBeforeTarget,
+              size,
+              calculatedPage: targetPage,
+              originalPage: page
+            })
+          } else {
+            console.log('❌ API: Target message not found in OpenSearch')
           }
         } catch (error) {
-          console.error('Error finding target page:', error)
+          console.error('❌ API: Error finding target page:', error)
         }
       }
 

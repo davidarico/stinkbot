@@ -134,19 +134,21 @@ export default function AdminPage() {
           </Button>
         </div>
         
-        <Card className="bg-gray-800 border-gray-700">
-          <CardHeader>
-            <CardTitle className="text-white">Admin Panel</CardTitle>
-            <CardDescription className="text-gray-300">
-              Welcome to the Stinkwolf admin panel. Additional features will be added here.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-gray-300">
-              This is a protected admin area. You are successfully authenticated.
-            </p>
-          </CardContent>
-        </Card>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <Card className="bg-gray-800 border-gray-700 hover:bg-gray-750 transition-colors cursor-pointer" onClick={() => router.push('/admin/kanban')}>
+            <CardHeader>
+              <CardTitle className="text-white">Development Kanban</CardTitle>
+              <CardDescription className="text-gray-300">Manage development tasks and project progress</CardDescription>
+            </CardHeader>
+          </Card>
+          
+          <Card className="bg-gray-800 border-gray-700 hover:bg-gray-750 transition-colors cursor-pointer" onClick={() => router.push('/admin/feedback')}>
+            <CardHeader>
+              <CardTitle className="text-white">User Feedback</CardTitle>
+              <CardDescription className="text-gray-300">Review and manage user feedback from Discord</CardDescription>
+            </CardHeader>
+          </Card>
+        </div>
       </div>
     </div>
   )

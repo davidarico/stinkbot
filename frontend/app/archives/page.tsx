@@ -8,8 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { Separator } from '@/components/ui/separator'
-import { ChevronLeft, ChevronRight, Search, MessageSquare, User, Hash } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Search, MessageSquare, Hash, Reply } from 'lucide-react'
 import { format } from 'date-fns'
 import { extractMediaFromContent } from '@/lib/media-utils'
 import { MediaDisplay } from '@/components/MediaDisplay'
@@ -73,6 +72,7 @@ export default function ArchivesPage() {
   const [users, setUsers] = useState<Array<{ key: string; count: number }>>([])
   const [jumpToMessage, setJumpToMessage] = useState<SearchResult | null>(null)
   const jumpToMessageRef = useRef<SearchResult | null>(null)
+  const [replyPreviews, setReplyPreviews] = useState<Map<string, { content: string; username: string }>>(new Map())
 
   const ITEMS_PER_PAGE = 20
 
@@ -87,24 +87,46 @@ export default function ArchivesPage() {
   // Scroll to target message when jumping to a specific message
   useEffect(() => {
     if (jumpToMessage && results.length > 0) {
+      console.log('🎯 Attempting to scroll to message:', jumpToMessage._source.messageId)
+      console.log('📄 Current results count:', results.length)
+      
       // Find the target message in the results
-      const targetIndex = results.findIndex(result => result._id === jumpToMessage._id)
+      // Use the Discord messageId instead of OpenSearch _id
+      const targetIndex = results.findIndex(result => result._source.messageId === jumpToMessage._source.messageId)
+      console.log('🔍 Target message found at index:', targetIndex)
+      
       if (targetIndex !== -1) {
+        console.log('✅ Found target message, scrolling to it...')
         // Scroll to the message after a short delay to ensure DOM is ready
         setTimeout(() => {
-          const messageElement = document.getElementById(`message-${jumpToMessage._id}`)
+          const messageElement = document.getElementById(`message-${jumpToMessage._source.messageId}`)
           if (messageElement) {
+            console.log('🎯 Scrolling to message element')
             messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
             // Add a temporary highlight effect
             messageElement.classList.add('ring-2', 'ring-blue-500', 'ring-opacity-50')
             setTimeout(() => {
               messageElement.classList.remove('ring-2', 'ring-blue-500', 'ring-opacity-50')
             }, 3000)
+          } else {
+            console.log('❌ Message element not found in DOM')
           }
         }, 100)
+      } else {
+        // Message not found in current results - this might happen if the page calculation was off
+        console.log('❌ Target message not found in current results')
+        console.log('📋 Available message IDs:', results.map(r => r._source.messageId).slice(0, 5))
+        
+        // If we're jumping to a message and it's not found, try searching for it specifically
+        if (jumpToMessageRef.current) {
+          console.log('🔄 Attempting to find message on different page...')
+          // This will trigger a new search with the jumpToMessageId parameter
+          // The API will recalculate the correct page
+        }
       }
       // Clear the jump target after a delay to ensure search completes
       setTimeout(() => {
+        console.log('🧹 Clearing jump target')
         setJumpToMessage(null)
         jumpToMessageRef.current = null
       }, 500)
@@ -127,6 +149,7 @@ export default function ArchivesPage() {
   }
 
   const searchMessages = async () => {
+    console.log('🔍 searchMessages called with filters:', filters)
     setLoading(true)
     try {
       const params = new URLSearchParams({
@@ -140,19 +163,59 @@ export default function ArchivesPage() {
 
       // Add jump to message parameter if we're jumping to a specific message
       if (jumpToMessageRef.current) {
-        params.append('jumpToMessageId', jumpToMessageRef.current._id)
+        params.append('jumpToMessageId', jumpToMessageRef.current._source.messageId)
+        console.log('🎯 Adding jumpToMessageId:', jumpToMessageRef.current._source.messageId)
       }
 
+      console.log('📡 Making search request with params:', params.toString())
       const response = await fetch(`/api/archives/search?${params}`)
       const data: SearchResponse = await response.json()
       
+      console.log('📊 Search results:', {
+        totalHits: data.hits.total.value,
+        resultsCount: data.hits.hits.length,
+        targetPage: data.targetPage
+      })
+      
       setResults(data.hits.hits)
       setTotalHits(data.hits.total.value)
+      
+      // Fetch reply previews for messages that are replies
+      await fetchReplyPreviews(data.hits.hits)
     } catch (error) {
-      console.error('Error searching messages:', error)
+      console.error('❌ Error searching messages:', error)
     } finally {
       setLoading(false)
     }
+  }
+
+  const fetchReplyPreviews = async (messages: SearchResult[]) => {
+    const newPreviews = new Map<string, { content: string; username: string }>()
+    
+    for (const message of messages) {
+      if (message._source.replyToMessageId) {
+        try {
+          const response = await fetch(`/api/archives/message/${message._source.replyToMessageId}`)
+          const data = await response.json()
+          
+          if (data.message) {
+            const originalContent = data.message._source.content
+            const preview = originalContent 
+              ? originalContent.length > 100 
+                ? originalContent.substring(0, 100) + '...' 
+                : originalContent
+              : '[No text content]'
+            const username = data.message._source.displayName || data.message._source.username
+            newPreviews.set(message._id, { content: preview, username })
+          }
+        } catch (error) {
+          console.error('Error fetching reply preview:', error)
+          newPreviews.set(message._id, { content: '[Original message not found]', username: 'Unknown' })
+        }
+      }
+    }
+    
+    setReplyPreviews(newPreviews)
   }
 
   const handleJumpToMessage = async (message: SearchResult) => {
@@ -160,41 +223,108 @@ export default function ArchivesPage() {
     setJumpToMessage(message)
     jumpToMessageRef.current = message
     
-    // Calculate the correct page first
-    try {
-      const params = new URLSearchParams({
-        query: '',
-        game: '',
-        channel: message._source.channelName,
-        user: '',
-        page: '1',
-        size: ITEMS_PER_PAGE.toString(),
-        jumpToMessageId: message._id
-      })
+    // Check if we need to change filters to find this message
+    const needsSearch = 
+      filters.channel !== message._source.channelName ||
+      filters.game !== 'all' ||
+      filters.user !== 'all' ||
+      filters.query !== ''
+    
+    console.log('Jump to message:', {
+      targetChannel: message._source.channelName,
+      currentChannel: filters.channel,
+      currentGame: filters.game,
+      currentUser: filters.user,
+      currentQuery: filters.query,
+      needsSearch,
+      openSearchId: message._id,
+      discordMessageId: message._source.messageId
+    })
+    
+    if (needsSearch) {
+      console.log('🔄 Performing search for target message...')
+      // Calculate the correct page first
+      try {
+        const params = new URLSearchParams({
+          query: '',
+          game: '',
+          channel: message._source.channelName,
+          user: '',
+          page: '1',
+          size: ITEMS_PER_PAGE.toString(),
+          jumpToMessageId: message._id
+        })
 
-      const response = await fetch(`/api/archives/search?${params}`)
-      const data: SearchResponse = await response.json()
-      
-      // Set filters with the correct page
-      const newFilters = {
-        query: '',
-        game: 'all',
-        channel: message._source.channelName,
-        user: 'all',
-        page: data.targetPage || 1
+        console.log('📡 Search params:', params.toString())
+        const response = await fetch(`/api/archives/search?${params}`)
+        const data: SearchResponse = await response.json()
+        
+        console.log('📊 Search response:', {
+          targetPage: data.targetPage,
+          totalHits: data.hits.total.value,
+          resultsCount: data.hits.hits.length
+        })
+        
+        // Set filters with the correct page
+        const newFilters = {
+          query: '',
+          game: 'all',
+          channel: message._source.channelName,
+          user: 'all',
+          page: data.targetPage || 1
+        }
+        
+        console.log('🎯 Setting new filters:', newFilters)
+        setFilters(newFilters)
+      } catch (error) {
+        console.error('❌ Error calculating target page:', error)
+        // Fallback to page 1
+        setFilters({
+          query: '',
+          game: 'all',
+          channel: message._source.channelName,
+          user: 'all',
+          page: 1
+        })
       }
+    } else {
+      console.log('✅ Message should be in current results, just scrolling...')
+      // Message should be in current results, just scroll to it
+      // The useEffect will handle the scrolling
+    }
+  }
+
+  const handleViewReply = async (message: SearchResult) => {
+    if (!message._source.replyToMessageId) return
+    
+    try {
+      // Get the replied message using the message API endpoint
+      const response = await fetch(`/api/archives/message/${message._source.replyToMessageId}`)
+      const data = await response.json()
       
-      setFilters(newFilters)
+      if (data.message) {
+        // Jump to the replied message
+        await handleJumpToMessage(data.message)
+      }
     } catch (error) {
-      console.error('Error calculating target page:', error)
-      // Fallback to page 1
-      setFilters({
-        query: '',
-        game: 'all',
-        channel: message._source.channelName,
-        user: 'all',
-        page: 1
-      })
+      console.error('Error finding replied message:', error)
+    }
+  }
+
+  const handleViewOriginal = async (message: SearchResult) => {
+    if (!message._source.replyToMessageId) return
+    
+    try {
+      // Get the original message using the message API endpoint
+      const response = await fetch(`/api/archives/message/${message._source.replyToMessageId}`)
+      const data = await response.json()
+      
+      if (data.message) {
+        // Jump to the original message (same behavior as handleJumpToMessage)
+        await handleJumpToMessage(data.message)
+      }
+    } catch (error) {
+      console.error('Error finding original message:', error)
     }
   }
 
@@ -204,6 +334,8 @@ export default function ArchivesPage() {
       [key]: value,
       page: 1 // Reset to first page when filters change
     }))
+    // Clear reply previews when filters change
+    setReplyPreviews(new Map())
   }
 
   const handlePageChange = (newPage: number) => {
@@ -368,7 +500,36 @@ export default function ArchivesPage() {
                           <span className="text-xs text-gray-400">
                             {format(new Date(result._source.timestamp), 'MMM d, yyyy HH:mm')}
                           </span>
+                          {/* Show reply indicator in the header */}
+                          {result._source.replyToMessageId && (
+                            <Badge variant="outline" className="text-xs border-green-600 text-green-400 bg-green-900/20">
+                              <Reply className="h-2 w-2 mr-1" />
+                              Reply
+                            </Badge>
+                          )}
                         </div>
+                        
+                        {/* Show reply preview */}
+                        {result._source.replyToMessageId && (
+                          <div className="mb-2 p-2 bg-gray-700/50 border-l-2 border-green-500 rounded-r text-xs text-gray-300">
+                            <div className="flex items-center gap-1 mb-1">
+                              <Reply className="h-3 w-3 text-green-400" />
+                              <span className="text-green-400 font-medium">Replying to:</span>
+                            </div>
+                            <div className="text-gray-300">
+                              {(() => {
+                                const preview = replyPreviews.get(result._id)
+                                if (!preview) return 'Loading preview...'
+                                return (
+                                  <>
+                                    <span className="text-green-400 font-medium">{preview.username}</span>
+                                    <span className="text-gray-400">: {preview.content}</span>
+                                  </>
+                                )
+                              })()}
+                            </div>
+                          </div>
+                        )}
                         
                         <div className="flex items-center gap-2 mb-2">
                           <Hash className="h-3 w-3 text-gray-400" />
@@ -436,13 +597,24 @@ export default function ArchivesPage() {
 
                       </div>
                       
-                      <div className="flex-shrink-0">
+                      <div className="flex-shrink-0 flex flex-col gap-2">
                         <button
                           className="text-blue-400 hover:text-blue-300 text-sm font-medium transition-colors"
                           onClick={() => handleJumpToMessage(result)}
                         >
                           Jump to Message
                         </button>
+                        
+                        {/* Jump to Original button for reply messages */}
+                        {result._source.replyToMessageId && (
+                          <button
+                            className="text-green-400 hover:text-green-300 text-sm font-medium transition-colors flex items-center gap-1"
+                            onClick={() => handleViewOriginal(result)}
+                          >
+                            <Reply className="h-3 w-3" />
+                            Jump to Original
+                          </button>
+                        )}
                       </div>
                     </div>
                   </CardContent>
