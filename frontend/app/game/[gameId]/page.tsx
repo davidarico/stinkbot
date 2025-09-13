@@ -7,13 +7,14 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Search, Users, Shuffle, Moon, Sun, Filter, Check, Settings, Plus } from "lucide-react"
+import { Search, Users, Shuffle, Moon, Sun, Filter, Check, Settings, Plus, ClipboardList } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { SettingsModal } from "@/components/settings-modal"
 import { AddChannelModal } from "@/components/add-channel-modal"
 import { ManageChannelsModal } from "@/components/manage-channels-modal"
 import { ActionCalculators } from "@/components/action-calculators"
+import { BreakdownBuilderModal } from "@/components/breakdown-builder-modal"
 
 interface Player {
   id: number
@@ -108,6 +109,7 @@ export default function GameManagementPage() {
   const [gameSettings, setGameSettings] = useState<any>(null);
   const [addChannelModalOpen, setAddChannelModalOpen] = useState(false);
   const [manageChannelsModalOpen, setManageChannelsModalOpen] = useState(false);
+  const [breakdownBuilderModalOpen, setBreakdownBuilderModalOpen] = useState(false);
 
   useEffect(() => {
     // Check if user is already authenticated for this game
@@ -919,6 +921,19 @@ export default function GameManagementPage() {
                 </Button>
               </>
             )}
+            
+            <Button
+              onClick={() => setBreakdownBuilderModalOpen(true)}
+              variant="outline"
+              size="sm"
+              className={cn(
+                "flex items-center gap-2",
+                isDayPhase ? "bg-white/90" : "bg-white/10"
+              )}
+            >
+              <ClipboardList className="w-4 h-4" />
+              Breakdown Builder
+            </Button>
             
             <Button
               onClick={() => setSettingsModalOpen(true)}
@@ -1929,6 +1944,15 @@ export default function GameManagementPage() {
         gameId={gameId}
         isOpen={manageChannelsModalOpen}
         onClose={() => setManageChannelsModalOpen(false)}
+      />
+      
+      {/* Breakdown Builder Modal */}
+      <BreakdownBuilderModal
+        isOpen={breakdownBuilderModalOpen}
+        onClose={() => setBreakdownBuilderModalOpen(false)}
+        availableRoles={availableRoles}
+        gameId={gameId}
+        isDayPhase={isDayPhase}
       />
     </div>
   )

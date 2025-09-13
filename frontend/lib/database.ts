@@ -375,6 +375,30 @@ export class DatabaseService {
     }
   }
 
+  async getPlayerRoles(gameId: string): Promise<any[]> {
+    try {
+      const result = await this.pool.query(
+        `SELECT DISTINCT
+         r.id as role_id,
+         r.name as role_name,
+         r.team as role_team,
+         r.has_charges,
+         r.default_charges,
+         r.has_win_by_number,
+         r.default_win_by_number,
+         r.in_wolf_chat
+         FROM players p
+         JOIN roles r ON r.id = p.role_id
+         WHERE p.game_id = $1 AND p.role_id IS NOT NULL`,
+        [parseInt(gameId)]
+      )
+      return result.rows
+    } catch (error) {
+      console.error('Error fetching player roles:', error)
+      throw error
+    }
+  }
+
   async saveGameRoles(gameId: string, gameRoles: Array<{roleId: number, roleCount: number, customName?: string, charges?: number, winByNumber?: number}>) {
     try {
       const client = await this.pool.connect()
