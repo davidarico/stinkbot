@@ -1,5 +1,5 @@
 -- Werewolf Discord Bot Database Schema
--- Generated automatically on 2025-09-12T22:57:38.718Z
+-- Generated automatically on 2025-09-26T03:01:09.916Z
 -- This file shows the current database structure with table comments
 -- Run this after migrations to get the latest schema
 
@@ -10,6 +10,13 @@ CREATE TABLE admin_settings (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(setting_key)
+);
+
+CREATE TABLE banned_users (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(20) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id)
 );
 
 -- Stores user feedback submitted through Discord bot commands

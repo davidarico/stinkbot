@@ -863,6 +863,16 @@ class WerewolfBot {
         const serverId = message.guild.id;
         const user = message.author;
 
+        // Check if user is banned
+        const bannedUser = await this.db.query(
+            'SELECT * FROM banned_users WHERE user_id = $1',
+            [user.id]
+        );
+
+        if (bannedUser.rows.length > 0) {
+            return message.reply('❌ It would apear you are banned... uh oh...');
+        }
+
         // Get active game
         const gameResult = await this.db.query(
             'SELECT * FROM games WHERE server_id = $1 AND status = $2',
