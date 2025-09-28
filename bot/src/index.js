@@ -69,7 +69,7 @@ client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
     
     // Handle alive role mentions first
-    // await aliveMentionDetector.handleMessage(message); // TEMPORARILY DISABLED
+    await aliveMentionDetector.handleMessage(message);
     
     const prefix = process.env.BOT_PREFIX || 'Wolf.';
     if (!message.content.toLowerCase().startsWith(prefix.toLowerCase())) return;
