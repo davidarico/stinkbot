@@ -1770,8 +1770,7 @@ class WerewolfBot {
                                     const member = await this.client.guilds.cache.first().members.fetch(player.user_id);
                                     if (member) {
                                         await wolfChannel.permissionOverwrites.edit(member.id, {
-                                            ViewChannel: true,
-                                            SendMessages: true
+                                            ViewChannel: true
                                         });
                                         wolvesAddedToChat++;
                                         console.log(`[DEBUG] Successfully added ${player.username} to wolf chat`);
