@@ -2133,7 +2133,7 @@ class WerewolfBot {
             const votesResult = await this.db.query(
                 `SELECT v.target_user_id, p.username as target_username, 
                         COUNT(*) as vote_count,
-                        STRING_AGG(p2.username, ', ') as voters
+                        ARRAY_AGG(p2.username) as voters
                  FROM votes v
                  JOIN players p ON v.target_user_id = p.user_id AND p.game_id = v.game_id
                  JOIN players p2 ON v.voter_user_id = p2.user_id AND p2.game_id = v.game_id
@@ -2146,7 +2146,7 @@ class WerewolfBot {
             let voteText = 'No votes yet.';
             if (votesResult.rows.length > 0) {
                 voteText = votesResult.rows.map(row => {
-                    const voters = row.voters.split(', ').map(voter => `- ${voter}`).join('\n');
+                    const voters = row.voters.map(voter => `- ${voter}`).join('\n');
                     return `**${row.target_username}** (${row.vote_count})\n${voters}`;
                 }).join('\n\n');
             }
