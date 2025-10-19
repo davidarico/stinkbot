@@ -140,12 +140,21 @@ AWS_S3_BUCKET_NAME=your-s3-bucket-name-here
 5. Enable the following intents:
    - MESSAGE CONTENT INTENT
    - SERVER MEMBERS INTENT
-6. Invite the bot to your server with the following permissions:
-   - Manage Channels
-   - Send Messages
-   - Read Message History
+6. Go to "Installation" tab 
+7. Ensure that "bot" is added under "Guild Install" > "Scopes"
+8. Ensure the following Permissions are granted under "Guild Install" > "Permissions"
+   - Add Reactions
    - Embed Links
-   - Read Messages/View Channels
+   - Manage Channels
+   - Manage Messages (*needed for creating Mod role with this permission*)
+   - Manage Roles
+   - Pin Messages (*newish alternative role for allowing just Pin without broader Manage access*)
+   - Read Message History
+   - Send Messages   
+   - View Channels
+9. Open the "Install Link" in your browser, select the Server where you want to add the bot, Authorize all
+10. With bot running, use command `wolf.server_roles`
+11. Grant bot user the "Mod" role
 
 ### S3 Bucket Setup (for Image Processing)
 
@@ -200,6 +209,7 @@ Commands are divided into two categories: **Player Commands** (available to ever
 | `Wolf.vote @user` | Vote for a player (day phase only) |
 | `Wolf.retract` | Retract your current vote |
 | `Wolf.alive` | Show all players currently alive in the game |
+| `Wolf.players` | Show all players alive or dead in the game |
 | `Wolf.inlist` | Show all players signed up for the current game (mobile-friendly format) |
 | `Wolf.my_journal` | 📔 Find your personal journal channel |
 | `Wolf.help` | Show all available commands |
@@ -209,7 +219,7 @@ Commands are divided into two categories: **Player Commands** (available to ever
 | Command | Description |
 |---------|-------------|
 | `Wolf.setup` | Configure server settings |
-| `Wolf.roles` | 🎭 Create all game roles |
+| `Wolf.server_roles` | 🎭 Create all game roles |
 | `Wolf.create` | Create a new game |
 | `Wolf.start` | Start the game and create channels |
 | `Wolf.next` | Move to next phase (day/night) |
@@ -225,7 +235,7 @@ Commands are divided into two categories: **Player Commands** (available to ever
 | `Wolf.balance_journals` | 📚 Balance journals across categories (handles Discord's 50 channel limit) |
 | `Wolf.populate_journals [number]` | 🧪 Create test journals for testing the balancing system |
 
-| `Wolf.role_assign` | 🎭 Randomly assign roles from a provided list to all signed-up players |
+| `[DEPRECATED] Wolf.role_assign` | 🎭 Randomly assign roles from a provided list to all signed-up players |
 | `Wolf.roles_list` | 📋 Display all assigned roles for players in the current game |
 | `Wolf.server` | 🖥️ Display detailed server information for logging and debugging |
 | `Wolf.ia <YYYY-MM-DD HH:MM>` | 📊 Get message count per player in town square since specified date/time (EST) |
@@ -244,7 +254,7 @@ Commands are divided into two categories: **Player Commands** (available to ever
    Wolf.setup
    # Follow prompts to set prefix, starting number, and game name
    
-   Wolf.roles
+   Wolf.server_roles
    # Creates all necessary game roles
    ```
 

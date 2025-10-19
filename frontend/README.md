@@ -142,10 +142,14 @@ npm start
 
 ### Accessing Game Management
 
-1. Navigate to the homepage
-2. Click "Access Test Game Management" to manage a specific game
-3. Enter the game password (category ID from the database)
-4. Use the management interface to:
+*Note: "Access Test Game Management" seems to be deprecated. Instructions updated accordingly*
+
+1. Navigate to `[SITE_URL]/game/[GAME_ID]`
+   - SITE_URL defaults to localhost:3000
+   - GAME_ID can be found in mod-chat embed after starting a game
+2. Enter the game password (category ID from the database)
+   - Should be automatically inserted as `?p=<id>` if clicked from admin embed
+3. Use the management interface to:
    - Assign roles to players
    - Track game phases
    - Monitor voting

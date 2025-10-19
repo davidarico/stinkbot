@@ -314,7 +314,7 @@ class WerewolfBot {
         const command = args.shift().toLowerCase();
 
         // Commands that anyone can use
-        const playerCommands = ['in', 'out', 'vote', 'retract', 'alive', 'peed', 'help', 'meme', 'wolf_list', 'mylo', 'feedback', 'my_journal'];
+        const playerCommands = ['in', 'out', 'vote', 'retract', 'alive', 'peed', 'help', 'meme', 'wolf_list', 'mylo', 'feedback', 'my_journal', 'players'];
         
         // Check permissions for admin-only commands
         if (!playerCommands.includes(command) && !this.hasModeratorPermissions(message.member)) {
@@ -368,6 +368,15 @@ class WerewolfBot {
                 case 'alive':
                     await this.handleAlive(message);
                     break;
+                // <fletch> helpful for making memos after some players have died without manually grabbing dead names
+                case 'players':
+                    await this.handleAlive(message, true);
+                    break;
+                // Mod utility which simply removes "Alive" and adds "Dead" from a player
+                case 'kill':
+                    await this.killPlayer(message)
+                    break;
+                // </fletch>
                 case 'inlist':
                     await this.handleInList(message, args);
                     break;
@@ -502,6 +511,8 @@ class WerewolfBot {
             if (role && member.roles.cache.has(role.id)) {
                 await member.roles.remove(role);
                 console.log(`Removed role "${roleName}" from ${member.displayName}`);
+                // For killPlayer to determine if player was actually alive
+                return true;
             }
         } catch (error) {
             console.error(`Error removing role "${roleName}":`, error);
@@ -718,7 +729,7 @@ class WerewolfBot {
         const websiteUrl = process.env.WEBSITE_URL;
         let managementUrl = 'Not configured (WEBSITE_URL env variable missing)';
         if (websiteUrl) {
-            managementUrl = `${websiteUrl}/game/${gameId}`;
+            managementUrl = `${websiteUrl}/game/${gameId}?p=${category.id}`;
         }
 
         const embed = new EmbedBuilder()
@@ -727,7 +738,7 @@ class WerewolfBot {
             .addFields(
                 { name: 'Category', value: categoryName, inline: true },
                 { name: 'Signup Channel', value: `<#${signupChannel.id}>`, inline: true },
-                { name: '🌐 Management URL', value: managementUrl, inline: false },
+                { name: '🌐 Management URL', value: `${managementUrl}`, inline: false },
                 { name: '🔑 Password', value: `\`${category.id}\``, inline: true },
                 { name: '🆔 Game ID', value: `\`${gameId}\``, inline: true }
             )
@@ -1258,14 +1269,16 @@ class WerewolfBot {
         
         // Apply dead chat permissions to the renamed signup channel
         // Dead can see and type, Alive cannot see, Spectators can see and type, Mods can see and type
-        await signupChannel.permissionOverwrites.edit(message.guild.roles.everyone.id, {
-            ViewChannel: false,
-            SendMessages: false
-        });
+        // <fletch> What's the point of removing @everyone access? </fletch>
+        // await signupChannel.permissionOverwrites.edit(message.guild.roles.everyone.id, {
+        //     ViewChannel: false,
+        //     SendMessages: false
+        // });
         await signupChannel.permissionOverwrites.edit(deadRole.id, {
             ViewChannel: true,
             SendMessages: true
         });
+        // <fletch> Removing alive access is sufficient (tested) </fletch>
         await signupChannel.permissionOverwrites.edit(aliveRole.id, {
             ViewChannel: false
         });
@@ -2506,8 +2519,8 @@ class WerewolfBot {
 
         // Reset all members to Spectator role
         let resetMembersCount = 0;
+        const spectatorRole = message.guild.roles.cache.find(r => r.name === 'Spectator');
         try {
-            const spectatorRole = message.guild.roles.cache.find(r => r.name === 'Spectator');
             if (spectatorRole) {
                 // Fetch all members in the guild
                 const members = await message.guild.members.fetch();
@@ -2551,9 +2564,20 @@ class WerewolfBot {
                     for (const [channelId, channel] of categoryChannels) {
                         try {
                             // Remove SendMessages permission for Alive role while keeping ViewChannel if it exists
+                            // <fletch> Once game ends, players should be able to view ALL channels except mod-chat
+                            if (channel.name.indexOf("mod-chat") >= 0)
+                                continue;
+
                             await channel.permissionOverwrites.edit(aliveRole.id, {
-                                SendMessages: false
+                                SendMessages: false,
+                                ViewChannel: true
+                            });                            
+                            // Everyone should be able to see all non-mod channels once game has ended (should fix issue where SignedUp cannot see past games?)
+                            await channel.permissionOverwrites.edit(message.guild.roles.everyone.id, {
+                                ViewChannel: true
+                                // Do not touch SendMessages, should be ok already since only Alive previously had access
                             });
+                            // </fletch>
                             updatedChannelsCount++;
                             console.log(`Removed typing permissions for Alive role in channel: ${channel.name}`);
                         } catch (error) {
@@ -2784,6 +2808,7 @@ class WerewolfBot {
                        '`Wolf.vote @user` - Vote for a player (voting booth, day phase only)\n' +
                        '`Wolf.retract` - Retract your current vote\n' +
                        '`Wolf.alive` - Show all players currently alive\n' +
+                       '`Wolf.players` - Show all players dead or alive\n' +
                        '`Wolf.meme` - 😤 I dare you to try me\n' +
                        '`Wolf.help` - Show this help message\n' +
                        '`Wolf.feedback` - Submit feedback to Stinky',
@@ -2827,8 +2852,10 @@ class WerewolfBot {
                 },
                 { 
                     name: '🎭 Role & Player Management', 
-                    value: '`Wolf.role_assign` - Randomly assign roles to signed-up players\n' +
-                           '`Wolf.roles_list` - 📋 Display all assigned roles for current game', 
+                    value:  // fletch: v Hallucinated or deprecated command v
+                            //'`Wolf.role_assign` - Randomly assign roles to signed-up players\n' +
+                           '`Wolf.roles_list` - 📋 Display all assigned roles for current game' +
+                           '`Wolf.kill @player` - 🔫 Removes Alive and adds Dead role\n' , 
                     inline: false 
                 },
                 { 
@@ -2855,7 +2882,7 @@ class WerewolfBot {
         await message.reply({ embeds: [embed] });
     }
 
-    async handleAlive(message) {
+    async handleAlive(message, isAddDead) {
         const serverId = message.guild.id;
 
         // Get active game
@@ -2883,60 +2910,40 @@ class WerewolfBot {
         // Filter alive players by checking Discord roles
         const aliveRole = message.guild.roles.cache.find(r => r.name === 'Alive');
         if (!aliveRole) {
-            return message.reply('❌ Alive role not found. Please use `Wolf.roles` to set up roles.');
+            return message.reply('❌ Alive role not found. Please use `Wolf.server_roles` to set up roles.');
+        }
+        const deadRole = message.guild.roles.cache.find(r => r.name === 'Dead');
+        if (!deadRole) {
+            return message.reply('❌ Alive role not found. Please use `Wolf.server_roles` to set up roles.');
         }
 
         // OPTIMIZATION: Fetch all guild members at once instead of individual calls
+        const alivePlayers = [];
         try {
+            // Use cached members for much faster processing
             await message.guild.members.fetch();
+            for (const player of allPlayers.rows) {
+                const member = message.guild.members.cache.get(player.user_id);
+                if (member) {
+                    if (member.roles.cache.has(aliveRole.id) || (isAddDead && member.roles.cache.has(deadRole.id))) {
+                        alivePlayers.push(player.username);
+                    }
+                }
+            }
         } catch (error) {
             console.log('Could not fetch all guild members, falling back to individual fetches');
-            // Fallback to original method if bulk fetch fails
-            const alivePlayers = [];
+            // Fallback to original method if bulk fetch fails            
             for (const player of allPlayers.rows) {
                 try {
                     const member = await message.guild.members.fetch(player.user_id);
-                    if (member.roles.cache.has(aliveRole.id)) {
+                    if (member.roles.cache.has(aliveRole.id) || (isAddDead && member.roles.cache.has(deadRole.id))) {
                         alivePlayers.push(player.username);
                     }
                 } catch (error) {
                     console.log(`Could not fetch member ${player.user_id}, skipping`);
                 }
             }
-            
-            if (alivePlayers.length === 0) {
-                return message.reply('💀 No players are currently alive in the game.');
-            }
-
-            // Sort players by stripping non-alphanumeric characters while maintaining original display names
-            const sortedAlivePlayers = alivePlayers.sort((a, b) => {
-                const aClean = a.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-                const bClean = b.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-                return aClean.localeCompare(bClean);
-            });
-
-            const playerList = sortedAlivePlayers.map((player, index) => `${index + 1}. ${player}`).join('\n');
-            
-            const embed = new EmbedBuilder()
-                .setTitle('💚 Alive Players')
-                .setDescription(`Here are all the players currently alive in the game:`)
-                .addFields({ 
-                    name: `Players (${alivePlayers.length})`, 
-                    value: playerList 
-                })
-                .setColor(0x00FF00);
-
-            return await message.reply({ embeds: [embed] });
-        }
-
-        // Use cached members for much faster processing
-        const alivePlayers = [];
-        for (const player of allPlayers.rows) {
-            const member = message.guild.members.cache.get(player.user_id);
-            if (member && member.roles.cache.has(aliveRole.id)) {
-                alivePlayers.push(player.username);
-            }
-        }
+        }        
 
         if (alivePlayers.length === 0) {
             return message.reply('💀 No players are currently alive in the game.');
@@ -2952,8 +2959,8 @@ class WerewolfBot {
         const playerList = sortedAlivePlayers.map((player, index) => `${index + 1}. ${player}`).join('\n');
         
         const embed = new EmbedBuilder()
-            .setTitle('💚 Alive Players')
-            .setDescription(`Here are all the players currently alive in the game:`)
+            .setTitle(isAddDead ? '👥 All Players' : '💚 Alive Players')
+            .setDescription(isAddDead ? 'Here are all players, alive or dead, in this game:' : `Here are all the players currently alive in the game:`)
             .addFields({ 
                 name: `Players (${alivePlayers.length})`, 
                 value: playerList 
@@ -3575,6 +3582,26 @@ class WerewolfBot {
         }
     }
 
+    async killPlayer(message) {
+        // Check if user mentioned someone
+        const targetUser = message.mentions.users.first();
+        if (!targetUser) {
+            return message.reply('❌ Please mention a user to kill: `Wolf.kill @user`');
+        }
+        
+        // Check if the mentioned user is in the server
+        const targetMember = await message.guild.members.fetch(targetUser.id).catch(() => null);
+        if (!targetMember) {
+            return message.reply('❌ That user is not in this server!');
+        }
+
+        if (await this.removeRole(targetMember, 'Alive')) {
+            await this.assignRole(targetMember, 'Dead');
+        } else {
+            return message.reply(`🪦 That user is not Alive in this game!`);
+        }
+    }
+
     async handleJournal(message, args) {
         const serverId = message.guild.id;
 
@@ -3945,7 +3972,7 @@ class WerewolfBot {
             // Filter players to only include those with the Alive role
             const aliveRole = message.guild.roles.cache.find(r => r.name === 'Alive');
             if (!aliveRole) {
-                return message.reply('❌ Alive role not found. Please use `Wolf.roles` to set up roles.');
+                return message.reply('❌ Alive role not found. Please use `Wolf.server_roles` to set up roles.');
             }
 
             // OPTIMIZATION: Fetch all guild members at once instead of individual calls
@@ -4190,7 +4217,7 @@ class WerewolfBot {
             // Filter players to only include those with the Alive role
             const aliveRole = message.guild.roles.cache.find(r => r.name === 'Alive');
             if (!aliveRole) {
-                return message.reply('❌ Alive role not found. Please use `Wolf.roles` to set up roles.');
+                return message.reply('❌ Alive role not found. Please use `Wolf.server_roles` to set up roles.');
             }
 
             // OPTIMIZATION: Fetch all guild members at once instead of individual calls
@@ -4486,7 +4513,7 @@ class WerewolfBot {
             // Get the alive role
             const aliveRole = message.guild.roles.cache.find(r => r.name === 'Alive');
             if (!aliveRole) {
-                return message.reply('❌ Alive role not found. Please use `Wolf.roles` to set up roles.');
+                return message.reply('❌ Alive role not found. Please use `Wolf.server_roles` to set up roles.');
             }
 
             // Get the results channel
