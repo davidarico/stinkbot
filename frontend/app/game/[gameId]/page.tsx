@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -75,11 +75,13 @@ interface Vote {
 
 export default function GameManagementPage() {
   const params = useParams()
+  const opts = useSearchParams()
   const gameId = params.gameId as string
   const { toast } = useToast()
 
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [password, setPassword] = useState("")
+  const [password, setPassword] = useState(opts?.get("p") ?? "")
+
   const [gameData, setGameData] = useState<GameData>({
     id: gameId,
     phase: "signup",
@@ -243,7 +245,7 @@ export default function GameManagementPage() {
   }
 
   const handleLogin = async () => {
-    if (!password.trim()) {
+    if (!password?.trim()) {
       toast({
         title: "Password Required",
         description: "Please enter a password",

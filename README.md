@@ -33,7 +33,7 @@ The Discord bot for managing Werewolf games.
 
 **Quick Start:**
 1. Copy `bot/.env.example` to `bot/.env` and fill in your values
-2. Set up your PostgreSQL database using `database/database_setup.sql`
+2. Set up your PostgreSQL database using `database/migrate` script, see [database/README.md](database/README.md)
 3. Start the bot: `npm run bot:start`
 
 For detailed setup and commands, see [bot/README.md](bot/README.md).

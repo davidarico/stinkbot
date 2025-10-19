@@ -12,8 +12,12 @@ Database migrations and setup scripts for StinkBot.
 ## Setup
 
 ### Prerequisites
-- PostgreSQL installed and running
-- Node.js for running migrations
+- [PostgreSQL](https://www.postgresql.org/) installed and running
+    - Post-install local run script (assuming Postgres\X\bin is added to path): 
+        ```batch
+        pg_ctl start -D "<path_to_data>\data"
+        ```
+- [Node.js](https://nodejs.org/) for running migrations
 
 ### Environment Configuration
 1. Copy `.env.example` to `.env`
