@@ -77,6 +77,7 @@ export default function ArchivesPage() {
   const [jumpToMessage, setJumpToMessage] = useState<SearchResult | null>(null)
   const jumpToMessageRef = useRef<SearchResult | null>(null)
   const [replyPreviews, setReplyPreviews] = useState<Map<string, { content: string; username: string }>>(new Map())
+  const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set())
 
   const ITEMS_PER_PAGE = 20
 
@@ -174,7 +175,7 @@ export default function ArchivesPage() {
   }
 
     // Scroll to target message when jumping to a specific message
-    const handleJumpToRepliedMessage = (message: SearchResult) => {
+    const handleJumpToRepliedMessage = async (message: SearchResult) => {
 
       console.log('Attempting to scroll to message:', message._source.replyToMessageId)
       console.log('Current results count:', results.length)
@@ -205,10 +206,18 @@ export default function ArchivesPage() {
         // Message not found in current results - this might happen if the page calculation was off
         console.log('Target message not found in current results')
         console.log('Available message IDs:', results.map(r => r._source.messageId).slice(0, 5))
-  
-        handleJumpToMessage(message)
+
+        const response = await fetch(`/api/archives/message/${message._source.replyToMessageId}`)
+        const data = await response.json()
+
+        if (data.message) {
+          await handleJumpToMessage(data.message)
+        } else {
+          console.error('Error fetching reply message:', data.error)
+        }
       }
     }
+    
 
   const handleJumpToMessage = async (message: SearchResult) => {
     console.log('Performing search for target message...')
@@ -280,7 +289,7 @@ export default function ArchivesPage() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2 text-white">Message Archives</h1>
           <p className="text-gray-300">
-            Search through archived Discord messages from your Werewolf games
+            Search through archived Discord messages previous games
           </p>
         </div>
 
@@ -408,19 +417,22 @@ export default function ArchivesPage() {
                   >
                     <CardContent className="p-4">
                       <div className="flex items-start gap-3">
-                        <Avatar className="h-8 w-8">
-                          {result._source.profilePictureLink ? (
-                            <img
-                              src={result._source.profilePictureLink}
-                              alt={`${result._source.displayName || result._source.username}'s avatar`}
-                              className="h-8 w-8 rounded-full object-cover"
-                            />
-                          ) : (
-                            <AvatarFallback className="bg-gray-600 text-white">
-                              {result._source.displayName?.charAt(0) || '?'}
-                            </AvatarFallback>
-                          )}
-                        </Avatar>
+                       <Avatar className="h-8 w-8">
+                         {result._source.profilePictureLink && !brokenImages.has(result._source.userId) ? (
+                           <img
+                             src={result._source.profilePictureLink}
+                             alt={`${result._source.displayName || result._source.username}'s avatar`}
+                             className="h-8 w-8 rounded-full object-cover"
+                             onError={() => {
+                               setBrokenImages(prev => new Set(prev).add(result._source.userId))
+                             }}
+                           />
+                         ) : (
+                           <AvatarFallback className="bg-gray-600 text-white">
+                             {result._source.displayName?.charAt(0) || '?'}
+                           </AvatarFallback>
+                         )}
+                       </Avatar>
 
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
