@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Determine sort order based on whether we're jumping to a specific message
-    const sortOrder = jumpToMessageId ? 'asc' : 'desc' // asc for chronological reading, desc for normal browsing
+    const sortOrder = 'desc' // desc for normal browsing
     
     const searchBody = {
       query: {
@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
                 bool: {
                   must: [
                     ...must,
-                    { range: { timestamp: sortOrder === 'asc' ? { lt: targetTimestamp } : { gt: targetTimestamp } } }
+                    { range: { timestamp: { gt: targetTimestamp } } }
                   ]
                 }
               }
