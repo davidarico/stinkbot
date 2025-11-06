@@ -107,13 +107,14 @@ export async function GET(request: NextRequest) {
             console.log('📅 API: Target message timestamp:', targetTimestamp)
             
             // Count messages before this timestamp in the same order as the main search
-            // Since normal search is desc (newest first), we count messages with timestamps > target
+            // For asc order (chronological), count messages with timestamps < target
+            // For desc order (newest first), count messages with timestamps > target
             const countQuery = {
               query: {
                 bool: {
                   must: [
                     ...must,
-                    { range: { timestamp: { gt: targetTimestamp } } }
+                    { range: { timestamp: sortOrder === 'asc' ? { lt: targetTimestamp } : { gt: targetTimestamp } } }
                   ]
                 }
               }
@@ -145,7 +146,7 @@ export async function GET(request: NextRequest) {
 
     // Get updated display names and profile pictures from database
     const hits = response.body.hits.hits
-    const userIds = [...new Set(hits.map((hit: any) => hit._source.userId))]
+    const userIds: string[] = [...new Set<string>(hits.map((hit: any) => hit._source.userId as string))]
     
     if (userIds.length > 0) {
       const serverUsers = await db.getServerUsersByUserIds(userIds)

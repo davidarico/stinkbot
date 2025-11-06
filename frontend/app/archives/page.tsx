@@ -63,6 +63,10 @@ export default function ArchivesPage() {
     user: 'all',
     page: 1
   })
+
+  const areFiltersSet = () => {
+    return filters.query !== '' && filters.user !== 'all'
+  }
   
   const [results, setResults] = useState<SearchResult[]>([])
   const [totalHits, setTotalHits] = useState(0)
@@ -252,7 +256,7 @@ export default function ArchivesPage() {
           user: '',
           page: '1',
           size: ITEMS_PER_PAGE.toString(),
-          jumpToMessageId: message._id
+          jumpToMessageId: message._source.messageId
         })
 
         console.log('📡 Search params:', params.toString())
@@ -473,7 +477,7 @@ export default function ArchivesPage() {
               {results.map((result) => (
                 <Card 
                   key={result._id} 
-                  id={`message-${result._id}`}
+                  id={`message-${result._source.messageId}`}
                   className="hover:shadow-md transition-shadow bg-gray-800 border-gray-700"
                 >
                   <CardContent className="p-4">
@@ -598,13 +602,14 @@ export default function ArchivesPage() {
                       </div>
                       
                       <div className="flex-shrink-0 flex flex-col gap-2">
-                        <button
-                          className="text-blue-400 hover:text-blue-300 text-sm font-medium transition-colors"
-                          onClick={() => handleJumpToMessage(result)}
-                        >
-                          Jump to Message
-                        </button>
-                        
+                        {areFiltersSet() && (
+                          <button
+                            className="text-blue-400 hover:text-blue-300 text-sm font-medium transition-colors"
+                            onClick={() => handleJumpToMessage(result)}
+                          >
+                            Jump to Message
+                          </button>
+                        )}        
                         {/* Jump to Original button for reply messages */}
                         {result._source.replyToMessageId && (
                           <button
