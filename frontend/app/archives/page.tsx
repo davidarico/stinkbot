@@ -88,55 +88,6 @@ export default function ArchivesPage() {
     searchMessages()
   }, [filters])
 
-  // Scroll to target message when jumping to a specific message
-  useEffect(() => {
-    if (jumpToMessage && results.length > 0) {
-      console.log('🎯 Attempting to scroll to message:', jumpToMessage._source.messageId)
-      console.log('📄 Current results count:', results.length)
-
-      // Find the target message in the results
-      // Use the Discord messageId instead of OpenSearch _id
-      const targetIndex = results.findIndex(result => result._source.messageId === jumpToMessage._source.messageId)
-      console.log('🔍 Target message found at index:', targetIndex)
-
-      if (targetIndex !== -1) {
-        console.log('✅ Found target message, scrolling to it...')
-        // Scroll to the message after a short delay to ensure DOM is ready
-        setTimeout(() => {
-          const messageElement = document.getElementById(`message-${jumpToMessage._source.messageId}`)
-          if (messageElement) {
-            console.log('🎯 Scrolling to message element')
-            messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
-            // Add a temporary highlight effect
-            messageElement.classList.add('ring-2', 'ring-blue-500', 'ring-opacity-50')
-            setTimeout(() => {
-              messageElement.classList.remove('ring-2', 'ring-blue-500', 'ring-opacity-50')
-            }, 3000)
-          } else {
-            console.log('❌ Message element not found in DOM')
-          }
-        }, 100)
-      } else {
-        // Message not found in current results - this might happen if the page calculation was off
-        console.log('❌ Target message not found in current results')
-        console.log('📋 Available message IDs:', results.map(r => r._source.messageId).slice(0, 5))
-
-        // If we're jumping to a message and it's not found, try searching for it specifically
-        if (jumpToMessageRef.current) {
-          console.log('🔄 Attempting to find message on different page...')
-          // This will trigger a new search with the jumpToMessageId parameter
-          // The API will recalculate the correct page
-        }
-      }
-      // Clear the jump target after a delay to ensure search completes
-      setTimeout(() => {
-        console.log('🧹 Clearing jump target')
-        setJumpToMessage(null)
-        jumpToMessageRef.current = null
-      }, 500)
-    }
-  }, [results, jumpToMessage])
-
   const loadAggregations = async () => {
     try {
       const response = await fetch('/api/archives/aggregations')
@@ -222,22 +173,45 @@ export default function ArchivesPage() {
     setReplyPreviews(newPreviews)
   }
 
+    // Scroll to target message when jumping to a specific message
+    const handleJumpToRepliedMessage = (message: SearchResult) => {
+
+      console.log('Attempting to scroll to message:', message._source.replyToMessageId)
+      console.log('Current results count:', results.length)
+  
+      // Find the target message in the results
+      // Use the Discord messageId instead of OpenSearch _id
+      const targetIndex = results.findIndex(result => result._source.messageId === message._source.replyToMessageId)
+      console.log('Target message found at index:', targetIndex)
+  
+      if (targetIndex !== -1) {
+        console.log('Found target message, scrolling to it...')
+        // Scroll to the message after a short delay to ensure DOM is ready
+        setTimeout(() => {
+          const messageElement = document.getElementById(`message-${message._source.replyToMessageId}`)
+          if (messageElement) {
+            console.log('Scrolling to message element')
+            messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            // Add a temporary highlight effect
+            messageElement.classList.add('ring-2', 'ring-blue-500', 'ring-opacity-50')
+            setTimeout(() => {
+              messageElement.classList.remove('ring-2', 'ring-blue-500', 'ring-opacity-50')
+            }, 3000)
+          } else {
+            console.log('Message element not found in DOM')
+          }
+        }, 100)
+      } else {
+        // Message not found in current results - this might happen if the page calculation was off
+        console.log('Target message not found in current results')
+        console.log('Available message IDs:', results.map(r => r._source.messageId).slice(0, 5))
+  
+        handleJumpToMessage(message)
+      }
+    }
+
   const handleJumpToMessage = async (message: SearchResult) => {
-    // Store the target message in both state and ref
-    setJumpToMessage(message)
-    jumpToMessageRef.current = message
-
-    console.log('Jump to message:', {
-      targetChannel: message._source.channelName,
-      currentChannel: filters.channel,
-      currentGame: filters.game,
-      currentUser: filters.user,
-      currentQuery: filters.query,
-      openSearchId: message._id,
-      discordMessageId: message._source.messageId
-    })
-
-    console.log('🔄 Performing search for target message...')
+    console.log('Performing search for target message...')
     // Calculate the correct page first
     try {
       const params = new URLSearchParams({
@@ -272,7 +246,7 @@ export default function ArchivesPage() {
       console.log('🎯 Setting new filters:', newFilters)
       setFilters(newFilters)
     } catch (error) {
-      console.error('❌ Error calculating target page:', error)
+      console.error('Error calculating target page:', error)
       // Fallback to page 1
       setFilters({
         query: '',
@@ -283,24 +257,7 @@ export default function ArchivesPage() {
       })
     }
   }
-
-  const handleViewOriginal = async (message: SearchResult) => {
-    if (!message._source.replyToMessageId) return
-
-    try {
-      // Get the original message using the message API endpoint
-      const response = await fetch(`/api/archives/message/${message._source.replyToMessageId}`)
-      const data = await response.json()
-
-      if (data.message) {
-        // Jump to the original message (same behavior as handleJumpToMessage)
-        await handleJumpToMessage(data.message)
-      }
-    } catch (error) {
-      console.error('Error finding original message:', error)
-    }
-  }
-
+  
   const handleFilterChange = (key: keyof SearchFilters, value: string) => {
     setFilters(prev => ({
       ...prev,
@@ -576,17 +533,17 @@ export default function ArchivesPage() {
                               className="text-blue-400 hover:text-blue-300 text-sm font-medium transition-colors"
                               onClick={() => handleJumpToMessage(result)}
                             >
-                              Jump to Message
+                              Jump to Original Message
                             </button>
                           )}
                           {/* Jump to Original button for reply messages */}
                           {result._source.replyToMessageId && (
                             <button
                               className="text-green-400 hover:text-green-300 text-sm font-medium transition-colors flex items-center gap-1"
-                              onClick={() => handleViewOriginal(result)}
+                              onClick={() => handleJumpToRepliedMessage(result)}
                             >
                               <Reply className="h-3 w-3" />
-                              Jump to Original
+                              Jump to Replied Message
                             </button>
                           )}
                         </div>
