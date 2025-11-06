@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
       must.push({
         multi_match: {
           query,
-          fields: ['content', 'username', 'displayName'],
+          fields: ['content'],
           type: 'best_fields',
           fuzziness: 'AUTO'
         }
