@@ -462,6 +462,9 @@ class WerewolfBot {
                 case 'feedback':
                     await this.handleFeedback(message, args);
                     break;
+                case 'set_voting_booth':
+                    await this.handleSetVotingBooth(message, args);
+                    break;
 
                 // Meme commands
                 case 'meme':
@@ -5232,6 +5235,51 @@ class WerewolfBot {
         } else {
             return message.reply('❌ Unknown setting. Available settings:\n• `votes_to_hang`\n• `day_message`, `night_message` (default messages)\n• `wolf day_message`, `wolf night_message` (wolf chat specific)\n• `<channel_name> day_message`, `<channel_name> night_message` (channel-specific)');
         }
+    }
+
+    async handleSetVotingBooth(message, args) {
+        const serverId = message.guild.id;
+
+        // Check if channel name was provided
+        if (!args.length) {
+            return message.reply('❌ Please provide a channel name. Usage: `Wolf.set_voting_booth <channel-name>`');
+        }
+
+        let channelName = args.join(' ').trim();
+        
+        // Remove # prefix if present
+        if (channelName.startsWith('#')) {
+            channelName = channelName.slice(1);
+        }
+
+        // Get current game (signup or active)
+        const gameResult = await this.db.query(
+            'SELECT * FROM games WHERE server_id = $1 AND status IN ($2, $3) ORDER BY id DESC LIMIT 1',
+            [serverId, 'signup', 'active']
+        );
+
+        if (!gameResult.rows.length) {
+            return message.reply('❌ No active game found.');
+        }
+
+        const game = gameResult.rows[0];
+
+        // Find the channel in the guild
+        const channel = message.guild.channels.cache.find(c => 
+            c.name.toLowerCase() === channelName.toLowerCase()
+        );
+
+        if (!channel) {
+            return message.reply(`❌ Could not find channel "${channelName}" in this server.`);
+        }
+
+        // Update the voting booth channel ID in the database
+        await this.db.query(
+            'UPDATE games SET voting_booth_channel_id = $1 WHERE id = $2',
+            [channel.id, game.id]
+        );
+
+        return message.reply(`✅ Voting booth set to <#${channel.id}> (${channel.name}) for game ${game.game_number}.`);
     }
 
     async handleRolesList(message) {
