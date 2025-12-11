@@ -32,6 +32,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       nightMessage: game.night_message,
       wolfDayMessage: game.wolf_day_message,
       wolfNightMessage: game.wolf_night_message,
+      serverId: game.server_id,
       serverConfig: serverConfig ? {
         gameCounter: serverConfig.game_counter,
         gameName: serverConfig.game_name
