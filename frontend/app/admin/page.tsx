@@ -148,6 +148,13 @@ export default function AdminPage() {
               <CardDescription className="text-gray-300">Review and manage user feedback from Discord</CardDescription>
             </CardHeader>
           </Card>
+
+          <Card className="bg-gray-800 border-gray-700 hover:bg-gray-750 transition-colors cursor-pointer" onClick={() => router.push('/admin/server-roles')}>
+            <CardHeader>
+              <CardTitle className="text-white">Server-Specific Roles</CardTitle>
+              <CardDescription className="text-gray-300">Manage roles for specific Discord servers</CardDescription>
+            </CardHeader>
+          </Card>
         </div>
       </div>
     </div>

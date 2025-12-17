@@ -53,6 +53,7 @@ interface GameData {
   isThemed: boolean
   isSkinned: boolean
   themeName?: string
+  serverId?: string
   serverConfig?: {
     gameCounter: number
     gameName?: string
@@ -142,6 +143,7 @@ export default function GameManagementPage() {
           isThemed: game.isThemed || false,
           isSkinned: game.isSkinned || false,
           themeName: game.themeName,
+          serverId: game.serverId,
           serverConfig: game.serverConfig,
         }
         setGameData(currentGameData)
@@ -220,8 +222,10 @@ export default function GameManagementPage() {
         }
       }
 
-      // Load roles
-      const rolesResponse = await fetch(`/api/roles`)
+      // Load roles (general roles + server-specific roles)
+      const serverId = currentGameData.serverId
+      const rolesUrl = serverId ? `/api/roles?server_id=${serverId}` : `/api/roles`
+      const rolesResponse = await fetch(rolesUrl)
       if (rolesResponse.ok) {
         const rolesData = await rolesResponse.json()
         const mappedRoles = rolesData.map((role: any) => ({

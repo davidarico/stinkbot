@@ -3,7 +3,9 @@ import { db } from "@/lib/database"
 
 export async function GET(request: NextRequest) {
   try {
-    const roles = await db.getRoles()
+    const { searchParams } = new URL(request.url)
+    const serverId = searchParams.get("server_id") || undefined
+    const roles = await db.getRoles(serverId)
     return NextResponse.json(roles)
   } catch (error) {
     console.error("Database error:", error)

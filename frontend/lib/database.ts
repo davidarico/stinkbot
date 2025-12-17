@@ -122,32 +122,62 @@ export class DatabaseService {
     }
   }
 
-  async getRoles() {
+  async getRoles(serverId?: string) {
     try {
       const client = await this.pool.connect()
       
       try {
-        const result = await client.query(`
-          SELECT 
-            id,
-            name,
-            team as alignment,
-            description,
-            targets,
-            moves,
-            standard_results_flavor,
-            immunities,
-            special_properties,
-            framer_interaction,
-            in_wolf_chat,
-            has_charges,
-            default_charges,
-            has_win_by_number,
-            default_win_by_number,
-            is_spotlight
-          FROM roles 
-          ORDER BY name
-        `)
+        // Get general roles (server_id IS NULL) plus server-specific roles if serverId is provided
+        const query = serverId
+          ? `
+            SELECT 
+              id,
+              name,
+              team as alignment,
+              description,
+              targets,
+              moves,
+              standard_results_flavor,
+              immunities,
+              special_properties,
+              framer_interaction,
+              in_wolf_chat,
+              has_charges,
+              default_charges,
+              has_win_by_number,
+              default_win_by_number,
+              is_spotlight,
+              server_id
+            FROM roles 
+            WHERE server_id IS NULL OR server_id = $1
+            ORDER BY name
+          `
+          : `
+            SELECT 
+              id,
+              name,
+              team as alignment,
+              description,
+              targets,
+              moves,
+              standard_results_flavor,
+              immunities,
+              special_properties,
+              framer_interaction,
+              in_wolf_chat,
+              has_charges,
+              default_charges,
+              has_win_by_number,
+              default_win_by_number,
+              is_spotlight,
+              server_id
+            FROM roles 
+            WHERE server_id IS NULL
+            ORDER BY name
+          `
+        
+        const params = serverId ? [serverId] : []
+        const result = await client.query(query, params)
         
         return result.rows.map(role => ({
           id: role.id,
@@ -166,7 +196,8 @@ export class DatabaseService {
           hasWinByNumber: role.has_win_by_number,
           defaultWinByNumber: role.default_win_by_number,
           inWolfChat: role.in_wolf_chat,
-          isSpotlight: role.is_spotlight
+          isSpotlight: role.is_spotlight,
+          serverId: role.server_id
         }))
       } finally {
         client.release()
@@ -799,6 +830,140 @@ export class DatabaseService {
       return result.rows[0] || null
     } catch (error) {
       console.error('Error fetching server config:', error)
+      throw error
+    }
+  }
+
+  async getAllServers() {
+    try {
+      const result = await this.pool.query(
+        'SELECT server_id, server_name FROM server_configs ORDER BY server_name, server_id'
+      )
+      return result.rows
+    } catch (error) {
+      console.error('Error fetching servers:', error)
+      throw error
+    }
+  }
+
+  async createServerRole(roleData: {
+    name: string
+    serverId: string
+    team?: string
+    description?: string
+    targets?: string
+    moves?: boolean
+    standardResultsFlavor?: string
+    immunities?: string
+    specialProperties?: string
+    framerInteraction?: string
+    inWolfChat?: boolean
+    hasCharges?: boolean
+    defaultCharges?: number
+    hasWinByNumber?: boolean
+    defaultWinByNumber?: number
+    isSpotlight?: boolean
+  }) {
+    try {
+      const result = await this.pool.query(
+        `INSERT INTO roles (
+          name, server_id, team, description, targets, moves,
+          standard_results_flavor, immunities, special_properties,
+          framer_interaction, in_wolf_chat, has_charges, default_charges,
+          has_win_by_number, default_win_by_number, is_spotlight
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        RETURNING *`,
+        [
+          roleData.name,
+          roleData.serverId,
+          roleData.team || null,
+          roleData.description || null,
+          roleData.targets || null,
+          roleData.moves || false,
+          roleData.standardResultsFlavor || null,
+          roleData.immunities || null,
+          roleData.specialProperties || null,
+          roleData.framerInteraction || null,
+          roleData.inWolfChat || false,
+          roleData.hasCharges || false,
+          roleData.defaultCharges || 0,
+          roleData.hasWinByNumber || false,
+          roleData.defaultWinByNumber || 0,
+          roleData.isSpotlight || false
+        ]
+      )
+      return result.rows[0]
+    } catch (error) {
+      console.error('Error creating server role:', error)
+      throw error
+    }
+  }
+
+  async deleteServerRole(roleId: number) {
+    try {
+      // Only allow deleting roles that have a server_id (server-specific roles)
+      const result = await this.pool.query(
+        'DELETE FROM roles WHERE id = $1 AND server_id IS NOT NULL RETURNING *',
+        [roleId]
+      )
+      if (result.rows.length === 0) {
+        throw new Error('Role not found or is a general role (cannot delete general roles)')
+      }
+      return result.rows[0]
+    } catch (error) {
+      console.error('Error deleting server role:', error)
+      throw error
+    }
+  }
+
+  async getServerRoles(serverId: string) {
+    try {
+      const result = await this.pool.query(
+        `SELECT 
+          id,
+          name,
+          team as alignment,
+          description,
+          targets,
+          moves,
+          standard_results_flavor,
+          immunities,
+          special_properties,
+          framer_interaction,
+          in_wolf_chat,
+          has_charges,
+          default_charges,
+          has_win_by_number,
+          default_win_by_number,
+          is_spotlight,
+          server_id
+        FROM roles 
+        WHERE server_id = $1
+        ORDER BY name`,
+        [serverId]
+      )
+      return result.rows.map(role => ({
+        id: role.id,
+        name: role.name,
+        alignment: role.alignment,
+        description: role.description,
+        targets: role.targets,
+        moves: role.moves,
+        standardResultsFlavor: role.standard_results_flavor,
+        immunities: role.immunities,
+        specialProperties: role.special_properties,
+        framerInteraction: role.framer_interaction,
+        hasInfoFunction: role.targets === 'Players' && role.moves,
+        hasCharges: role.has_charges,
+        defaultCharges: role.default_charges,
+        hasWinByNumber: role.has_win_by_number,
+        defaultWinByNumber: role.default_win_by_number,
+        inWolfChat: role.in_wolf_chat,
+        isSpotlight: role.is_spotlight,
+        serverId: role.server_id
+      }))
+    } catch (error) {
+      console.error('Error fetching server roles:', error)
       throw error
     }
   }
