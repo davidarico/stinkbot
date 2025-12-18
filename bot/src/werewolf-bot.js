@@ -414,6 +414,9 @@ class WerewolfBot {
                 case 'journal_grant_pin':
                     await this.handleJournalPinPerms(message);
                     break;
+                case 'fix_journals':
+                    await this.handleFixJournals(message);
+                    break;
                 case 'server':
                     await this.handleServer(message);
                     break;
@@ -2864,7 +2867,8 @@ class WerewolfBot {
                            '`Wolf.journal_unlink` - 🔓 Unlink journal (use in journal)\n' +
                            '`Wolf.journal_assign @user` - 🎯 Assign journal to user (use in journal)\n' +
                            '`Wolf.balance_journals` - 📚 Balance journals across categories (50 channel limit)\n' +
-                           '`Wolf.populate_journals [number]` - 🧪 Create test journals for testing', 
+                           '`Wolf.populate_journals [number]` - 🧪 Create test journals for testing\n' +
+                           '`Wolf.fix_journals` - 🔍 Fix journal permissions\n',
                     inline: false 
                 },
                 { 
@@ -5555,6 +5559,126 @@ class WerewolfBot {
             return message.reply(`❌ Failed for ${failed.length} Journals:\n${failed.join('\n')}`);
         } else {
             return message.reply('Success!');
+        }
+    }
+
+    async handleFixJournals(message) {
+        const serverId = message.guild.id;
+
+        // Get all journal categories
+        const journalCategories = message.guild.channels.cache.filter(
+            channel => channel.type === ChannelType.GuildCategory && 
+            (channel.name === 'Journals' || channel.name.startsWith('Journals ('))
+        );
+
+        if (journalCategories.size === 0) {
+            return message.reply('❌ No journal categories found. Create some journals first with `Wolf.journal @user`.');
+        }
+
+        // Get all journal channels from all categories
+        const allJournalChannels = [];
+        for (const category of journalCategories.values()) {
+            const categoryChannels = message.guild.channels.cache.filter(
+                channel => channel.parent?.id === category.id && channel.name.endsWith('-journal')
+            );
+            allJournalChannels.push(...categoryChannels.values());
+        }
+
+        if (allJournalChannels.length === 0) {
+            return message.reply('❌ No journal channels found in any journal categories.');
+        }
+
+        const failed = [];
+
+        // Get roles for permissions
+        const modRole = message.guild.roles.cache.find(r => r.name === 'Mod');
+        const spectatorRole = message.guild.roles.cache.find(r => r.name === 'Spectator');
+        const deadRole = message.guild.roles.cache.find(r => r.name === 'Dead');
+        const aliveRole = message.guild.roles.cache.find(r => r.name === 'Alive');
+        const signedUpRole = message.guild.roles.cache.find(r => r.name === 'Signed Up');
+
+        for (const journal of allJournalChannels) {
+            try {
+                // Look up the journal owner from the database
+                const playerResult = await this.db.query(
+                    'SELECT user_id FROM player_journals WHERE server_id = $1 AND channel_id = $2',
+                    [serverId, journal.id]
+                );
+
+                if (playerResult.rows.length === 0) {
+                    failed.push(`\t${journal.name} has no user_id mapping in player_journals`);
+                    continue;
+                }
+
+                const userId = playerResult.rows[0].user_id;
+                const member = await message.guild.members.fetch(userId).catch(() => null);
+                if (!member) {
+                    failed.push(`\t${journal.name} user ${userId} not in server`);
+                    continue;
+                }
+
+                // Everyone: can see but not send
+                await journal.permissionOverwrites.edit(message.guild.roles.everyone, {
+                    ViewChannel: true,
+                    SendMessages: false
+                });
+
+                // Alive: cannot see
+                if (aliveRole) {
+                    await journal.permissionOverwrites.edit(aliveRole, {
+                        ViewChannel: false,
+                        SendMessages: false
+                    });
+                }
+
+                // Signed Up: cannot see
+                if (signedUpRole) {
+                    await journal.permissionOverwrites.edit(signedUpRole, {
+                        ViewChannel: false,
+                        SendMessages: false
+                    });
+                }
+
+                // Journal owner: can see and write
+                await journal.permissionOverwrites.edit(member.id, {
+                    ViewChannel: true,
+                    SendMessages: true
+                });
+
+                // Mods: can see and write (preserve moderator access)
+                if (modRole) {
+                    await journal.permissionOverwrites.edit(modRole, {
+                        ViewChannel: true,
+                        SendMessages: true
+                    });
+                }
+
+                // Spectators: can see but not send (match creation logic)
+                if (spectatorRole) {
+                    await journal.permissionOverwrites.edit(spectatorRole, {
+                        ViewChannel: true,
+                        SendMessages: false
+                    });
+                }
+
+                // Dead: can see but not send (match creation logic)
+                if (deadRole) {
+                    await journal.permissionOverwrites.edit(deadRole, {
+                        ViewChannel: true,
+                        SendMessages: false
+                    });
+                }
+
+            } catch (error) {
+                console.error(`Error fixing permissions for journal ${journal.id} (${journal.name}):`, error);
+                failed.push(`\t${journal.name} encountered error: ${error.message || error}`);
+            }
+        }
+
+        if (failed.length > 0) {
+            return message.reply(`⚠️ Completed with issues for ${failed.length} journals:\n${failed.join('\n')}`);
+        } else {
+            return message.reply('✅ Successfully fixed permissions for all journal channels.');
         }
     }
 
