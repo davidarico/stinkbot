@@ -1771,13 +1771,13 @@ class WerewolfBot {
                     let fullRoleDescription = player.role_name;
 
                     if (game.is_themed && player.custom_name) {
-                        // Themed mode: only show custom name
-                        displayRoleName = player.custom_name;
-                        fullRoleDescription = player.custom_name;
-                    } else if (game.is_skinned && player.custom_name) {
-                        // Skinned mode: show custom name with actual role in parens
+                        // Themed mode: show custom name with actual role in parens
                         displayRoleName = `${player.custom_name} (${player.role_name})`;
                         fullRoleDescription = `${player.custom_name} (${player.role_name})`;
+                    } else if (game.is_skinned && player.custom_name) {
+                        // Skinned mode: only show custom name
+                        displayRoleName = player.custom_name;
+                        fullRoleDescription = player.custom_name;
                     } else {
                         // Normal mode: show actual role name
                         displayRoleName = player.role_name;
@@ -7290,7 +7290,7 @@ class WerewolfBot {
         try {
             // Check if category name was provided
             if (!args || args.length === 0) {
-                await message.reply('❌ Please provide a category name. Usage: `Wolf.archive <category-name>`');
+                await message.reply('❌ Please provide a category name. Usage: `Wolf.archive <category-name>` or `Wolf.archive <category1>,<category2>,...`');
                 return;
             }
 
@@ -7300,8 +7300,19 @@ class WerewolfBot {
                 return;
             }
 
-            const categoryName = args.join(' ');
-            await message.reply(`🗄️ Starting full archive process for category: "${categoryName}". This may take a while...`);
+            // Parse comma-separated category names
+            const input = args.join(' ');
+            const categoryNames = input.split(',').map(name => name.trim()).filter(name => name.length > 0);
+
+            if (categoryNames.length === 0) {
+                await message.reply('❌ Please provide at least one category name.');
+                return;
+            }
+
+            const categoryList = categoryNames.length === 1 
+                ? `"${categoryNames[0]}"` 
+                : `${categoryNames.length} categories: ${categoryNames.map(n => `"${n}"`).join(', ')}`;
+            await message.reply(`🗄️ Starting full archive process for ${categoryList}. This may take a while...`);
             
             // Check if S3 is configured for image processing
             if (this.s3Client) {
@@ -7310,27 +7321,58 @@ class WerewolfBot {
                 await message.channel.send(`⚠️ S3 not configured - Discord images will be archived with original URLs (may expire)`);
             }
 
-            // Find the category by name
+            // Find all categories by name
             const guild = message.guild;
-            const category = guild.channels.cache.find(
-                channel => channel.type === ChannelType.GuildCategory && 
-                          channel.name.toLowerCase() === categoryName.toLowerCase()
-            );
+            const categories = [];
+            const notFoundCategories = [];
 
-            if (!category) {
-                await message.reply(`❌ Category "${categoryName}" not found.`);
+            for (const categoryName of categoryNames) {
+                const category = guild.channels.cache.find(
+                    channel => channel.type === ChannelType.GuildCategory && 
+                              channel.name.toLowerCase() === categoryName.toLowerCase()
+                );
+
+                if (category) {
+                    categories.push(category);
+                } else {
+                    notFoundCategories.push(categoryName);
+                }
+            }
+
+            if (notFoundCategories.length > 0) {
+                await message.reply(`❌ Categories not found: ${notFoundCategories.map(n => `"${n}"`).join(', ')}`);
+                if (categories.length === 0) {
+                    return;
+                }
+                await message.channel.send(`⚠️ Continuing with found categories: ${categories.map(c => `"${c.name}"`).join(', ')}`);
+            }
+
+            if (categories.length === 0) {
+                await message.reply('❌ No valid categories found.');
                 return;
             }
 
-            // Get all text channels in the category, excluding mod-chat channels
-            const channels = guild.channels.cache.filter(
-                channel => channel.type === ChannelType.GuildText && 
-                          channel.parentId === category.id &&
-                          !channel.name.toLowerCase().includes('mod-chat')
-            );
+            // Collect all channels from all categories
+            const allChannels = [];
+            const categoryChannelMap = new Map(); // Track which channels belong to which category
 
-            if (channels.size === 0) {
-                await message.reply(`❌ No valid text channels found in category "${categoryName}".`);
+            for (const category of categories) {
+                const channels = guild.channels.cache.filter(
+                    channel => channel.type === ChannelType.GuildText && 
+                              channel.parentId === category.id &&
+                              !channel.name.toLowerCase().includes('mod-chat')
+                );
+
+                if (channels.size > 0) {
+                    for (const channel of channels.values()) {
+                        allChannels.push(channel);
+                        categoryChannelMap.set(channel.id, category);
+                    }
+                }
+            }
+
+            if (allChannels.length === 0) {
+                await message.reply(`❌ No valid text channels found in any of the specified categories.`);
                 return;
             }
 
@@ -7350,9 +7392,10 @@ class WerewolfBot {
             const processedChannelsData = [];
 
             // Process each channel
-            for (const [channelId, channel] of channels) {
-                console.log(`Processing channel: ${channel.name}`);
-                await message.channel.send(`📂 Processing channel: #${channel.name}...`);
+            for (const channel of allChannels) {
+                const category = categoryChannelMap.get(channel.id);
+                console.log(`Processing channel: ${channel.name} (category: ${category.name})`);
+                await message.channel.send(`📂 Processing channel: #${channel.name} (${category.name})...`);
 
                 try {
                     // Fetch all messages from the channel
@@ -7494,6 +7537,8 @@ class WerewolfBot {
                     // Store processed messages for S3 backup (reuse the data we already have)
                     processedChannelsData.push({
                         channelName: channel.name,
+                        categoryName: category.name,
+                        categoryId: category.id,
                         messageCount: messagesToIndex.length,
                         messages: messagesToIndex.map(msg => ({
                             messageId: msg.messageId,
@@ -7558,47 +7603,58 @@ class WerewolfBot {
             }
 
             // Create full archive JSON file for S3 (disaster recovery backup)
-            let s3Url = null;
+            // Create one file per category for easier management
             if (this.s3Client && process.env.AWS_S3_BUCKET_NAME) {
                 try {
                     console.log('📦 Creating full archive backup for disaster recovery...');
                     
-                    // Use the already processed messages (no need to re-fetch!)
-                    const archiveData = {
-                        category: categoryName,
-                        categoryId: category.id,
-                        archivedAt: archivedAt,
-                        archivedBy: archivedBy,
-                        channels: processedChannelsData
-                    };
+                    for (const category of categories) {
+                        // Filter channels for this category
+                        const categoryChannels = processedChannelsData.filter(
+                            ch => ch.categoryId === category.id
+                        );
 
-                    // Create filename using category name and ID for consistent overwriting
-                    const safeCategoryName = categoryName.replace(/[^a-zA-Z0-9]/g, '_');
-                    const filename = `${safeCategoryName}_${category.id}.json`;
-                    const jsonContent = JSON.stringify(archiveData, null, 2);
+                        if (categoryChannels.length === 0) {
+                            continue; // Skip if no channels for this category
+                        }
 
-                    const uploadParams = {
-                        Bucket: process.env.AWS_S3_BUCKET_NAME,
-                        Key: `archives/${filename}`,
-                        Body: jsonContent,
-                        ContentType: 'application/json'
-                    };
+                        const archiveData = {
+                            category: category.name,
+                            categoryId: category.id,
+                            archivedAt: archivedAt,
+                            archivedBy: archivedBy,
+                            channels: categoryChannels
+                        };
 
-                    await this.s3Client.send(new PutObjectCommand(uploadParams));
-                    s3Url = `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/archives/${filename}`;
-                    
-                    await message.channel.send(`☁️ Full archive backup uploaded to S3: \`${filename}\` (disaster recovery backup)`);
+                        // Create filename using category name and ID for consistent overwriting
+                        const safeCategoryName = category.name.replace(/[^a-zA-Z0-9]/g, '_');
+                        const filename = `${safeCategoryName}_${category.id}.json`;
+                        const jsonContent = JSON.stringify(archiveData, null, 2);
+
+                        const uploadParams = {
+                            Bucket: process.env.AWS_S3_BUCKET_NAME,
+                            Key: `archives/${filename}`,
+                            Body: jsonContent,
+                            ContentType: 'application/json'
+                        };
+
+                        await this.s3Client.send(new PutObjectCommand(uploadParams));
+                        
+                        await message.channel.send(`☁️ Full archive backup uploaded to S3: \`${filename}\` (${category.name})`);
+                    }
                 } catch (s3Error) {
                     console.error('Error uploading archive to S3:', s3Error);
                 }
             }
 
             // Send completion message
+            const categoriesList = categories.map(c => `"${c.name}"`).join(', ');
             const embed = new EmbedBuilder()
                 .setTitle('✅ Archive Complete')
-                .setDescription(`Successfully archived category: "${categoryName}" to OpenSearch`)
+                .setDescription(`Successfully archived ${categories.length === 1 ? 'category' : 'categories'}: ${categoriesList} to OpenSearch`)
                 .addFields(
-                    { name: 'Channels Processed', value: channels.size.toString(), inline: true },
+                    { name: 'Categories Processed', value: categories.length.toString(), inline: true },
+                    { name: 'Channels Processed', value: allChannels.length.toString(), inline: true },
                     { name: 'Total Messages', value: totalMessages.toString(), inline: true },
                     { name: 'Indexed Messages', value: indexedMessages.toString(), inline: true },
                     { name: 'Failed Messages', value: failedMessages.toString(), inline: true },
