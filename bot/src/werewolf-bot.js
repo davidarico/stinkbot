@@ -1498,10 +1498,13 @@ class WerewolfBot {
             .setColor(0x2C3E50);
 
         // Add journal notification summary if there were any issues
-        if (journalNotificationResults.failed > 0 || journalNotificationResults.sent > 0 || journalNotificationResults.wolvesAddedToChat > 0) {
+        if (journalNotificationResults.failed > 0 || journalNotificationResults.sent > 0 || journalNotificationResults.wolvesAddedToChat > 0 || journalNotificationResults.wolvesFailedToAdd > 0) {
             let notificationSummary = `• ${journalNotificationResults.sent} players notified in journals`;
             if (journalNotificationResults.wolvesAddedToChat > 0) {
                 notificationSummary += `\n• ${journalNotificationResults.wolvesAddedToChat} wolves added to wolf chat`;
+            }
+            if (journalNotificationResults.wolvesFailedToAdd > 0) {
+                notificationSummary += `\n• ⚠️ ${journalNotificationResults.wolvesFailedToAdd} wolves failed to add to wolf chat`;
             }
             if (journalNotificationResults.failed > 0) {
                 notificationSummary += `\n• ${journalNotificationResults.failed} players failed to notify (no journal or no role assigned)`;
@@ -1717,6 +1720,7 @@ class WerewolfBot {
         let sent = 0;
         let failed = 0;
         let wolvesAddedToChat = 0;
+        let wolvesFailedToAdd = 0;
         let wolfChatMessage = '';
 
         try {
@@ -1807,11 +1811,21 @@ class WerewolfBot {
                                         });
                                         wolvesAddedToChat++;
                                         console.log(`[DEBUG] Successfully added ${player.username} to wolf chat`);
+                                    } else {
+                                        wolvesFailedToAdd++;
+                                        console.error(`Error adding ${player.username} to wolf chat: member not found`);
                                     }
+                                } else {
+                                    wolvesFailedToAdd++;
+                                    console.error(`Error adding ${player.username} to wolf chat: wolf channel not found`);
                                 }
                             } catch (error) {
+                                wolvesFailedToAdd++;
                                 console.error(`Error adding ${player.username} to wolf chat:`, error);
                             }
+                        } else {
+                            wolvesFailedToAdd++;
+                            console.error(`Error adding ${player.username} to wolf chat: wolf_chat_channel_id not set`);
                         }
 
                         // Skip sending role notification to journal since they're in wolf chat
@@ -1966,7 +1980,7 @@ class WerewolfBot {
             console.error('Error in sendRoleNotificationsToJournals:', error);
         }
 
-        return { sent, failed, wolvesAddedToChat };
+        return { sent, failed, wolvesAddedToChat, wolvesFailedToAdd };
     }
 
     async handleVote(message, args) {
@@ -2875,7 +2889,7 @@ class WerewolfBot {
                     name: '🎭 Role & Player Management', 
                     value:  // fletch: v Hallucinated or deprecated command v
                             //'`Wolf.role_assign` - Randomly assign roles to signed-up players\n' +
-                           '`Wolf.roles_list` - 📋 Display all assigned roles for current game' +
+                           '`Wolf.roles_list` - 📋 Display all assigned roles for current game\n' +
                            '`Wolf.kill @player` - 🔫 Removes Alive and adds Dead role\n' , 
                     inline: false 
                 },
@@ -5588,7 +5602,24 @@ class WerewolfBot {
             return message.reply('❌ No journal channels found in any journal categories.');
         }
 
+        // Fetch all journals for this server from the database in one query
+        const journalChannelIds = allJournalChannels.map(channel => channel.id);
+        const allJournalsResult = await this.db.query(
+            'SELECT channel_id, user_id FROM player_journals WHERE server_id = $1 AND channel_id = ANY($2)',
+            [serverId, journalChannelIds]
+        );
+
+        // Create a map of channel_id -> user_id for quick lookup
+        const journalMap = new Map();
+        for (const row of allJournalsResult.rows) {
+            journalMap.set(row.channel_id, row.user_id);
+        }
+
+        // Send initial progress message
+        const progressMsg = await message.reply(`🔍 Found ${allJournalChannels.length} journal channels. Starting to fix permissions...`);
+
         const failed = [];
+        let processedCount = 0;
 
         // Get roles for permissions
         const modRole = message.guild.roles.cache.find(r => r.name === 'Mod');
@@ -5598,23 +5629,26 @@ class WerewolfBot {
         const signedUpRole = message.guild.roles.cache.find(r => r.name === 'Signed Up');
 
         for (const journal of allJournalChannels) {
+            processedCount++;
             try {
-                // Look up the journal owner from the database
-                const playerResult = await this.db.query(
-                    'SELECT user_id FROM player_journals WHERE server_id = $1 AND channel_id = $2',
-                    [serverId, journal.id]
-                );
+                // Look up the journal owner from the map
+                const userId = journalMap.get(journal.id);
 
-                if (playerResult.rows.length === 0) {
+                if (!userId) {
                     failed.push(`\t${journal.name} has no user_id mapping in player_journals`);
+                    await progressMsg.edit(`🔍 Processing journal ${processedCount}/${allJournalChannels.length}... ⚠️ ${journal.name} has no user_id mapping`);
                     continue;
                 }
-
-                const userId = playerResult.rows[0].user_id;
                 const member = await message.guild.members.fetch(userId).catch(() => null);
                 if (!member) {
                     failed.push(`\t${journal.name} user ${userId} not in server`);
+                    await progressMsg.edit(`🔍 Processing journal ${processedCount}/${allJournalChannels.length}... ⚠️ ${journal.name} user not found`);
                     continue;
+                }
+
+                // Update progress message every 10 journals or for the first few
+                if (processedCount <= 5 || processedCount % 10 === 0 || processedCount === allJournalChannels.length) {
+                    await progressMsg.edit(`🔍 Processing journal ${processedCount}/${allJournalChannels.length}: ${journal.name}...`);
                 }
 
                 // Everyone: can see but not send
@@ -5672,13 +5706,15 @@ class WerewolfBot {
             } catch (error) {
                 console.error(`Error fixing permissions for journal ${journal.id} (${journal.name}):`, error);
                 failed.push(`\t${journal.name} encountered error: ${error.message || error}`);
+                await progressMsg.edit(`🔍 Processing journal ${processedCount}/${allJournalChannels.length}... ❌ Error with ${journal.name}`);
             }
         }
 
+        // Final status message
         if (failed.length > 0) {
-            return message.reply(`⚠️ Completed with issues for ${failed.length} journals:\n${failed.join('\n')}`);
+            await progressMsg.edit(`⚠️ Completed with issues for ${failed.length} journals:\n${failed.join('\n')}`);
         } else {
-            return message.reply('✅ Successfully fixed permissions for all journal channels.');
+            await progressMsg.edit(`✅ Successfully fixed permissions for all ${allJournalChannels.length} journal channels.`);
         }
     }
 
@@ -5691,6 +5727,9 @@ class WerewolfBot {
         }
 
         try {
+            // Send initial progress message
+            let progressMsg = await message.reply('🔍 Scanning for journal categories and channels...');
+
             // Get all journal categories
             const journalCategories = message.guild.channels.cache.filter(
                 channel => channel.type === ChannelType.GuildCategory && 
@@ -5698,8 +5737,11 @@ class WerewolfBot {
             );
 
             if (journalCategories.size === 0) {
-                return message.reply('❌ No journal categories found. Create some journals first with `Wolf.journal @user`.');
+                await progressMsg.edit('❌ No journal categories found. Create some journals first with `Wolf.journal @user`.');
+                return;
             }
+
+            await progressMsg.edit(`🔍 Found ${journalCategories.size} journal category/categories. Collecting journal channels...`);
 
             // Get all journal channels from all categories
             const allJournalChannels = [];
@@ -5711,8 +5753,11 @@ class WerewolfBot {
             }
 
             if (allJournalChannels.length === 0) {
-                return message.reply('❌ No journal channels found in any journal categories.');
+                await progressMsg.edit('❌ No journal channels found in any journal categories.');
+                return;
             }
+
+            await progressMsg.edit(`📚 Found ${allJournalChannels.length} journal channels. Sorting alphabetically...`);
 
             // Sort journals alphabetically by display name (extracted from channel name)
             allJournalChannels.sort((a, b) => {
@@ -5726,8 +5771,10 @@ class WerewolfBot {
 
             // If we have less than 50 journals, just alphabetize in current structure
             if (totalJournals < maxChannelsPerCategory) {
+                await progressMsg.edit(`📚 Organizing ${totalJournals} journals in single category...`);
                 await this.alphabetizeJournalsInCategory(message.guild, journalCategories.first());
-                return message.reply(`✅ Journals are already properly organized! Found ${totalJournals} journals in a single category. All journals have been alphabetized.`);
+                await progressMsg.edit(`✅ Journals are already properly organized! Found ${totalJournals} journals in a single category. All journals have been alphabetized.`);
+                return;
             }
 
             // We need to split into multiple categories (50+ journals, including exactly 50)
@@ -5737,6 +5784,8 @@ class WerewolfBot {
 
             // We need to split into multiple categories
             const journalsPerCategory = Math.ceil(totalJournals / numCategoriesNeeded);
+            
+            await progressMsg.edit(`📚 Need to split ${totalJournals} journals into ${numCategoriesNeeded} categories. Creating/updating categories...`);
             
             // Handle category creation/renaming for proper alphabetical order
             const newCategories = [];
@@ -5766,6 +5815,7 @@ class WerewolfBot {
                 
                 if (i === 0 && originalJournalsCategory) {
                     // For the first category, rename the existing "Journals" category
+                    await progressMsg.edit(`📝 Renaming "Journals" category to "${categoryName}"...`);
                     await originalJournalsCategory.setName(categoryName);
                     category = originalJournalsCategory;
                     console.log(`📝 Renamed "Journals" to "${categoryName}"`);
@@ -5777,6 +5827,7 @@ class WerewolfBot {
                     
                     if (!category) {
                         // Create new category
+                        await progressMsg.edit(`📝 Creating category "${categoryName}" (${i + 1}/${numCategoriesNeeded})...`);
                         category = await message.guild.channels.create({
                             name: categoryName,
                             type: ChannelType.GuildCategory,
@@ -5796,10 +5847,14 @@ class WerewolfBot {
             let movedCount = 0;
             const movedJournals = []; // Track moved journals and their original permissions
             
+            await progressMsg.edit(`📦 Moving journals to their appropriate categories...`);
+            
             for (let i = 0; i < numCategoriesNeeded; i++) {
                 const startIndex = i * journalsPerCategory;
                 const endIndex = Math.min((i + 1) * journalsPerCategory, totalJournals);
                 const categoryJournals = allJournalChannels.slice(startIndex, endIndex);
+                
+                await progressMsg.edit(`📦 Moving journals to category "${newCategories[i].name}" (${i + 1}/${numCategoriesNeeded})...`);
                 
                 for (const journal of categoryJournals) {
                     if (journal.parent?.id !== newCategories[i].id) {
@@ -5820,6 +5875,10 @@ class WerewolfBot {
                         console.log(`Moved journal "${journal.name}" to category "${newCategories[i].name}"`);
                     }
                 }
+            }
+            
+            if (movedCount > 0) {
+                await progressMsg.edit(`📦 Moved ${movedCount} journals. Waiting for Discord to process moves...`);
             }
             
             // Now wait for Discord to process all the moves, then restore permissions
@@ -5851,12 +5910,15 @@ class WerewolfBot {
                     attempts++;
                     if (!allMovesConfirmed) {
                         console.log(`⏳ Waiting for Discord to process journal moves... (attempt ${attempts}/${maxAttempts})`);
+                        await progressMsg.edit(`⏳ Waiting for Discord to process journal moves... (${attempts}/${maxAttempts} seconds)`);
                     }
                 }
                 
                 if (allMovesConfirmed) {
                     console.log(`✅ All journal moves confirmed, restoring permissions...`);
+                    await progressMsg.edit(`🔐 Restoring permissions for ${movedJournals.length} moved journals...`);
                     
+                    let restoredCount = 0;
                     // Now restore permissions for all moved journals
                     for (const movedJournal of movedJournals) {
                         try {
@@ -5887,6 +5949,11 @@ class WerewolfBot {
                                     await movedJournal.journal.permissionOverwrites.edit(id, permissionData);
                                 }
                             }
+                            restoredCount++;
+                            // Update progress every 10 journals or for the first few
+                            if (restoredCount <= 5 || restoredCount % 10 === 0 || restoredCount === movedJournals.length) {
+                                await progressMsg.edit(`🔐 Restoring permissions... (${restoredCount}/${movedJournals.length} journals)`);
+                            }
                             console.log(`✅ Restored permissions for journal channel: ${movedJournal.journal.name}`);
                         } catch (permissionError) {
                             console.error(`⚠️ Warning: Could not restore permissions for journal channel ${movedJournal.journal.name}:`, permissionError);
@@ -5894,15 +5961,19 @@ class WerewolfBot {
                     }
                 } else {
                     console.warn(`⚠️ Not all journal moves were confirmed after ${maxAttempts} attempts`);
+                    await progressMsg.edit(`⚠️ Not all journal moves were confirmed after ${maxAttempts} attempts. Continuing anyway...`);
                 }
             }
             
             // Alphabetize journals within each category
+            await progressMsg.edit(`🔤 Alphabetizing journals within each category...`);
             for (let i = 0; i < numCategoriesNeeded; i++) {
+                await progressMsg.edit(`🔤 Alphabetizing journals in "${newCategories[i].name}" (${i + 1}/${numCategoriesNeeded})...`);
                 await this.alphabetizeJournalsInCategory(message.guild, newCategories[i]);
             }
 
             // Clean up old empty categories (except the original 'Journals' category)
+            await progressMsg.edit(`🧹 Cleaning up empty categories...`);
             for (const category of journalCategories.values()) {
                 if (category.name !== 'Journals' && category.children?.cache.size === 0) {
                     await category.delete();
@@ -5937,7 +6008,7 @@ class WerewolfBot {
             
             embed.addFields({ name: 'Category Breakdown', value: categoryBreakdown });
 
-            await message.reply({ embeds: [embed] });
+            await progressMsg.edit({ embeds: [embed] });
 
         } catch (error) {
             console.error('Error balancing journals:', error);
