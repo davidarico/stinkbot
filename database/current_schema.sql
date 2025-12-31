@@ -1,5 +1,5 @@
 -- Werewolf Discord Bot Database Schema
--- Generated automatically on 2025-09-26T03:01:09.916Z
+-- Generated automatically on 2025-12-31T20:20:32.393Z
 -- This file shows the current database structure with table comments
 -- Run this after migrations to get the latest schema
 
@@ -112,7 +112,7 @@ CREATE TABLE games (
     is_skinned BOOLEAN DEFAULT FALSE,
     is_themed BOOLEAN DEFAULT FALSE,
     theme_name VARCHAR(100) DEFAULT NULL,
-    UNIQUE(game_number, server_id)
+    signups_closed BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 -- Stores development tasks for the kanban board
@@ -184,7 +184,7 @@ CREATE TABLE roles (
     default_charges INTEGER NOT NULL DEFAULT 0,
     has_win_by_number BOOLEAN DEFAULT FALSE,
     default_win_by_number INTEGER DEFAULT 0,
-    UNIQUE(name)
+    server_id VARCHAR(20)
 );
 
 -- Table to store server configurations

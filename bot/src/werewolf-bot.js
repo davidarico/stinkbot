@@ -387,6 +387,9 @@ class WerewolfBot {
                 case 'inlist':
                     await this.handleInList(message, args);
                     break;
+                case 'signups':
+                    await this.handleSignups(message, args);
+                    break;
                 case 'add_channel':
                     await this.handleAddChannel(message, args);
                     break;
@@ -921,6 +924,11 @@ class WerewolfBot {
 
         const game = gameResult.rows[0];
 
+        // Check if signups are closed
+        if (game.signups_closed) {
+            return message.reply('❌ Signups have been closed for this game.');
+        }
+
         // Check if already signed up
         const existingPlayer = await this.db.query(
             'SELECT * FROM players WHERE game_id = $1 AND user_id = $2',
@@ -969,6 +977,11 @@ class WerewolfBot {
         }
 
         const game = gameResult.rows[0];
+
+        // Check if signups are closed
+        if (game.signups_closed) {
+            return message.reply('Sorry there is no way to get off Mr. Bones\' Wild Ride (Message a mod if you would really like to get out)');
+        }
 
         // Remove player
         const deleteResult = await this.db.query(
@@ -2870,6 +2883,8 @@ class WerewolfBot {
                         '`Wolf.create` - Create a new game with signup channel\n' +
                         '`Wolf.start [dark]` - Start the game and create all channels (use `dark` to hide Townsquare, Memos, and Voting Booth from Alive role)\n' +
                         '`Wolf.settings` - View/change game and channel settings (votes_to_hang, messages)\n' +
+                        '`Wolf.channel_config` - View additional channel settings\n' +
+                        '`Wolf.signups [open|close]` - Open or close signups\n' +
                         '`Wolf.next` - Move to the next phase (day/night)\n' +
                         '`Wolf.end` - End the current game (requires confirmation)', 
                     inline: false 
@@ -3165,6 +3180,56 @@ class WerewolfBot {
         const response = `**${gameName} Player List (${playersResult.rows.length}):**\n${playerList}`;
 
         await message.reply(response);
+    }
+
+    async handleSignups(message, args) {
+        const serverId = message.guild.id;
+
+        // Check if user has moderator permissions
+        if (!this.hasModeratorPermissions(message.member)) {
+            return message.reply('❌ Only moderators can manage signups.');
+        }
+
+        if (!args.length || (args[0].toLowerCase() !== 'open' && args[0].toLowerCase() !== 'close')) {
+            return message.reply('❌ Usage: `Wolf.signups open` or `Wolf.signups close`');
+        }
+
+        const action = args[0].toLowerCase();
+        const isClosing = action === 'close';
+
+        // Get active game in signup phase
+        const gameResult = await this.db.query(
+            'SELECT * FROM games WHERE server_id = $1 AND status = $2',
+            [serverId, 'signup']
+        );
+
+        if (!gameResult.rows.length) {
+            return message.reply('❌ No active game in signup phase found.');
+        }
+
+        const game = gameResult.rows[0];
+
+        // Update the signups_closed flag
+        await this.db.query(
+            'UPDATE games SET signups_closed = $1 WHERE id = $2',
+            [isClosing, game.id]
+        );
+
+        // Post message in signup channel
+        try {
+            const signupChannel = await this.client.channels.fetch(game.signup_channel_id);
+            if (signupChannel) {
+                const statusMessage = isClosing 
+                    ? '🔒 **Signups are now CLOSED.**' 
+                    : '🔓 **Signups are now OPEN.**';
+                await signupChannel.send(statusMessage);
+            }
+        } catch (error) {
+            console.error('Error posting signup status message:', error);
+        }
+
+        const statusText = isClosing ? 'closed' : 'opened';
+        await message.reply(`✅ Signups have been ${statusText}.`);
     }
 
     async handleAddChannel(message, args) {
