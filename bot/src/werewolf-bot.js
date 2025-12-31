@@ -346,7 +346,7 @@ class WerewolfBot {
                     await this.handleSignOut(message);
                     break;
                 case 'start':
-                    await this.handleStart(message);
+                    await this.handleStart(message, args);
                     break;
                 case 'vote':
                     await this.handleVote(message, args);
@@ -1072,8 +1072,11 @@ class WerewolfBot {
         }
     }
 
-    async handleStart(message) {
+    async handleStart(message, args = []) {
         const serverId = message.guild.id;
+
+        // Check for dark parameter
+        const isDark = args.length > 0 && args[0].toLowerCase() === 'dark';
 
         // Get game in signup phase
         const gameResult = await this.db.query(
@@ -1149,7 +1152,7 @@ class WerewolfBot {
         });
         await results.setPosition(signupChannel.position); // Position results above the signup channel
 
-        // 3. Player-memos - Alive can see and type, Dead can see but not type, Spectators can see but not type, Mods can see and type
+        // 3. Player-memos - Alive can see and type (unless dark mode), Dead can see but not type, Spectators can see but not type, Mods can see and type
         const memos = await message.guild.channels.create({
             name: `${config.game_prefix}${game.game_number}-player-memos`,
             type: ChannelType.GuildText,
@@ -1161,7 +1164,8 @@ class WerewolfBot {
                 },
                 {
                     id: aliveRole.id,
-                    allow: ['ViewChannel', 'SendMessages']
+                    allow: isDark ? [] : ['ViewChannel', 'SendMessages'],
+                    deny: isDark ? ['ViewChannel', 'SendMessages'] : []
                 },
                 {
                     id: deadRole.id,
@@ -1181,7 +1185,7 @@ class WerewolfBot {
         });
         await memos.setPosition(results.position + 1); // Position memos below results
 
-        // 4. Townsquare - Alive can see and type, Dead can see but not type, Spectators can see but not type, Mods can see and type
+        // 4. Townsquare - Alive can see and type (unless dark mode), Dead can see but not type, Spectators can see but not type, Mods can see and type
         const townSquare = await message.guild.channels.create({
             name: `${config.game_prefix}${game.game_number}-townsquare`,
             type: ChannelType.GuildText,
@@ -1193,8 +1197,8 @@ class WerewolfBot {
                 },
                 {
                     id: aliveRole.id,
-                    allow: ['ViewChannel', 'SendMessages'],
-                    deny: ['CreatePublicThreads', 'CreatePrivateThreads', 'SendMessagesInThreads']
+                    allow: isDark ? [] : ['ViewChannel', 'SendMessages'],
+                    deny: isDark ? ['ViewChannel', 'SendMessages', 'CreatePublicThreads', 'CreatePrivateThreads', 'SendMessagesInThreads'] : ['CreatePublicThreads', 'CreatePrivateThreads', 'SendMessagesInThreads']
                 },
                 {
                     id: deadRole.id,
@@ -1215,7 +1219,7 @@ class WerewolfBot {
         });
         await townSquare.setPosition(memos.position + 1); // Position town square below memos
 
-        // 5. Voting-Booth (starts locked for night phase) - All can see but none can type initially
+        // 5. Voting-Booth (starts locked for night phase) - All can see but none can type initially (unless dark mode, then Alive cannot see)
         const votingBooth = await message.guild.channels.create({
             name: `${config.game_prefix}${game.game_number}-voting-booth`,
             type: ChannelType.GuildText,
@@ -1227,8 +1231,8 @@ class WerewolfBot {
                 },
                 {
                     id: aliveRole.id,
-                    allow: ['ViewChannel'],
-                    deny: ['SendMessages']
+                    allow: isDark ? [] : ['ViewChannel'],
+                    deny: isDark ? ['ViewChannel', 'SendMessages'] : ['SendMessages']
                 },
                 {
                     id: deadRole.id,
@@ -2861,7 +2865,7 @@ class WerewolfBot {
                         '`Wolf.setup` - Initial server setup (prefix, starting number, game name)\n' +
                         '`Wolf.server_roles` - 🎭 Create all game roles\n' +
                         '`Wolf.create` - Create a new game with signup channel\n' +
-                        '`Wolf.start` - Start the game and create all channels\n' +
+                        '`Wolf.start [dark]` - Start the game and create all channels (use `dark` to hide Townsquare, Memos, and Voting Booth from Alive role)\n' +
                         '`Wolf.settings` - View/change game and channel settings (votes_to_hang, messages)\n' +
                         '`Wolf.next` - Move to the next phase (day/night)\n' +
                         '`Wolf.end` - End the current game (requires confirmation)', 
