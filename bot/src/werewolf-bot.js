@@ -2880,7 +2880,7 @@ class WerewolfBot {
                         '`Wolf.set_voting_booth <channel-name>` - 🗳️ Set voting booth channel for current game\n' +
                         '`Wolf.lockdown` - 🔒 Lock down townsquare and memos (alive players cannot speak)\n' +
                         '`Wolf.lockdown lift` - 🔓 Lift lockdown and restore normal permissions\n' +
-                        '`Wolf.sync_members` - 🔄 Sync server members to database', 
+                        '`Wolf.populate_journals [number]` - 🧪 Create test journals for testing',
                     inline: false 
                 },
                 { 
@@ -2892,8 +2892,7 @@ class WerewolfBot {
                         '`Wolf.journal_unlink` - 🔓 Unlink journal (use in journal)\n' +
                         '`Wolf.journal_assign @user` - 🎯 Assign journal to user (use in journal)\n' +
                         '`Wolf.journal_grant_pin` - 📌 Grant pin permissions for all journals\n' +
-                        '`Wolf.balance_journals` - 📚 Balance journals across categories (50 channel limit)\n' +
-                        '`Wolf.populate_journals [number]` - 🧪 Create test journals for testing\n',
+                        '`Wolf.balance_journals` - 📚 Balance journals across categories (50 channel limit)',
                     inline: false 
                 },
                 { 
@@ -2911,8 +2910,7 @@ class WerewolfBot {
                     value: 
                         '`Wolf.server` - 🖥️ Display detailed server information\n' +
                         '`Wolf.ia <YYYY-MM-DD HH:MM>` - Message count per player since date (EST)\n' +
-                        '`Wolf.speed_check` - See messages counts since phase change\n' +
-                        '`Wolf.speed <number> [emoji]` - ⚡ Start speed vote with reaction target (optional custom emoji)',
+                        '`Wolf.speed_check` - See messages counts since phase change',
                     inline: false 
                 },
                 { 
@@ -2927,7 +2925,9 @@ class WerewolfBot {
                     value: 
                         '`Wolf.refresh` - Reset server (testing only!)\n' +
                         '`Wolf.archive` - Archive current game data\n' +
-                        '`Wolf.archive_local` - 💾 Archive to local JSON file (dev only)', 
+                        '`Wolf.archive_local` - 💾 Archive to local JSON file (dev only)\n' +
+                        '`Wolf.populate_journals [number]` - 🧪 Create test journals for testing\n' +
+                        '`Wolf.sync_members` - 🔄 Sync server members to database', 
                     inline: false 
                 }
             );
