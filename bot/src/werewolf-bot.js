@@ -462,6 +462,9 @@ class WerewolfBot {
                 case 'role_config':
                     await this.handleRoleConfiguration(message);
                     break;
+                case 'channel_config':
+                    await this.handleChannelConfig(message);
+                    break;
                 case 'feedback':
                     await this.handleFeedback(message, args);
                     break;
@@ -8120,6 +8123,139 @@ class WerewolfBot {
         } catch (error) {
             console.error('Error handling role configuration command:', error);
             await message.reply('❌ An error occurred while fetching the role configuration.');
+        }
+    }
+
+    /**
+     * Handle channel configuration command
+     */
+    async handleChannelConfig(message) {
+        if (this.isPublicChannel(message)) {
+            return message.reply('WOAH! You trying to scuff the game? Wrong channel buddy!');
+        }
+
+        try {
+            // Get the current game for this server
+            const gameQuery = `
+                SELECT id, game_number, game_name, status 
+                FROM games 
+                WHERE server_id = $1 AND status IN ('signup', 'active') 
+                ORDER BY id DESC 
+                LIMIT 1
+            `;
+            
+            const gameResult = await this.db.query(gameQuery, [message.guild.id]);
+            
+            if (gameResult.rows.length === 0) {
+                await message.reply('❌ No active game found for this server.');
+                return;
+            }
+            
+            const game = gameResult.rows[0];
+            
+            // Get all channels for this game
+            const channelQuery = `
+                SELECT channel_name, is_created, invited_users, open_at_dawn, open_at_dusk, is_couple_chat
+                FROM game_channels 
+                WHERE game_id = $1
+                ORDER BY channel_name
+            `;
+            
+            const channelResult = await this.db.query(channelQuery, [game.id]);
+            
+            if (channelResult.rows.length === 0) {
+                await message.reply('❌ No channels configured for the current game.');
+                return;
+            }
+            
+            // Get all players for user ID to username mapping
+            const playersResult = await this.db.query(
+                'SELECT user_id, username FROM players WHERE game_id = $1',
+                [game.id]
+            );
+            
+            const userIdToUsername = new Map();
+            playersResult.rows.forEach(player => {
+                userIdToUsername.set(player.user_id, player.username);
+            });
+            
+            // Build the embed
+            const embed = new EmbedBuilder()
+                .setTitle(`📁 Channel Configuration - Game ${game.game_number}`)
+                .setColor(0x0099ff)
+                .setTimestamp();
+            
+            if (game.game_name) {
+                embed.setDescription(`**${game.game_name}**`);
+            }
+            
+            // Process each channel
+            for (const channel of channelResult.rows) {
+                let channelText = '';
+                
+                // Status
+                const status = channel.is_created ? '✅ Created' : '⏳ Pending';
+                channelText += `**Status:** ${status}\n`;
+                
+                // Open flags
+                const openFlags = [];
+                if (channel.open_at_dawn) openFlags.push('Dawn');
+                if (channel.open_at_dusk) openFlags.push('Dusk');
+                if (openFlags.length > 0) {
+                    channelText += `**Open at:** ${openFlags.join(', ')}\n`;
+                }
+                
+                // Couple chat flag
+                if (channel.is_couple_chat) {
+                    channelText += `**Type:** Couple Chat\n`;
+                }
+                
+                // Invited users
+                if (channel.invited_users && Array.isArray(channel.invited_users) && channel.invited_users.length > 0) {
+                    const usernames = [];
+                    const unknownUsers = [];
+                    
+                    for (const userId of channel.invited_users) {
+                        const username = userIdToUsername.get(userId);
+                        if (username) {
+                            usernames.push(username);
+                        } else {
+                            unknownUsers.push(userId);
+                        }
+                    }
+                    
+                    if (usernames.length > 0) {
+                        channelText += `**Invited Players:** ${usernames.join(', ')}\n`;
+                    }
+                    if (unknownUsers.length > 0) {
+                        channelText += `**Unknown Users:** ${unknownUsers.join(', ')}\n`;
+                    }
+                } else {
+                    channelText += `**Invited Players:** None\n`;
+                }
+                
+                embed.addFields({ 
+                    name: `#${channel.channel_name}`, 
+                    value: channelText, 
+                    inline: false 
+                });
+            }
+            
+            // Add summary
+            const createdCount = channelResult.rows.filter(c => c.is_created).length;
+            const pendingCount = channelResult.rows.filter(c => !c.is_created).length;
+            
+            embed.addFields({ 
+                name: '📊 Summary', 
+                value: `Total: ${channelResult.rows.length} channels\n✅ Created: ${createdCount}\n⏳ Pending: ${pendingCount}`, 
+                inline: false 
+            });
+            
+            await message.reply({ embeds: [embed] });
+            
+        } catch (error) {
+            console.error('Error handling channel configuration command:', error);
+            await message.reply('❌ An error occurred while fetching the channel configuration.');
         }
     }
 
