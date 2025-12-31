@@ -2911,8 +2911,8 @@ class WerewolfBot {
                     value: 
                         '`Wolf.server` - 🖥️ Display detailed server information\n' +
                         '`Wolf.ia <YYYY-MM-DD HH:MM>` - Message count per player since date (EST)\n' +
-                        '`Wolf.speed <number> [emoji]` - ⚡ Start speed vote with reaction target (optional custom emoji)\n' +
-                        '`Wolf.speed_check` - ⚡ Check current speed vote status', 
+                        '`Wolf.speed_check` - See messages counts since phase change\n' +
+                        '`Wolf.speed <number> [emoji]` - ⚡ Start speed vote with reaction target (optional custom emoji)',
                     inline: false 
                 },
                 { 
