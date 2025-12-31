@@ -2835,17 +2835,19 @@ class WerewolfBot {
 
         // Player commands (everyone can use) - grouped together
         embed.addFields(
-            { 
+                { 
                 name: '👥 Player Commands', 
-                value: '`Wolf.in` - Sign up for the current game\n' +
-                       '`Wolf.out` - Remove yourself from the current game\n' +
-                       '`Wolf.vote @user` - Vote for a player (voting booth, day phase only)\n' +
-                       '`Wolf.retract` - Retract your current vote\n' +
-                       '`Wolf.alive` - Show all players currently alive\n' +
-                       '`Wolf.players` - Show all players dead or alive\n' +
-                       '`Wolf.meme` - 😤 I dare you to try me\n' +
-                       '`Wolf.help` - Show this help message\n' +
-                       '`Wolf.feedback` - Submit feedback to Stinky',
+                value: 
+                    '`Wolf.in` - Sign up for the current game\n' +
+                    '`Wolf.out` - Remove yourself from the current game\n' +
+                    '`Wolf.vote @user` - Vote for a player (voting booth, day phase only)\n' +
+                    '`Wolf.retract` - Retract your current vote\n' +
+                    '`Wolf.alive` - Show all players currently alive\n' +
+                    '`Wolf.players` - Show all players dead or alive\n' +
+                    '`Wolf.my_journal` - 📔 Find your personal journal channel\n' +
+                    '`Wolf.meme` - 😤 I dare you to try me\n' +
+                    '`Wolf.help` - Show this help message\n' +
+                    '`Wolf.feedback` - Submit feedback to Stinky',
                 inline: false 
             }
         );
@@ -2855,58 +2857,73 @@ class WerewolfBot {
             embed.addFields(
                 { 
                     name: '⚙️ Setup & Game Management', 
-                    value: '`Wolf.setup` - Initial server setup (prefix, starting number, game name)\n' +
-                           '`Wolf.server_roles` - 🎭 Create all game roles\n' +
-                           '`Wolf.create` - Create a new game with signup channel\n' +
-                           '`Wolf.start` - Start the game and create all channels\n' +
-                           '`Wolf.settings` - View/change game and channel settings (votes_to_hang, messages)\n' +
-                           '`Wolf.next` - Move to the next phase (day/night)\n' +
-                           '`Wolf.end` - End the current game (requires confirmation)', 
+                    value: 
+                        '`Wolf.setup` - Initial server setup (prefix, starting number, game name)\n' +
+                        '`Wolf.server_roles` - 🎭 Create all game roles\n' +
+                        '`Wolf.create` - Create a new game with signup channel\n' +
+                        '`Wolf.start` - Start the game and create all channels\n' +
+                        '`Wolf.settings` - View/change game and channel settings (votes_to_hang, messages)\n' +
+                        '`Wolf.next` - Move to the next phase (day/night)\n' +
+                        '`Wolf.end` - End the current game (requires confirmation)', 
                     inline: false 
                 },
                 { 
                     name: '🔧 Channel & Phase Management', 
-                    value: '`Wolf.add_channel <n>` - Create additional channel in game category\n' +
-                           '`Wolf.create_vote` - 🗳️ Manually create a voting message (voting booth only)\n' +
-                           '`Wolf.lockdown` - 🔒 Lock down townsquare and memos (alive players cannot speak)\n' +
-                           '`Wolf.lockdown lift` - 🔓 Lift lockdown and restore normal permissions\n' +
-                           '`Wolf.sync_members` - 🔄 Sync server members to database', 
+                    value: 
+                        '`Wolf.add_channel <n>` - Create additional channel in game category\n' +
+                        '`Wolf.create_vote` - 🗳️ Manually create a voting message (voting booth only)\n' +
+                        '`Wolf.get_votes` - 📊 Get current vote counts and status\n' +
+                        '`Wolf.set_voting_booth <channel-name>` - 🗳️ Set voting booth channel for current game\n' +
+                        '`Wolf.lockdown` - 🔒 Lock down townsquare and memos (alive players cannot speak)\n' +
+                        '`Wolf.lockdown lift` - 🔓 Lift lockdown and restore normal permissions\n' +
+                        '`Wolf.sync_members` - 🔄 Sync server members to database', 
                     inline: false 
                 },
                 { 
                     name: '📔 Journal Management', 
-                    value: '`Wolf.journal @user` - Create a personal journal for a player\n' +
-                           '`Wolf.journal_link` - 🔗 Link existing journals to players\n' +
-                           '`Wolf.journal_owner` - 👤 Show journal owner (use in journal)\n' +
-                           '`Wolf.journal_unlink` - 🔓 Unlink journal (use in journal)\n' +
-                           '`Wolf.journal_assign @user` - 🎯 Assign journal to user (use in journal)\n' +
-                           '`Wolf.balance_journals` - 📚 Balance journals across categories (50 channel limit)\n' +
-                           '`Wolf.populate_journals [number]` - 🧪 Create test journals for testing\n' +
-                           '`Wolf.fix_journals` - 🔍 Fix journal permissions\n',
+                    value: 
+                        '`Wolf.journal @user` - Create a personal journal for a player\n' +
+                        '`Wolf.journal_link` - 🔗 Link existing journals to players\n' +
+                        '`Wolf.journal_owner` - 👤 Show journal owner (use in journal)\n' +
+                        '`Wolf.journal_unlink` - 🔓 Unlink journal (use in journal)\n' +
+                        '`Wolf.journal_assign @user` - 🎯 Assign journal to user (use in journal)\n' +
+                        '`Wolf.journal_grant_pin` - 📌 Grant pin permissions for all journals\n' +
+                        '`Wolf.balance_journals` - 📚 Balance journals across categories (50 channel limit)\n' +
+                        '`Wolf.populate_journals [number]` - 🧪 Create test journals for testing\n',
                     inline: false 
                 },
                 { 
                     name: '🎭 Role & Player Management', 
-                    value:  // fletch: v Hallucinated or deprecated command v
-                            //'`Wolf.role_assign` - Randomly assign roles to signed-up players\n' +
-                           '`Wolf.roles_list` - 📋 Display all assigned roles for current game\n' +
-                           '`Wolf.kill @player` - 🔫 Removes Alive and adds Dead role\n' , 
+                    value: 
+                        '`Wolf.roles_list` - 📋 Display all assigned roles for current game\n' +
+                        '`Wolf.role_config` - ⚙️ Show role configuration for current game\n' +
+                        '`Wolf.kill @player` - 🔫 Removes Alive and adds Dead role\n' +   
+                        '`Wolf.inlist` - Show all players signed up (mobile-friendly format)\n' +
+                        '`Wolf.dead` - 💀 Show all players currently dead', 
                     inline: false 
                 },
                 { 
                     name: '📊 Analysis & Utilities', 
-                    value: '`Wolf.server` - 🖥️ Display detailed server information\n' +
-                           '`Wolf.ia <YYYY-MM-DD HH:MM>` - Message count per player since date (EST)\n' +
-                           '`Wolf.speed <number> [emoji]` - ⚡ Start speed vote with reaction target (optional custom emoji)', 
+                    value: 
+                        '`Wolf.server` - 🖥️ Display detailed server information\n' +
+                        '`Wolf.ia <YYYY-MM-DD HH:MM>` - Message count per player since date (EST)\n' +
+                        '`Wolf.speed <number> [emoji]` - ⚡ Start speed vote with reaction target (optional custom emoji)\n' +
+                        '`Wolf.speed_check` - ⚡ Check current speed vote status', 
                     inline: false 
                 },
                 { 
                     name: '🔄 Recovery & Maintenance', 
-                    value: '`Wolf.recovery` - Migration from manual to bot control\n' +
-                           '`Wolf.todo` - 🐛 Display todo list\n' +
-                           '`Wolf.refresh` - Reset server (testing only!)\n' +
-                           '`Wolf.archive` - Archive current game data\n' +
-                           '`Wolf.archive_local` - 💾 Archive to local JSON file (dev only)', 
+                    value: 
+                        '`Wolf.recovery` - Migration from manual to bot control\n' +
+                        '`Wolf.fix_journals` - 🔍 Fix journal permissions',
+                    inline: false 
+                },
+                {
+                    name: '🧪 Testing Commands',
+                    value: 
+                        '`Wolf.refresh` - Reset server (testing only!)\n' +
+                        '`Wolf.archive` - Archive current game data\n' +
+                        '`Wolf.archive_local` - 💾 Archive to local JSON file (dev only)', 
                     inline: false 
                 }
             );
@@ -3135,10 +3152,10 @@ class WerewolfBot {
             [serverId]
         );
         const config = serverConfig.rows[0];
-        const gameName = config.game_name;
+        const gameName = config.game_name ? `${config.game_name} Game ${game.game_number}` : `Game ${game.game_number}`;
 
         // Send as a code block for easy copying
-        const response = `**${gameName} Game ${game.game_number} Player List (${playersResult.rows.length}):**\n${playerList}`;
+        const response = `**${gameName} Player List (${playersResult.rows.length}):**\n${playerList}`;
 
         await message.reply(response);
     }
