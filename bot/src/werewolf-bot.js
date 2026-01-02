@@ -2024,11 +2024,12 @@ class WerewolfBot {
             return message.reply('❌ Voting is not allowed during the night phase.');
         }
 
-        // Check if in voting booth
-        if (message.channel.id !== game.voting_booth_channel_id) {
-            const votingChannel = await this.client.channels.fetch(game.voting_booth_channel_id);
-            return message.reply(`❌ Please vote in ${votingChannel} instead.`);
-        }
+        // Check if in voting booth.
+        // TODO: Bring back
+        // if (message.channel.id !== game.voting_booth_channel_id) {
+        //     const votingChannel = await this.client.channels.fetch(game.voting_booth_channel_id);
+        //     return message.reply(`❌ Please vote in ${votingChannel} instead.`);
+        // }
 
         // Check if voter is in the game and has Alive role
         const voterCheck = await this.db.query(
