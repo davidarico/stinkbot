@@ -3033,16 +3033,82 @@ class WerewolfBot {
 
         const playerList = sortedAlivePlayers.map((player, index) => `${index + 1}. ${player}`).join('\n');
         
-        const embed = new EmbedBuilder()
-            .setTitle(isAddDead ? '👥 All Players' : '💚 Alive Players')
-            .setDescription(isAddDead ? 'Here are all players, alive or dead, in this game:' : `Here are all the players currently alive in the game:`)
-            .addFields({ 
-                name: `Players (${alivePlayers.length})`, 
-                value: playerList 
-            })
-            .setColor(0x00FF00);
+        // Split into multiple embeds if too long (max 1024 chars per field)
+        const embeds = [];
+        const title = isAddDead ? '👥 All Players' : '💚 Alive Players';
+        const description = isAddDead ? 'Here are all players, alive or dead, in this game:' : `Here are all the players currently alive in the game:`;
+        
+        if (playerList.length > 1024) {
+            // Split into chunks
+            const chunks = [];
+            const lines = sortedAlivePlayers.map((player, index) => `${index + 1}. ${player}`);
+            let currentChunk = '';
+            let currentIndex = 1;
+            let chunkStartIndex = 1;
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                if ((currentChunk + line + '\n').length > 1024) {
+                    if (currentChunk) {
+                        chunks.push({
+                            text: currentChunk.trim(),
+                            startIndex: chunkStartIndex,
+                            endIndex: currentIndex - 1
+                        });
+                    }
+                    currentChunk = line + '\n';
+                    chunkStartIndex = currentIndex;
+                } else {
+                    currentChunk += line + '\n';
+                }
+                currentIndex++;
+            }
+            if (currentChunk) {
+                chunks.push({
+                    text: currentChunk.trim(),
+                    startIndex: chunkStartIndex,
+                    endIndex: sortedAlivePlayers.length
+                });
+            }
+            
+            // Create embeds for each chunk
+            chunks.forEach((chunk, index) => {
+                const chunkTitle = index === 0 ? title : `${title} (continued)`;
+                const fieldName = chunks.length > 1 
+                    ? `Players ${chunk.startIndex}-${chunk.endIndex} (${alivePlayers.length} total)`
+                    : `Players (${alivePlayers.length})`;
+                
+                const embed = new EmbedBuilder()
+                    .setTitle(chunkTitle)
+                    .addFields({ 
+                        name: fieldName, 
+                        value: chunk.text 
+                    })
+                    .setColor(0x00FF00)
+                    .setTimestamp();
+                
+                // Only set description for the first embed
+                if (index === 0) {
+                    embed.setDescription(description);
+                }
+                
+                embeds.push(embed);
+            });
+        } else {
+            // Single embed if it fits
+            const embed = new EmbedBuilder()
+                .setTitle(title)
+                .setDescription(description)
+                .addFields({ 
+                    name: `Players (${alivePlayers.length})`, 
+                    value: playerList 
+                })
+                .setColor(0x00FF00)
+                .setTimestamp();
+            embeds.push(embed);
+        }
 
-        await message.reply({ embeds: [embed] });
+        await message.reply({ embeds: embeds });
     }
 
     async handleDead(message) {
