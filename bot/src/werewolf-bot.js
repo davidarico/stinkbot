@@ -5527,8 +5527,6 @@ class WerewolfBot {
             roleSections.push(`**❓ UNASSIGNED**\n${noRolePlayers.map(formatRoleDisplay).join('\n')}`);
         }
 
-        const rolesList = roleSections.join('\n\n');
-
         // Count role occurrences
         const roleCounts = {};
         playersWithRoles.forEach(player => {
@@ -5545,18 +5543,178 @@ class WerewolfBot {
             .map(([role, count]) => count > 1 ? `${role} (${count})` : role)
             .join(', ');
 
-        const embed = new EmbedBuilder()
-            .setTitle('🎭 Player Roles')
-            .setDescription(`Here are all the assigned roles for ${game.game_name ? `${game.game_name} ` : ''}Game ${game.game_number}:`)
+        // Create separate embeds for each team to avoid 1024 character limit
+        const embeds = [];
+        const gameTitle = `${game.game_name ? `${game.game_name} ` : ''}Game ${game.game_number}`;
+
+        // Town embed
+        if (townPlayers.length > 0) {
+            const mappedTownPlayers = townPlayers.map(formatRoleDisplay);
+            mappedTownPlayers.sort((a, b) => a.localeCompare(b));
+            const townList = mappedTownPlayers.join('\n');
+            
+            // Split into chunks if too long (max 1024 chars per field)
+            if (townList.length > 1024) {
+                const chunks = [];
+                const lines = mappedTownPlayers;
+                let currentChunk = '';
+                
+                for (const line of lines) {
+                    if ((currentChunk + line + '\n').length > 1024) {
+                        if (currentChunk) chunks.push(currentChunk.trim());
+                        currentChunk = line + '\n';
+                    } else {
+                        currentChunk += line + '\n';
+                    }
+                }
+                if (currentChunk) chunks.push(currentChunk.trim());
+                
+                chunks.forEach((chunk, index) => {
+                    const embed = new EmbedBuilder()
+                        .setTitle(index === 0 ? '🏘️ TOWN' : '🏘️ TOWN (continued)')
+                        .setDescription(chunk)
+                        .setColor(0x3498DB)
+                        .setTimestamp();
+                    embeds.push(embed);
+                });
+            } else {
+                const embed = new EmbedBuilder()
+                    .setTitle('🏘️ TOWN')
+                    .setDescription(townList)
+                    .setColor(0x3498DB)
+                    .setTimestamp();
+                embeds.push(embed);
+            }
+        }
+
+        // Wolves embed
+        if (wolfPlayers.length > 0) {
+            const mappedWolfPlayers = wolfPlayers.map(formatRoleDisplay);
+            mappedWolfPlayers.sort((a, b) => a.localeCompare(b));
+            const wolfList = mappedWolfPlayers.join('\n');
+            
+            if (wolfList.length > 1024) {
+                const chunks = [];
+                const lines = mappedWolfPlayers;
+                let currentChunk = '';
+                
+                for (const line of lines) {
+                    if ((currentChunk + line + '\n').length > 1024) {
+                        if (currentChunk) chunks.push(currentChunk.trim());
+                        currentChunk = line + '\n';
+                    } else {
+                        currentChunk += line + '\n';
+                    }
+                }
+                if (currentChunk) chunks.push(currentChunk.trim());
+                
+                chunks.forEach((chunk, index) => {
+                    const embed = new EmbedBuilder()
+                        .setTitle(index === 0 ? '🐺 WOLVES' : '🐺 WOLVES (continued)')
+                        .setDescription(chunk)
+                        .setColor(0xE74C3C)
+                        .setTimestamp();
+                    embeds.push(embed);
+                });
+            } else {
+                const embed = new EmbedBuilder()
+                    .setTitle('🐺 WOLVES')
+                    .setDescription(wolfList)
+                    .setColor(0xE74C3C)
+                    .setTimestamp();
+                embeds.push(embed);
+            }
+        }
+
+        // Neutrals embed
+        if (neutralPlayers.length > 0) {
+            const mappedNeutralPlayers = neutralPlayers.map(formatRoleDisplay);
+            mappedNeutralPlayers.sort((a, b) => a.localeCompare(b));
+            const neutralList = mappedNeutralPlayers.join('\n');
+            
+            if (neutralList.length > 1024) {
+                const chunks = [];
+                const lines = mappedNeutralPlayers;
+                let currentChunk = '';
+                
+                for (const line of lines) {
+                    if ((currentChunk + line + '\n').length > 1024) {
+                        if (currentChunk) chunks.push(currentChunk.trim());
+                        currentChunk = line + '\n';
+                    } else {
+                        currentChunk += line + '\n';
+                    }
+                }
+                if (currentChunk) chunks.push(currentChunk.trim());
+                
+                chunks.forEach((chunk, index) => {
+                    const embed = new EmbedBuilder()
+                        .setTitle(index === 0 ? '⚖️ NEUTRALS' : '⚖️ NEUTRALS (continued)')
+                        .setDescription(chunk)
+                        .setColor(0xF39C12)
+                        .setTimestamp();
+                    embeds.push(embed);
+                });
+            } else {
+                const embed = new EmbedBuilder()
+                    .setTitle('⚖️ NEUTRALS')
+                    .setDescription(neutralList)
+                    .setColor(0xF39C12)
+                    .setTimestamp();
+                embeds.push(embed);
+            }
+        }
+
+        // Unassigned embed
+        if (noRolePlayers.length > 0) {
+            const unassignedList = noRolePlayers.map(formatRoleDisplay).join('\n');
+            
+            if (unassignedList.length > 1024) {
+                const chunks = [];
+                const lines = noRolePlayers.map(formatRoleDisplay);
+                let currentChunk = '';
+                
+                for (const line of lines) {
+                    if ((currentChunk + line + '\n').length > 1024) {
+                        if (currentChunk) chunks.push(currentChunk.trim());
+                        currentChunk = line + '\n';
+                    } else {
+                        currentChunk += line + '\n';
+                    }
+                }
+                if (currentChunk) chunks.push(currentChunk.trim());
+                
+                chunks.forEach((chunk, index) => {
+                    const embed = new EmbedBuilder()
+                        .setTitle(index === 0 ? '❓ UNASSIGNED' : '❓ UNASSIGNED (continued)')
+                        .setDescription(chunk)
+                        .setColor(0x95A5A6)
+                        .setTimestamp();
+                    embeds.push(embed);
+                });
+            } else {
+                const embed = new EmbedBuilder()
+                    .setTitle('❓ UNASSIGNED')
+                    .setDescription(unassignedList)
+                    .setColor(0x95A5A6)
+                    .setTimestamp();
+                embeds.push(embed);
+            }
+        }
+
+        // Summary embed (always last)
+        const summaryEmbed = new EmbedBuilder()
+            .setTitle('🎭 Player Roles Summary')
+            .setDescription(`Role assignments for ${gameTitle}`)
             .addFields(
-                { name: 'Role Assignments', value: rolesList, inline: false },
                 { name: 'Role Summary', value: roleSummary || 'No roles assigned', inline: false },
                 { name: 'Legend', value: '🐺 = In Wolf Chat', inline: false }
             )
             .setColor(0x9B59B6)
             .setTimestamp();
+        embeds.push(summaryEmbed);
 
-        await message.reply({ embeds: [embed] });
+        await message.reply({ embeds: embeds });
     }
 
     async handleMyJournal(message) {
