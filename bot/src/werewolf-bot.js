@@ -2115,10 +2115,11 @@ class WerewolfBot {
         const game = gameResult.rows[0];
 
         // Check if in voting booth
-        if (message.channel.id !== game.voting_booth_channel_id) {
-            const votingChannel = await this.client.channels.fetch(game.voting_booth_channel_id);
-            return message.reply(`❌ Please retract your vote in ${votingChannel} instead.`);
-        }
+        // TODO: Bring back
+        // if (message.channel.id !== game.voting_booth_channel_id) {
+        //     const votingChannel = await this.client.channels.fetch(game.voting_booth_channel_id);
+        //     return message.reply(`❌ Please retract your vote in ${votingChannel} instead.`);
+        // }
 
         // Remove vote
         const deleteResult = await this.db.query(
