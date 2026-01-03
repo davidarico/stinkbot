@@ -2395,13 +2395,11 @@ class WerewolfBot {
             // Allow voting during day phase (but only for day 2+)
             if (newDay >= 2) {
                 await votingChannel.permissionOverwrites.edit(aliveRole.id, {
-                    ViewChannel: true,
                     SendMessages: true
                 });
             } else {
                 // Day 1 - keep voting booth read-only
                 await votingChannel.permissionOverwrites.edit(aliveRole.id, {
-                    ViewChannel: true,
                     SendMessages: false
                 });
             }
@@ -2409,7 +2407,6 @@ class WerewolfBot {
         else {
             // Close voting booth channel for the night phase
             await votingChannel.permissionOverwrites.edit(aliveRole.id, {
-                ViewChannel: true,
                 SendMessages: false
             });
         }
