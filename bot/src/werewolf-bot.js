@@ -2439,7 +2439,6 @@ class WerewolfBot {
 
                     // Update Alive role permissions for this channel
                     await channel.permissionOverwrites.edit(aliveRole.id, {
-                        ViewChannel: false,
                         SendMessages: shouldAllowSendMessages
                     });
 
