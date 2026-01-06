@@ -2925,7 +2925,7 @@ class WerewolfBot {
                     name: '📊 Analysis & Utilities', 
                     value: 
                         '`Wolf.server` - 🖥️ Display detailed server information\n' +
-                        '`Wolf.ia <YYYY-MM-DD HH:MM>` - Message count per player since date (EST)\n' +
+                        '`Wolf.ia [channel] <YYYY-MM-DD HH:MM>` - Message count per player since date (EST). BOTH date and channel are optional.\n' +
                         '`Wolf.speed_check` - See messages counts since phase change',
                     inline: false 
                 },
@@ -4216,26 +4216,63 @@ class WerewolfBot {
 
         const game = gameResult.rows[0];
 
-        // Check if date/time argument is provided
-        let argumentsArray = args
-        if (!argumentsArray.length) {
-            // Use current date in EST/EDT timezone instead of UTC to avoid next-day issues
+        // Arguments can be:
+        // - none: default channel (town square) + default start time (same as before)
+        // - one arg: if it's a date => treat as date; otherwise treat as channel name
+        // - two+ args: if first arg is a date => treat all as date/time; otherwise first is channel and remaining are date/time
+        const looksLikeDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+        const looksLikeTime = (s) => /^\d{2}:\d{2}$/.test(s);
+
+        let channelArg = null;
+        let dateParts = [];
+
+        if (args && args.length) {
+            if (args.length === 1) {
+                if (looksLikeDate(args[0])) {
+                    dateParts = [args[0]];
+                } else {
+                    channelArg = args[0];
+                }
+            } else {
+                if (looksLikeDate(args[0])) {
+                    dateParts = args;
+                } else {
+                    channelArg = args[0];
+                    dateParts = args.slice(1);
+                }
+            }
+        }
+
+        console.log(dateParts);
+        console.log(channelArg);
+
+        // Default start time behavior: if no date provided, use current date in EST/EDT (with the 9:30 AM cutoff)
+        if (!dateParts.length) {
             const now = moment.tz("America/New_York");
             const cutoffTime = moment.tz("America/New_York").hour(9).minute(30).second(0).millisecond(0);
-            
+
             // If it's before 9:30 AM EST today, search from 9:30 AM yesterday
-            let searchDate;
-            if (now.isBefore(cutoffTime)) {
-                searchDate = now.subtract(1, 'day').format('YYYY-MM-DD');
-            } else {
-                searchDate = now.format('YYYY-MM-DD');
+            const searchDate = now.isBefore(cutoffTime)
+                ? now.subtract(1, 'day').format('YYYY-MM-DD')
+                : now.format('YYYY-MM-DD');
+
+            dateParts = [searchDate, '09:30'];
+        } else if (dateParts.length === 1) {
+            // Date provided without time => default time to 09:30
+            if (!looksLikeDate(dateParts[0])) {
+                return message.reply('❌ Invalid date format. Please use: `Wolf.ia [channel] YYYY-MM-DD [HH:MM]` (EST timezone)\nExamples:\n- `Wolf.ia 2024-12-01`\n- `Wolf.ia town-square 2024-12-01 14:30`');
             }
-            
-            argumentsArray = [searchDate, '09:30'];
+            dateParts = [dateParts[0], '09:30'];
+        } else {
+            // If time is present, validate it (and ignore any extra parts beyond date+time)
+            if (!looksLikeDate(dateParts[0]) || !looksLikeTime(dateParts[1])) {
+                return message.reply('❌ Invalid date/time format. Please use: `Wolf.ia [channel] YYYY-MM-DD [HH:MM]` (24-hour format, EST timezone)\nExamples:\n- `Wolf.ia 2024-12-01 14:30`\n- `Wolf.ia town-square 2024-12-01 14:30`');
+            }
+            dateParts = [dateParts[0], dateParts[1]];
         }
 
         // Parse the date/time argument
-        const dateTimeStr = argumentsArray.join(' ');
+        const dateTimeStr = dateParts.join(' ');
         let utcDate;
         
         try {
@@ -4254,10 +4291,72 @@ class WerewolfBot {
         }
 
         try {
-            // Get the town square channel
-            const townSquareChannel = await this.client.channels.fetch(game.town_square_channel_id);
-            if (!townSquareChannel) {
-                return message.reply('❌ Town square channel not found.');
+            // Resolve which channel to check for activity
+            const resolveActivityChannel = async () => {
+                // Default to the game's town square channel
+                if (!channelArg) {
+                    return await this.client.channels.fetch(game.town_square_channel_id);
+                }
+
+                console.log("channelArg:", channelArg);
+
+                // Support channel mention (<#id>), raw ID, "#name", or "name"
+                const mentionMatch = channelArg.match(/^<#(\d+)>$/);
+                const rawIdMatch = channelArg.match(/^\d+$/);
+                let channelId = null;
+                let channelName = null;
+
+                if (mentionMatch) {
+                    channelId = mentionMatch[1];
+                } else if (rawIdMatch) {
+                    channelId = channelArg;
+                } else {
+                    channelName = channelArg.replace(/^#/, '').trim().toLowerCase();
+                }
+
+                // If we have an ID, fetch directly
+                if (channelId) {
+                    try {
+                        return await message.guild.channels.fetch(channelId);
+                    } catch (e) {
+                        return null;
+                    }
+                }
+
+                // Otherwise, search by name (cache first, then fetch all)
+                const findByName = () => message.guild.channels.cache.find(ch =>
+                    ch &&
+                    typeof ch.name === 'string' &&
+                    ch.name.toLowerCase() === channelName
+                );
+
+                let found = findByName();
+                if (found) return found;
+
+                try {
+                    await message.guild.channels.fetch();
+                } catch (e) {
+                    // ignore; we'll fall back to cache search
+                }
+
+                found = findByName();
+                return found || null;
+            };
+
+            const activityChannel = await resolveActivityChannel();
+            console.log("activityChannel:", activityChannel);
+            if (!activityChannel) {
+                return message.reply(channelArg
+                    ? `❌ Channel not found: \`${channelArg}\`. Try \`Wolf.ia #channel-name\` or \`Wolf.ia 123456789012345678\`.`
+                    : '❌ Town square channel not found.');
+            }
+
+            // Ensure it's a text-based channel we can read messages from
+            if (typeof activityChannel.isTextBased === 'function' && !activityChannel.isTextBased()) {
+                return message.reply(`❌ \`${activityChannel.name || channelArg}\` is not a text channel.`);
+            }
+            if (!activityChannel.messages || typeof activityChannel.messages.fetch !== 'function') {
+                return message.reply(`❌ Can't read messages from \`${activityChannel.name || channelArg}\`.`);
             }
 
             // Get all players in the game
@@ -4315,7 +4414,7 @@ class WerewolfBot {
                     };
                 });
 
-                // Fetch messages from the town square since the specified date
+                // Fetch messages from the selected channel since the specified date
                 let allMessages = [];
                 let lastMessageId = null;
                 
@@ -4326,7 +4425,7 @@ class WerewolfBot {
                         options.before = lastMessageId;
                     }
 
-                    const messages = await townSquareChannel.messages.fetch(options);
+                    const messages = await activityChannel.messages.fetch(options);
                     
                     if (messages.size === 0) break;
 
@@ -4368,11 +4467,11 @@ class WerewolfBot {
                     : 'No messages found from players in the specified time period.';
 
                 const embed = new EmbedBuilder()
-                    .setTitle('📊 Town Square Activity Report')
+                    .setTitle('📊 Activity Report')
                     .setDescription(`Message count per player since **${dateTimeStr} EST**`)
                     .addFields(
                         { name: `Player Activity (${sortedPlayers.length} players)`, value: playerList },
-                        { name: 'Summary', value: `**Total messages**: ${totalMessages}\n**Channel**: ${townSquareChannel.name}`, inline: false }
+                        { name: 'Summary', value: `**Total messages**: ${totalMessages}\n**Channel**: ${activityChannel.name}`, inline: false }
                     )
                     .setColor(0x3498DB)
                     .setTimestamp();
@@ -4409,7 +4508,7 @@ class WerewolfBot {
                 };
             });
 
-            // Fetch messages from the town square since the specified date
+            // Fetch messages from the selected channel since the specified date
             let allMessages = [];
             let lastMessageId = null;
             
@@ -4420,7 +4519,7 @@ class WerewolfBot {
                     options.before = lastMessageId;
                 }
 
-                const messages = await townSquareChannel.messages.fetch(options);
+                const messages = await activityChannel.messages.fetch(options);
                 
                 if (messages.size === 0) break;
 
@@ -4462,11 +4561,11 @@ class WerewolfBot {
                 : 'No messages found from players in the specified time period.';
 
             const embed = new EmbedBuilder()
-                .setTitle('📊 Town Square Activity Report')
+                .setTitle('📊 Activity Report')
                 .setDescription(`Message count per player since **${dateTimeStr} EST**`)
                 .addFields(
                     { name: `Player Activity (${sortedPlayers.length} players)`, value: playerList },
-                    { name: 'Summary', value: `**Total messages**: ${totalMessages}\n**Channel**: ${townSquareChannel.name}`, inline: false }
+                    { name: 'Summary', value: `**Total messages**: ${totalMessages}\n**Channel**: ${activityChannel.name}`, inline: false }
                 )
                 .setColor(0x3498DB)
                 .setTimestamp();
