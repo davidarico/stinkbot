@@ -494,6 +494,9 @@ class WerewolfBot {
                 case 'perms_test':
                     await this.permsTest(message, args);
                     break;
+                case 'scuff':
+                    await this.handleScuff(message);
+                    break;
                 default:
                     const funnyResponse = await this.generateFunnyResponse(message.content.slice(prefix.length).trim().split(/ +/), message.author.displayName);
                     if (funnyResponse) {
@@ -2661,6 +2664,103 @@ class WerewolfBot {
         await message.reply({ embeds: [successEmbed] });
     }
 
+    async handleScuff(message) {
+        const serverId = message.guild.id;
+
+        // Get active game (scuff is intended to rewind an in-progress game back to signup)
+        const gameResult = await this.db.query(
+            'SELECT * FROM games WHERE server_id = $1 AND status = $2 ORDER BY created_at DESC LIMIT 1',
+            [serverId, 'active']
+        );
+
+        if (!gameResult.rows.length) {
+            return message.reply('❌ No active game found to scuff.');
+        }
+
+        const game = gameResult.rows[0];
+
+        const confirmEmbed = new EmbedBuilder()
+            .setTitle('⚠️ Confirm Scuff')
+            .setDescription(
+                [
+                    'This command will **rewind the current game back to signups**.',
+                    '',
+                    '**It will:**',
+                    `- Set game **#${game.game_number}** \`status\` to \`signup\` and set \`signups_closed = false\``,
+                    '- For every member with the **Alive** role: remove **Alive** and add **Signed Up**',
+                    '',
+                    '**It will NOT do:**',
+                    '- Delete/recreate channels, rename channels, or undo any channel permission changes',
+                    '- Touch members with the **Dead** role (unless they also have Alive)',
+                    '',
+                    'Type `confirm` to proceed or `cancel` to abort.',
+                ].join('\n')
+            )
+            .setColor(0xE67E22);
+
+        await message.reply({ embeds: [confirmEmbed] });
+
+        const filter = (m) =>
+            m.author.id === message.author.id &&
+            ['confirm', 'cancel'].includes(m.content.toLowerCase());
+        const collected = await message.channel.awaitMessages({ filter, max: 1, time: 30000 });
+
+        if (!collected.size || collected.first().content.toLowerCase() === 'cancel') {
+            return message.reply('❌ Scuff cancelled.');
+        }
+
+        // Update game status back to signup and reopen signups
+        await this.db.query(
+            'UPDATE games SET status = $1, signups_closed = $2 WHERE id = $3',
+            ['signup', false, game.id]
+        );
+
+        const aliveRole = message.guild.roles.cache.find(r => r.name === 'Alive');
+        const signedUpRole = message.guild.roles.cache.find(r => r.name === 'Signed Up');
+
+        if (!aliveRole || !signedUpRole) {
+            return message.reply('⚠️ Game was set back to `signup`, but I could not find the `Alive` and/or `Signed Up` roles to update members.');
+        }
+
+        let processed = 0;
+        let updated = 0;
+        let failed = 0;
+
+        try {
+            await message.guild.members.fetch();
+        } catch (error) {
+            console.warn('[DEBUG] Could not fetch all guild members for scuff; using cached members only.');
+        }
+
+        const aliveMembers = message.guild.members.cache.filter(
+            m => !m.user.bot && m.roles.cache.has(aliveRole.id)
+        );
+
+        for (const [, member] of aliveMembers) {
+            processed++;
+            try {
+                if (member.roles.cache.has(aliveRole.id)) {
+                    await member.roles.remove(aliveRole);
+                }
+                if (!member.roles.cache.has(signedUpRole.id)) {
+                    await member.roles.add(signedUpRole);
+                }
+                // Keep behavior consistent with `Wolf.in` (signed up players are not spectators)
+                await this.removeRole(member, 'Spectator');
+                updated++;
+            } catch (error) {
+                failed++;
+                console.error(`Error scuffing roles for member ${member.displayName}:`, error);
+            }
+        }
+
+        await message.reply(
+            `✅ Scuffed game #${game.game_number}: set status back to \`signup\` and updated roles for **${updated}/${processed}** Alive members` +
+            (failed ? ` (**${failed}** failed)` : '') +
+            '.'
+        );
+    }
+
     async handleRefresh(message) {
         if (process.env.NODE_ENV !== 'development') {
             return message.reply('❌ This command is only available in development mode.');
@@ -2890,7 +2990,8 @@ class WerewolfBot {
                         '`Wolf.channel_config` - View additional channel settings\n' +
                         '`Wolf.signups [open|close]` - Open or close signups\n' +
                         '`Wolf.next` - Move to the next phase (day/night)\n' +
-                        '`Wolf.end` - End the current game (requires confirmation)', 
+                        '`Wolf.end` - End the current game (requires confirmation)\n' +
+                        '`Wolf.scuff` - Rewind an active game back to signup (requires confirmation)', 
                     inline: false 
                 },
                 { 
