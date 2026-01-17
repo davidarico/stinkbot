@@ -1962,7 +1962,13 @@ class WerewolfBot {
                             .setColor(0xE74C3C)
                             .setTimestamp();
 
-                        await wolfChannel.send({ embeds: [wolfEmbed] });
+                        const wolfTeamMessage = await wolfChannel.send({ embeds: [wolfEmbed] });
+                        try {
+                            await wolfTeamMessage.pin('Pin wolf team role info for easy reference');
+                        } catch (error) {
+                            // Pinning requires Manage Messages; don't fail the whole notification flow if it's missing.
+                            console.warn('[DEBUG] Failed to pin wolf team message in wolf chat:', error?.message || error);
+                        }
 
                         // If there are wolf roles not in chat, alert the team
                         if (wolfRolesNotInChat.length > 0) {
