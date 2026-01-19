@@ -88,6 +88,62 @@ class WerewolfBot {
     }
 
     /**
+     * Discord servers have a hard limit of 500 channels.
+     * This helper computes current guild channel usage + any channels queued to be created
+     * (tracked in DB via game_channels.is_created=false for the most recent signup/active game).
+     */
+    async getServerChannelCapacity(serverId, guild, plannedNewChannels = 0) {
+        const channelLimit = 500;
+
+        // Prefer a fetch for accuracy (cache can be stale right after creates/deletes)
+        let currentChannelsCount = guild.channels.cache.size;
+        try {
+            const channels = await guild.channels.fetch();
+            if (channels && typeof channels.size === 'number') {
+                currentChannelsCount = channels.size;
+            }
+        } catch (e) {
+            // If fetch fails, fall back to cache size
+        }
+
+        let pendingToCreateCount = 0;
+        try {
+            const pendingResult = await this.db.query(
+                `
+                SELECT COUNT(*)::int AS total
+                FROM game_channels gc
+                JOIN games g ON g.id = gc.game_id
+                WHERE g.server_id = $1
+                  AND g.status IN ('signup', 'active')
+                  AND gc.is_created = false
+                `,
+                [serverId]
+            );
+            pendingToCreateCount = pendingResult.rows?.[0]?.total ?? 0;
+        } catch (e) {
+            // If DB query fails, treat as unknown/0 rather than breaking server command
+            pendingToCreateCount = 0;
+        }
+
+        const safePlannedNewChannels = Number.isFinite(plannedNewChannels) ? Math.max(0, Math.floor(plannedNewChannels)) : 0;
+        const projectedTotal = currentChannelsCount + pendingToCreateCount + safePlannedNewChannels;
+        const remainingNow = channelLimit - currentChannelsCount;
+        const remainingProjected = channelLimit - projectedTotal;
+
+        return {
+            channelLimit,
+            currentChannelsCount,
+            pendingToCreateCount,
+            plannedNewChannels: safePlannedNewChannels,
+            projectedTotal,
+            remainingNow,
+            remainingProjected,
+            isWithinLimitNow: currentChannelsCount <= channelLimit,
+            isWithinLimitProjected: projectedTotal <= channelLimit,
+        };
+    }
+
+    /**
      * Download an image from a URL and return the buffer
      * Note: Images are stored in memory only, not saved to disk
      */
@@ -657,6 +713,21 @@ class WerewolfBot {
             return message.reply('❌ There is already an active game. Please finish the current game first.');
         }
 
+        // Capacity check (Wolf.create will create: 1 category + 3 text channels)
+        const plannedNewChannels = 4;
+        const capacity = await this.getServerChannelCapacity(serverId, message.guild, plannedNewChannels);
+        if (!capacity.isWithinLimitProjected) {
+            return message.reply(
+                [
+                    '❌ Not enough room to create a new game.',
+                    `- Channels (now): **${capacity.currentChannelsCount}/${capacity.channelLimit}**`,
+                    `- Queued (DB): **${capacity.pendingToCreateCount}**`,
+                    `- Planned by this command: **${capacity.plannedNewChannels}**`,
+                    `- Projected: **${capacity.projectedTotal}/${capacity.channelLimit}** (over by **${Math.abs(capacity.remainingProjected)}**)`,
+                ].join('\n')
+            );
+        }
+
         // Create category and signup channel
         const categoryName = config.game_name 
             ? `${config.game_name} Game ${config.game_counter}`
@@ -1124,6 +1195,22 @@ class WerewolfBot {
 
         if (parseInt(playersResult.rows[0].count) == 0) {
             return message.reply('❌ Need at least one player to start the game.');
+        }
+
+        // Capacity check (Wolf.start will create core channels: results, memos, townsquare, voting-booth, wolf-chat)
+        // Plus any DB-queued channels tracked as game_channels.is_created=false (counted in getServerChannelCapacity)
+        const plannedNewChannels = 5;
+        const capacity = await this.getServerChannelCapacity(serverId, message.guild, plannedNewChannels);
+        if (!capacity.isWithinLimitProjected) {
+            return message.reply(
+                [
+                    '❌ Not enough room to start the game (Discord limit: 500 channels/server).',
+                    `- Channels (now): **${capacity.currentChannelsCount}/${capacity.channelLimit}**`,
+                    `- Queued (DB): **${capacity.pendingToCreateCount}**`,
+                    `- Planned by this command: **${capacity.plannedNewChannels}**`,
+                    `- Projected: **${capacity.projectedTotal}/${capacity.channelLimit}** (over by **${Math.abs(capacity.remainingProjected)}**)`,
+                ].join('\n')
+            );
         }
 
         // Get config for naming
@@ -7424,14 +7511,24 @@ class WerewolfBot {
                 .setTimestamp()
                 .setFooter({ text: `Server ID: ${serverId}` });
 
-            // Get channel count
-            const channelCount = message.guild.channels.cache.size;
-            const channelLimit = 500; // Discord's limit
-            const channelUsagePercentage = ((channelCount / channelLimit) * 100).toFixed(1);
+            // Get channel counts (includes queued-to-create from DB for accurate projection)
+            const capacity = await this.getServerChannelCapacity(serverId, message.guild);
+            const channelUsagePercentage = ((capacity.currentChannelsCount / capacity.channelLimit) * 100).toFixed(1);
+            const projectedUsagePercentage = ((capacity.projectedTotal / capacity.channelLimit) * 100).toFixed(1);
             
             // Basic server info
             embed.addFields(
-                { name: '📊 Basic Info', value: `**Members:** ${memberCount}\n**Total Games:** ${totalGames}\n**Channels:** ${channelCount}/${channelLimit} (${channelUsagePercentage}%)`, inline: true }
+                {
+                    name: '📊 Basic Info',
+                    value:
+                        `**Members:** ${memberCount}\n` +
+                        `**Total Games:** ${totalGames}\n` +
+                        `**Channels (now):** ${capacity.currentChannelsCount}/${capacity.channelLimit} (${channelUsagePercentage}%)\n` +
+                        `**Queued (DB):** ${capacity.pendingToCreateCount}\n` +
+                        `**Projected:** ${capacity.projectedTotal}/${capacity.channelLimit} (${projectedUsagePercentage}%)` +
+                        (capacity.isWithinLimitProjected ? '' : `\n⚠️ **Over limit by:** ${Math.abs(capacity.remainingProjected)}`),
+                    inline: true
+                }
             );
 
             // Server configuration
