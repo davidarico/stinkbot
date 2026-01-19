@@ -497,6 +497,9 @@ class WerewolfBot {
                 case 'scuff':
                     await this.handleScuff(message);
                     break;
+                case 'delete_category':
+                    await this.handleDeleteCategory(message, args);
+                    break;
                 default:
                     const funnyResponse = await this.generateFunnyResponse(message.content.slice(prefix.length).trim().split(/ +/), message.author.displayName);
                     if (funnyResponse) {
@@ -3040,7 +3043,8 @@ class WerewolfBot {
                     name: '🔄 Recovery & Maintenance', 
                     value: 
                         '`Wolf.recovery` - Migration from manual to bot control\n' +
-                        '`Wolf.fix_journals` - 🔍 Fix journal permissions',
+                        '`Wolf.fix_journals` - 🔍 Fix journal permissions\n' +
+                        '`Wolf.delete_category <category_name>` - 🧨 Delete a category and ALL channels inside it (requires confirmation)',
                     inline: false 
                 },
                 {
@@ -3059,6 +3063,193 @@ class WerewolfBot {
         }
 
         await message.reply({ embeds: [embed] });
+    }
+
+    async handleDeleteCategory(message, args) {
+        const rawCategoryName = args.join(' ').trim();
+        if (!rawCategoryName) {
+            return message.reply('❌ Usage: `Wolf.delete_category <category_name>`');
+        }
+
+        let category = null;
+        const allChannels = await message.guild.channels.fetch();
+
+        // Allow passing an ID as the "name" for ambiguous cases
+        if (/^\d{5,}$/.test(rawCategoryName)) {
+            const byId = await message.guild.channels.fetch(rawCategoryName).catch(() => null);
+            if (byId && byId.type === ChannelType.GuildCategory) {
+                category = byId;
+            } else {
+                return message.reply('❌ That ID is not a category channel.');
+            }
+        } else {
+            const candidates = allChannels.filter(
+                (c) => c && c.type === ChannelType.GuildCategory && c.name.toLowerCase() === rawCategoryName.toLowerCase()
+            );
+
+            if (!candidates.size) {
+                return message.reply(`❌ No category found named **${rawCategoryName}**.`);
+            }
+
+            // Prefer exact case match if available, otherwise take the first.
+            const exactCase = candidates.find((c) => c.name === rawCategoryName);
+            category = exactCase || candidates.first();
+
+            // If multiple categories share the same name, force disambiguation via ID
+            if (candidates.size > 1 && !exactCase) {
+                const lines = [...candidates.values()]
+                    .slice(0, 10)
+                    .map((c) => `- **${c.name}** (id: \`${c.id}\`)`)
+                    .join('\n');
+                await message.reply(
+                    [
+                        `⚠️ Found **${candidates.size}** categories named **${rawCategoryName}**.`,
+                        'Please re-run the command using the category ID:',
+                        `\`${this.prefix}delete_category <category_id>\``,
+                        '',
+                        lines + (candidates.size > 10 ? `\n...and ${candidates.size - 10} more` : ''),
+                    ].join('\n')
+                );
+                return;
+            }
+        }
+
+        const children = allChannels
+            .filter((c) => c && c.parentId === category.id)
+            .sort((a, b) => (a.rawPosition ?? 0) - (b.rawPosition ?? 0));
+
+        const channelLines = [...children.values()].map((c) => {
+            const type =
+                c.type === ChannelType.GuildText ? 'text' :
+                c.type === ChannelType.GuildVoice ? 'voice' :
+                c.type === ChannelType.GuildForum ? 'forum' :
+                c.type === ChannelType.GuildStageVoice ? 'stage' :
+                c.type === ChannelType.GuildAnnouncement ? 'announcement' :
+                c.type === ChannelType.GuildMedia ? 'media' :
+                'channel';
+            return `- (${type}) ${c.name} (\`${c.id}\`)`;
+        });
+
+        const previewEmbed = new EmbedBuilder()
+            .setTitle('⚠️ Confirm Category Deletion')
+            .setDescription(
+                [
+                    `You are about to delete the category **${category.name}** (\`${category.id}\`).`,
+                    '',
+                    `This will also delete **${children.size}** channel(s) inside it.`,
+                    '',
+                    'Type `confirm` to proceed or `cancel` to abort.',
+                ].join('\n')
+            )
+            .setColor(0xE74C3C);
+
+        await message.reply({ embeds: [previewEmbed] });
+
+        if (!children.size) {
+            await message.reply('Preview: *(no channels inside this category)*');
+        } else {
+            // Send the preview list in chunks to avoid 2000 char limit
+            const header = `Channels to be deleted (category: **${category.name}**):\n`;
+            const chunks = [];
+            let current = header;
+            for (const line of channelLines) {
+                // +1 for newline
+                if ((current.length + line.length + 1) > 1900) {
+                    chunks.push(current);
+                    current = '';
+                }
+                current += (current ? '\n' : '') + line;
+            }
+            if (current) chunks.push(current);
+
+            for (const chunk of chunks) {
+                await message.reply(chunk);
+            }
+        }
+
+        const filter = (m) =>
+            m.author.id === message.author.id &&
+            ['confirm', 'cancel'].includes(m.content.toLowerCase());
+        const collected = await message.channel.awaitMessages({ filter, max: 1, time: 30000 });
+
+        if (!collected.size || collected.first().content.toLowerCase() === 'cancel') {
+            return message.reply('❌ Category deletion cancelled.');
+        }
+
+        // Delete children first, but keep the invoking channel (if applicable) for last so we can still report progress.
+        const childrenSorted = [...children.values()];
+        const invokeIdx = childrenSorted.findIndex((c) => c.id === message.channel.id);
+        if (invokeIdx >= 0) {
+            const [invokeChannel] = childrenSorted.splice(invokeIdx, 1);
+            childrenSorted.push(invokeChannel);
+        }
+
+        await message.reply(`🧨 Deleting **${childrenSorted.length}** channel(s) in **${category.name}**...`);
+
+        let deleted = 0;
+        let failed = 0;
+        const failures = [];
+
+        for (const channel of childrenSorted) {
+            try {
+                await channel.delete(`Wolf.delete_category invoked by ${message.author.tag}`);
+                deleted++;
+            } catch (error) {
+                failed++;
+                failures.push(`- ${channel.name} (\`${channel.id}\`): ${error.message}`);
+            }
+        }
+
+        let categoryDeleted = false;
+        try {
+            await category.delete(`Wolf.delete_category invoked by ${message.author.tag}`);
+            categoryDeleted = true;
+        } catch (error) {
+            failures.push(`- [category] ${category.name} (\`${category.id}\`): ${error.message}`);
+        }
+
+        const summaryLines = [
+            `✅ Deleted **${deleted}** channel(s).` + (failed ? ` ⚠️ Failed to delete **${failed}**.` : ''),
+            categoryDeleted ? '✅ Deleted the category.' : '⚠️ Failed to delete the category.',
+        ];
+
+        // Try to send summary in-channel; if the invoking channel got deleted, fall back to DM.
+        const summary = summaryLines.join('\n');
+        try {
+            await message.reply(summary);
+        } catch (e) {
+            try {
+                await message.author.send(`Result of deleting category **${category.name}**:\n${summary}`);
+            } catch (dmErr) {
+                // nothing else we can do
+            }
+        }
+
+        if (failures.length) {
+            const failureText = failures.join('\n');
+            const failureChunks = [];
+            let current = 'Failures:\n';
+            for (const line of failures) {
+                if ((current.length + line.length + 1) > 1900) {
+                    failureChunks.push(current);
+                    current = '';
+                }
+                current += (current ? '\n' : '') + line;
+            }
+            if (current) failureChunks.push(current);
+
+            for (const chunk of failureChunks) {
+                try {
+                    await message.reply(chunk);
+                } catch (e) {
+                    try {
+                        await message.author.send(chunk);
+                    } catch (dmErr) {
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     async handleAlive(message, isAddDead) {
