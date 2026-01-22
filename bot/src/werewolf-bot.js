@@ -4862,7 +4862,7 @@ class WerewolfBot {
                     .setTimestamp();
 
                 await message.reply({ embeds: [embed] });
-                return message.reply('Did you know there is a `speed_check` command? It will tell you who sent messages in this phase of the game!');
+                return await message.reply('Did you know there is a `speed_check` command? It will tell you who sent messages in this phase of the game!');
             }
 
             // Use cached members for much faster processing
@@ -4957,6 +4957,7 @@ class WerewolfBot {
                 .setTimestamp();
 
             await message.reply({ embeds: [embed] });
+            return await message.reply('Did you know there is a `speed_check` command? It will tell you who sent messages in this phase of the game!');
 
         } catch (error) {
             console.error('Error fetching message activity:', error);
