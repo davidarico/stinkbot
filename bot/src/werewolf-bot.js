@@ -845,7 +845,7 @@ class WerewolfBot {
                 {
                     id: message.guild.roles.everyone.id,
                     allow: ['ViewChannel'],
-                    deny: ['SendMessages']
+                    deny: ['SendMessages', 'CreatePrivateThreads', 'CreatePublicThreads']
                 },
                 {
                     id: modRole.id,
@@ -859,6 +859,12 @@ class WerewolfBot {
             name: signupChannelName,
             type: ChannelType.GuildText,
             parent: category.id,
+            permissionOverwrites: [
+                {
+                    id: message.guild.roles.everyone.id,
+                    deny: ['CreatePrivateThreads', 'CreatePublicThreads']
+                }
+            ]
         });
 
         // Save game to database first and get the game ID
@@ -1285,7 +1291,7 @@ class WerewolfBot {
             permissionOverwrites: [
                 {
                     id: message.guild.roles.everyone.id,
-                    deny: ['ViewChannel', 'SendMessages']
+                    deny: ['ViewChannel', 'SendMessages', 'CreatePrivateThreads', 'CreatePublicThreads']
                 },
                 {
                     id: aliveRole.id,
@@ -1318,7 +1324,7 @@ class WerewolfBot {
             permissionOverwrites: [
                 {
                     id: message.guild.roles.everyone.id,
-                    deny: ['ViewChannel', 'SendMessages']
+                    deny: ['ViewChannel', 'SendMessages', 'CreatePrivateThreads', 'CreatePublicThreads']
                 },
                 {
                     id: aliveRole.id,
@@ -1385,7 +1391,7 @@ class WerewolfBot {
             permissionOverwrites: [
                 {
                     id: message.guild.roles.everyone.id,
-                    deny: ['ViewChannel', 'SendMessages']
+                    deny: ['ViewChannel', 'SendMessages', 'CreatePrivateThreads', 'CreatePublicThreads']
                 },
                 {
                     id: aliveRole.id,
@@ -1420,7 +1426,7 @@ class WerewolfBot {
             permissionOverwrites: [
                 {
                     id: message.guild.roles.everyone.id,
-                    deny: ['ViewChannel', 'SendMessages']
+                    deny: ['ViewChannel', 'SendMessages', 'CreatePrivateThreads', 'CreatePublicThreads']
                 },
                 {
                     id: modRole.id,
@@ -1529,7 +1535,7 @@ class WerewolfBot {
                         permissionOverwrites: [
                             {
                                 id: message.guild.roles.everyone.id,
-                                deny: ['ViewChannel', 'SendMessages']
+                                deny: ['ViewChannel', 'SendMessages', 'CreatePrivateThreads', 'CreatePublicThreads']
                             },
                             {
                                 id: modRole.id,
