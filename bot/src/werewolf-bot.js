@@ -2173,11 +2173,10 @@ class WerewolfBot {
         }
 
         // Check if in voting booth.
-        // TODO: Bring back
-        // if (message.channel.id !== game.voting_booth_channel_id) {
-        //     const votingChannel = await this.client.channels.fetch(game.voting_booth_channel_id);
-        //     return message.reply(`❌ Please vote in ${votingChannel} instead.`);
-        // }
+        if (message.channel.id !== game.voting_booth_channel_id) {
+            const votingChannel = await this.client.channels.fetch(game.voting_booth_channel_id);
+            return message.reply(`❌ Please vote in ${votingChannel} instead.`);
+        }
 
         // Check if voter is in the game and has Alive role
         const voterCheck = await this.db.query(
@@ -2263,11 +2262,10 @@ class WerewolfBot {
         const game = gameResult.rows[0];
 
         // Check if in voting booth
-        // TODO: Bring back
-        // if (message.channel.id !== game.voting_booth_channel_id) {
-        //     const votingChannel = await this.client.channels.fetch(game.voting_booth_channel_id);
-        //     return message.reply(`❌ Please retract your vote in ${votingChannel} instead.`);
-        // }
+        if (message.channel.id !== game.voting_booth_channel_id) {
+            const votingChannel = await this.client.channels.fetch(game.voting_booth_channel_id);
+            return message.reply(`❌ Please retract your vote in ${votingChannel} instead.`);
+        }
 
         // Remove vote
         const deleteResult = await this.db.query(
