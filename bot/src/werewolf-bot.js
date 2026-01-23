@@ -375,9 +375,16 @@ class WerewolfBot {
 
         // Commands that anyone can use
         const playerCommands = ['in', 'out', 'vote', 'retract', 'alive', 'peed', 'help', 'meme', 'wolf_list', 'mylo', 'feedback', 'my_journal', 'players'];
+        const superUserCommands = ['mod', 'unmod'];
         
         // Check permissions for admin-only commands
-        if (!playerCommands.includes(command) && !this.hasModeratorPermissions(message.member)) {
+        if (superUserCommands.includes(command)) {
+            const allowed = await this.isSuperUser(message.author?.id);
+            if (!allowed) {
+                await message.reply('❌ You do not have permission to use this command.');
+                return;
+            }
+        } else if (!playerCommands.includes(command) && !this.hasModeratorPermissions(message.member)) {
             const funnyResponse = await this.generateFunnyResponse(message.content.slice(prefix.length).trim().split(/ +/), message.author.displayName);
             if (funnyResponse) {
                 await message.reply(funnyResponse);
@@ -389,6 +396,12 @@ class WerewolfBot {
 
         try {
             switch (command) {
+                case 'mod':
+                    await this.handleMod(message, args);
+                    break;
+                case 'unmod':
+                    await this.handleUnmod(message, args);
+                    break;
                 case 'setup':
                     await this.handleSetup(message, args);
                     break;
@@ -570,9 +583,45 @@ class WerewolfBot {
         }
     }
 
+    async isSuperUser(userId) {
+        if (!userId) return false;
+        try {
+            const result = await this.db.query(
+                'SELECT 1 FROM super_users WHERE user_id = $1 LIMIT 1',
+                [userId]
+            );
+            return result.rows.length > 0;
+        } catch (error) {
+            console.error('Error checking super user status:', error);
+            return false;
+        }
+    }
+
     hasModeratorPermissions(member) {
         return member.permissions.has(PermissionFlagsBits.ManageChannels) || 
                member.permissions.has(PermissionFlagsBits.Administrator);
+    }
+
+    async handleMod(message, args) {
+        const targetMember = message.mentions?.members?.first?.() || null;
+        if (!targetMember) {
+            await message.reply(`❌ Usage: ${this.prefix}mod @user`);
+            return;
+        }
+
+        await this.assignRole(targetMember, 'Mod');
+        await message.reply(`✅ Granted **Mod** to ${targetMember}.`);
+    }
+
+    async handleUnmod(message, args) {
+        const targetMember = message.mentions?.members?.first?.() || null;
+        if (!targetMember) {
+            await message.reply(`❌ Usage: ${this.prefix}unmod @user`);
+            return;
+        }
+
+        await this.removeRole(targetMember, 'Mod');
+        await message.reply(`✅ Removed **Mod** from ${targetMember}.`);
     }
 
     isPublicChannel(message) {

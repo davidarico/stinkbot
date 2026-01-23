@@ -1,8 +1,24 @@
 const { Pool } = require('pg');
+const path = require('path');
+const fs = require('fs');
 
+// In this monorepo, `cwd` differs depending on whether you run migrations (`cd database`) or the bot (repo root).
+// To avoid loading different DATABASE_URL values, prefer `database/.env` when present.
 if (process.env.NODE_ENV !== 'production') {
-    console.log('🔧 Loading environment variables from .env file');
-    require('dotenv').config();
+    const repoRoot = path.resolve(__dirname, '..', '..');
+    const envCandidates = [
+        path.join(repoRoot, 'database', '.env'),
+        path.join(repoRoot, '.env'),
+        path.join(repoRoot, 'bot', '.env'),
+    ];
+
+    const envPath = envCandidates.find((p) => fs.existsSync(p));
+    if (envPath) {
+        console.log(`🔧 Loading environment variables from ${envPath}`);
+        require('dotenv').config({ path: envPath });
+    } else {
+        console.log('🔧 No .env file found (checked database/.env, .env, bot/.env)');
+    }
 }
 
 // Validate required environment variable
@@ -17,7 +33,8 @@ const pool = new Pool({
     // Connection pooling settings for Supabase
     max: 20, // Maximum connections in pool
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 2000,
+    // Supabase/hosted Postgres can take a few seconds to accept new connections, especially from sleep.
+    connectionTimeoutMillis: parseInt(process.env.PG_CONNECTION_TIMEOUT_MS || '10000', 10),
 });
 
 // Test the connection
