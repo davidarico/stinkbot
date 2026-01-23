@@ -3124,6 +3124,18 @@ class WerewolfBot {
             }
         );
 
+        // Super user commands (requires membership in super_users table)
+        embed.addFields(
+            {
+                name: '🛡️ Super User Commands',
+                value:
+                    '`Wolf.mod @user` - Grant the Mod role to a user\n' +
+                    '`Wolf.unmod @user` - Remove the Mod role from a user\n' +
+                    '_Requires you to be a super user (listed in the `super_users` table)._',
+                inline: false
+            }
+        );
+
         // Admin commands (only if user is admin) - grouped by category
         if (isAdmin) {
             embed.addFields(
