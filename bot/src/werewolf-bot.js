@@ -3131,7 +3131,7 @@ class WerewolfBot {
                 value:
                     '`Wolf.mod @user` - Grant the Mod role to a user\n' +
                     '`Wolf.unmod @user` - Remove the Mod role from a user\n' +
-                    '_Requires you to be a super user (listed in the `super_users` table)._',
+                    'Requires you to be a super user',
                 inline: false
             }
         );
