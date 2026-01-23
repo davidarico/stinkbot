@@ -1544,6 +1544,11 @@ class WerewolfBot {
                                 id: aliveRole.id,
                                 deny: ['ViewChannel'],
                                 allow: ['SendMessages']
+                            },
+                            {
+                                id: deadRole.id,
+                                allow: ['ViewChannel'],
+                                deny: ['SendMessages']
                             }
                         ]
                     });
