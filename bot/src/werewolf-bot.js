@@ -4931,8 +4931,7 @@ class WerewolfBot {
                     .setColor(0x3498DB)
                     .setTimestamp();
 
-                await message.reply({ embeds: [embed] });
-                return await message.reply('Did you know there is a `speed_check` command? It will tell you who sent messages in this phase of the game!');
+                return await message.reply({ embeds: [embed] });
             }
 
             // Use cached members for much faster processing
@@ -5026,8 +5025,7 @@ class WerewolfBot {
                 .setColor(0x3498DB)
                 .setTimestamp();
 
-            await message.reply({ embeds: [embed] });
-            return await message.reply('Did you know there is a `speed_check` command? It will tell you who sent messages in this phase of the game!');
+            return await message.reply({ embeds: [embed] });
 
         } catch (error) {
             console.error('Error fetching message activity:', error);
@@ -5304,7 +5302,7 @@ class WerewolfBot {
                 .setColor(game.day_phase === 'day' ? 0xF1C40F : 0x2C3E50)
                 .setTimestamp();
 
-            await message.reply({ embeds: [embed] });
+            return await message.reply({ embeds: [embed] });
 
         } catch (error) {
             console.error('Error fetching speed check activity:', error);
