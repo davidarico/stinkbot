@@ -374,7 +374,7 @@ class WerewolfBot {
         const command = args.shift().toLowerCase();
 
         // Commands that anyone can use
-        const playerCommands = ['in', 'out', 'vote', 'retract', 'alive', 'peed', 'help', 'meme', 'wolf_list', 'mylo', 'feedback', 'my_journal', 'players'];
+        const playerCommands = ['in', 'out', 'vote', 'retract', 'alive', 'peed', 'help', 'meme', 'wolf_list', 'mylo', 'feedback', 'my_journal', 'players', 'rename_journal'];
         const superUserCommands = ['mod', 'unmod'];
         
         // Check permissions for admin-only commands
@@ -497,6 +497,9 @@ class WerewolfBot {
                     break;
                 case 'my_journal':
                     await this.handleMyJournal(message);
+                    break;
+                case 'rename_journal':
+                    await this.handleRenameJournal(message, args);
                     break;
                 case 'balance_journals':
                     await this.handleBalanceJournals(message);
@@ -3117,6 +3120,7 @@ class WerewolfBot {
                     '`Wolf.alive` - Show all players currently alive\n' +
                     '`Wolf.players` - Show all players dead or alive\n' +
                     '`Wolf.my_journal` - 📔 Find your personal journal channel\n' +
+                    '`Wolf.rename_journal <new-name>` - 📝 Rename your personal journal\n' +
                     '`Wolf.meme` - 😤 I dare you to try me\n' +
                     '`Wolf.help` - Show this help message\n' +
                     '`Wolf.feedback` - Submit feedback to Stinky',
@@ -4463,7 +4467,7 @@ class WerewolfBot {
             // Send initial message to the journal
             const embed = new EmbedBuilder()
                 .setTitle(`📔 ${targetMember.displayName}'s Journal`)
-                .setDescription(`Welcome to your personal journal, ${targetMember.displayName}!\n\nThis is your private space to:\n• Take notes during the game\n• Ask questions to the moderators\n• Record your thoughts and observations\n\n**Permissions:**\n• **You** can read and write\n• **Moderators** can read and write\n• **Spectators** can read only`)
+                .setDescription(`Welcome to your personal journal, ${targetMember.displayName}!\n\nThis is your private space to:\n• Take notes during the game\n• Ask questions to the moderators\n• Record your thoughts and observations\n\n**Permissions:**\n• **You** can read and write\n• **Moderators** can read and write\n• **Spectators** can read only\n\n💡 **Tip:** You can rename your journal anytime using \`Wolf.rename_journal <new-name>\``)
                 .setColor(0x8B4513)
                 .setTimestamp();
 
@@ -4626,7 +4630,7 @@ class WerewolfBot {
             // Send initial message to the journal
             const embed = new EmbedBuilder()
                 .setTitle(`📔 ${targetMember.displayName}'s Journal`)
-                .setDescription(`Welcome to your personal journal, ${targetMember.displayName}!\n\nThis is your private space to:\n• Take notes during the game\n• Ask questions to the moderators\n• Record your thoughts and observations\n\n**Permissions:**\n• **You** can read and write\n• **Moderators** can read and write\n• **Spectators** can read only`)
+                .setDescription(`Welcome to your personal journal, ${targetMember.displayName}!\n\nThis is your private space to:\n• Take notes during the game\n• Ask questions to the moderators\n• Record your thoughts and observations\n\n**Permissions:**\n• **You** can read and write\n• **Moderators** can read and write\n• **Spectators** can read only\n\n💡 **Tip:** You can rename your journal anytime using \`Wolf.rename_journal <new-name>\``)
                 .setColor(0x8B4513)
                 .setTimestamp();
 
@@ -6383,6 +6387,104 @@ class WerewolfBot {
         } catch (error) {
             console.error('Error finding user journal:', error);
             await message.reply('❌ An error occurred while looking for your journal.');
+        }
+    }
+
+    async handleRenameJournal(message, args) {
+        const serverId = message.guild.id;
+        const userId = message.author.id;
+
+        try {
+            // Check if user has a journal in this server
+            const journalResult = await this.db.query(
+                'SELECT channel_id FROM player_journals WHERE server_id = $1 AND user_id = $2',
+                [serverId, userId]
+            );
+
+            if (journalResult.rows.length === 0) {
+                return message.reply('📔 You don\'t have a journal yet. Ask a moderator to create one for you with `Wolf.journal @yourname`.');
+            }
+
+            const channelId = journalResult.rows[0].channel_id;
+
+            // Verify the channel still exists
+            let journalChannel;
+            try {
+                journalChannel = await message.guild.channels.fetch(channelId);
+                if (!journalChannel) {
+                    // Channel was deleted, remove from database
+                    await this.db.query(
+                        'DELETE FROM player_journals WHERE server_id = $1 AND user_id = $2',
+                        [serverId, userId]
+                    );
+                    return message.reply('📔 Your journal channel no longer exists. Ask a moderator to create a new one with `Wolf.journal @yourname`.');
+                }
+            } catch (error) {
+                // Channel doesn't exist, remove from database
+                await this.db.query(
+                    'DELETE FROM player_journals WHERE server_id = $1 AND user_id = $2',
+                    [serverId, userId]
+                );
+                return message.reply('📔 Your journal channel no longer exists. Ask a moderator to create a new one with `Wolf.journal @yourname`.');
+            }
+
+            // Check if user provided a new name
+            if (!args || args.length === 0) {
+                return message.reply('❌ Please provide a new name for your journal. Usage: `Wolf.rename_journal <new-name>`');
+            }
+
+            // Combine all args into a single name (in case user provided multiple words)
+            let newName = args.join(' ').trim();
+
+            // Remove the -journal suffix if the user included it
+            if (newName.endsWith('-journal')) {
+                newName = newName.slice(0, -8);
+            }
+
+            // Validate and format the name according to Discord channel naming rules
+            // Convert to lowercase, replace spaces with dashes, remove invalid characters
+            newName = newName.toLowerCase()
+                .replace(/\s+/g, '-')
+                .replace(/[^a-z0-9\-_]/g, '')
+                .replace(/-+/g, '-')
+                .replace(/^-|-$/g, '');
+
+            // Validate the name
+            if (!newName || newName.length === 0) {
+                return message.reply('❌ Invalid journal name. Please use only letters, numbers, dashes, and underscores.');
+            }
+
+            if (newName.length > 90) {
+                return message.reply('❌ Journal name is too long. Please keep it under 90 characters.');
+            }
+
+            // Add -journal suffix
+            const journalChannelName = `${newName}-journal`;
+
+            // Check if a channel with this name already exists in the same category
+            const existingChannel = message.guild.channels.cache.find(
+                channel => channel.name === journalChannelName && 
+                          channel.parent?.id === journalChannel.parent?.id &&
+                          channel.id !== journalChannel.id
+            );
+
+            if (existingChannel) {
+                return message.reply(`❌ A journal with the name "${journalChannelName}" already exists in this category.`);
+            }
+
+            // Rename the channel
+            await journalChannel.setName(journalChannelName);
+
+            const embed = new EmbedBuilder()
+                .setTitle('📔 Journal Renamed')
+                .setDescription(`Your journal has been renamed to: **${journalChannelName}**`)
+                .setColor(0x00AE86);
+
+            await message.reply({ embeds: [embed] });
+
+        } catch (error) {
+            console.error('Error renaming journal:', error);
+            await message.reply('❌ An error occurred while renaming your journal.');
         }
     }
 
