@@ -1244,6 +1244,10 @@ class WerewolfBot {
         const deadRole = message.guild.roles.cache.find(r => r.name === 'Dead');
         const spectatorRole = message.guild.roles.cache.find(r => r.name === 'Spectator');
         const modRole = message.guild.roles.cache.find(r => r.name === 'Mod');
+        const logPrefix = `[Wolf.start][server:${serverId}][game:${game.id}#${game.game_number}]`;
+        const log = (...parts) => console.log(logPrefix, ...parts);
+        const warn = (...parts) => console.warn(logPrefix, ...parts);
+        const errorLog = (...parts) => console.error(logPrefix, ...parts);
 
         // Check if there are players
         const playersResult = await this.db.query(
@@ -1255,10 +1259,178 @@ class WerewolfBot {
             return message.reply('❌ Need at least one player to start the game.');
         }
 
+        // Get config for naming
+        const configResult = await this.db.query(
+            'SELECT * FROM server_configs WHERE server_id = $1',
+            [serverId]
+        );
+        const config = configResult.rows[0];
+
+        // Create/reuse game channels in the specified order
+        const category = await this.client.channels.fetch(game.category_id);
+
+        // Get signup channel to rename it later
+        const signupChannel = await this.client.channels.fetch(game.signup_channel_id);
+        log('Starting with isDark=', isDark, 'existing game channel IDs=', {
+            results_channel_id: game.results_channel_id,
+            memos_channel_id: game.memos_channel_id,
+            town_square_channel_id: game.town_square_channel_id,
+            voting_booth_channel_id: game.voting_booth_channel_id,
+            wolf_chat_channel_id: game.wolf_chat_channel_id,
+        });
+
+        // Fetch channels for accurate existence checks (cache can be stale)
+        let allChannels = message.guild.channels.cache;
+        try {
+            const fetched = await message.guild.channels.fetch();
+            if (fetched) allChannels = fetched;
+        } catch (e) {
+            // fall back to cache
+        }
+        log('Fetched guild channels for existence checks. total=', allChannels.size);
+
+        const findTextChannelInCategoryByName = (name) => {
+            return allChannels.find(
+                (c) =>
+                    c &&
+                    c.type === ChannelType.GuildText &&
+                    c.parentId === category.id &&
+                    c.name === name
+            ) || null;
+        };
+
+        const fetchTextChannelById = async (channelId) => {
+            if (!channelId) return null;
+            try {
+                const c = await message.guild.channels.fetch(channelId);
+                if (!c || c.type !== ChannelType.GuildText) return null;
+                return c;
+            } catch (e) {
+                return null;
+            }
+        };
+
+        const ensureTextChannel = async ({ label, name, preferredId, permissionOverwrites }) => {
+            let channel = null;
+            let resolution = 'none';
+
+            // 1) Prefer DB-stored channel id (most reliable)
+            if (preferredId) {
+                channel = await fetchTextChannelById(preferredId);
+                if (channel) resolution = 'id';
+            }
+
+            // 2) Fallback: find by expected name within the game category (recovery / partial start)
+            if (!channel) {
+                channel = findTextChannelInCategoryByName(name);
+                if (channel) resolution = 'name';
+            }
+
+            // 3) Create if missing
+            if (!channel) {
+                channel = await message.guild.channels.create({
+                    name,
+                    type: ChannelType.GuildText,
+                    parent: category.id,
+                    permissionOverwrites
+                });
+                resolution = 'created';
+            } else {
+                // If the channel exists but isn't under the game category, move it back so we truly "reuse"
+                if (channel.parentId !== category.id) {
+                    try {
+                        await channel.setParent(category.id, { lockPermissions: false });
+                        log(`${label}: moved existing channel under game category`, { id: channel.id, name: channel.name });
+                    } catch (e) {
+                        warn(`${label}: could not move channel under game category`, { id: channel.id, name: channel.name });
+                    }
+                }
+                // Keep permissions consistent even if the channel existed from a previous/partial start
+                if (permissionOverwrites) {
+                    try {
+                        await channel.permissionOverwrites.set(permissionOverwrites);
+                    } catch (e) {
+                        warn(`${label}: failed to set permission overwrites`, { id: channel.id, name: channel.name });
+                    }
+                }
+            }
+
+            log(`${label}: resolved`, { resolution, id: channel.id, name: channel.name });
+            return channel;
+        };
+
+        // If there are DB-queued channels that already exist in Discord, mark them as created so capacity checks don't over-count
+        try {
+            const pendingExistingResult = await this.db.query(
+                'SELECT channel_name, channel_id FROM game_channels WHERE game_id = $1 AND is_created = $2',
+                [game.id, false]
+            );
+            let markedCreated = 0;
+            let markedCreatedById = 0;
+            let markedCreatedByName = 0;
+            for (const row of pendingExistingResult.rows) {
+                let existing = null;
+                if (row.channel_id) {
+                    existing = await fetchTextChannelById(row.channel_id);
+                    if (existing) markedCreatedById++;
+                }
+                if (!existing) {
+                    existing = findTextChannelInCategoryByName(row.channel_name);
+                    if (existing) markedCreatedByName++;
+                }
+                if (!existing) continue;
+                try {
+                    if (existing.parentId !== category.id) {
+                        await existing.setParent(category.id, { lockPermissions: false }).catch(() => {});
+                    }
+                    await this.db.query(
+                        'UPDATE game_channels SET channel_id = $1, is_created = $2 WHERE game_id = $3 AND channel_name = $4',
+                        [existing.id, true, game.id, row.channel_name]
+                    );
+                    markedCreated++;
+                } catch (e) {
+                    // Non-fatal; worst case we over-count pending channels in capacity check
+                }
+            }
+            if (pendingExistingResult.rows.length) {
+                log('Pending channel reconciliation complete', {
+                    pendingRows: pendingExistingResult.rows.length,
+                    markedCreated,
+                    markedCreatedById,
+                    markedCreatedByName
+                });
+            }
+        } catch (e) {
+            // ignore
+        }
+
         // Capacity check (Wolf.start will create core channels: results, memos, townsquare, voting-booth, wolf-chat)
         // Plus any DB-queued channels tracked as game_channels.is_created=false (counted in getServerChannelCapacity)
-        const plannedNewChannels = 5;
+        // We only count core channels that are missing, since we now reuse existing channels by id/name.
+        const corePlan = [
+            { label: 'Results', name: `${config.game_prefix}${game.game_number}-results`, preferredId: game.results_channel_id },
+            { label: 'Player Memos', name: `${config.game_prefix}${game.game_number}-player-memos`, preferredId: game.memos_channel_id },
+            { label: 'Town Square', name: `${config.game_prefix}${game.game_number}-townsquare`, preferredId: game.town_square_channel_id },
+            { label: 'Voting Booth', name: `${config.game_prefix}${game.game_number}-voting-booth`, preferredId: game.voting_booth_channel_id },
+            { label: 'Wolf Chat', name: `${config.game_prefix}${game.game_number}-wolf-chat`, preferredId: game.wolf_chat_channel_id },
+        ];
+        let plannedNewChannels = 0;
+        for (const c of corePlan) {
+            const byId = c.preferredId ? (await fetchTextChannelById(c.preferredId)) : null;
+            if (byId) continue;
+            const byName = findTextChannelInCategoryByName(c.name);
+            if (byName) continue;
+            plannedNewChannels++;
+        }
         const capacity = await this.getServerChannelCapacity(serverId, message.guild, plannedNewChannels);
+        log('Capacity check', {
+            plannedNewChannels,
+            currentChannelsCount: capacity.currentChannelsCount,
+            pendingToCreateCount: capacity.pendingToCreateCount,
+            projectedTotal: capacity.projectedTotal,
+            channelLimit: capacity.channelLimit,
+            isWithinLimitProjected: capacity.isWithinLimitProjected
+        });
         if (!capacity.isWithinLimitProjected) {
             return message.reply(
                 [
@@ -1271,26 +1443,13 @@ class WerewolfBot {
             );
         }
 
-        // Get config for naming
-        const configResult = await this.db.query(
-            'SELECT * FROM server_configs WHERE server_id = $1',
-            [serverId]
-        );
-        const config = configResult.rows[0];
-
-        // Create game channels in the specified order
-        const category = await this.client.channels.fetch(game.category_id);
-
-        // Get signup channel to rename it later
-        const signupChannel = await this.client.channels.fetch(game.signup_channel_id);
-
         // 1. Breakdown is already created on Wolf.create and will be at the top of the category
 
         // 2. Results - Only Mod can type, everyone else can see but not type
-        const results = await message.guild.channels.create({
+        const results = await ensureTextChannel({
+            label: 'Results',
             name: `${config.game_prefix}${game.game_number}-results`,
-            type: ChannelType.GuildText,
-            parent: category.id,
+            preferredId: game.results_channel_id,
             permissionOverwrites: [
                 {
                     id: message.guild.roles.everyone.id,
@@ -1317,13 +1476,15 @@ class WerewolfBot {
                 }
             ]
         });
-        await results.setPosition(signupChannel.position); // Position results above the signup channel
+        try {
+            await results.setPosition(signupChannel.position); // Position results above the signup channel
+        } catch (e) {}
 
         // 3. Player-memos - Alive can see and type (unless dark mode), Dead can see but not type, Spectators can see but not type, Mods can see and type
-        const memos = await message.guild.channels.create({
+        const memos = await ensureTextChannel({
+            label: 'Player Memos',
             name: `${config.game_prefix}${game.game_number}-player-memos`,
-            type: ChannelType.GuildText,
-            parent: category.id,
+            preferredId: game.memos_channel_id,
             permissionOverwrites: [
                 {
                     id: message.guild.roles.everyone.id,
@@ -1350,13 +1511,15 @@ class WerewolfBot {
                 }
             ]
         });
-        await memos.setPosition(results.position + 1); // Position memos below results
+        try {
+            await memos.setPosition(results.position + 1); // Position memos below results
+        } catch (e) {}
 
         // 4. Townsquare - Alive can see and type (unless dark mode), Dead can see but not type, Spectators can see but not type, Mods can see and type
-        const townSquare = await message.guild.channels.create({
+        const townSquare = await ensureTextChannel({
+            label: 'Town Square',
             name: `${config.game_prefix}${game.game_number}-townsquare`,
-            type: ChannelType.GuildText,
-            parent: category.id,
+            preferredId: game.town_square_channel_id,
             permissionOverwrites: [
                 {
                     id: message.guild.roles.everyone.id,
@@ -1384,13 +1547,15 @@ class WerewolfBot {
                 }
             ]
         });
-        await townSquare.setPosition(memos.position + 1); // Position town square below memos
+        try {
+            await townSquare.setPosition(memos.position + 1); // Position town square below memos
+        } catch (e) {}
 
         // 5. Voting-Booth (starts locked for night phase) - All can see but none can type initially (unless dark mode, then Alive cannot see)
-        const votingBooth = await message.guild.channels.create({
+        const votingBooth = await ensureTextChannel({
+            label: 'Voting Booth',
             name: `${config.game_prefix}${game.game_number}-voting-booth`,
-            type: ChannelType.GuildText,
-            parent: category.id,
+            preferredId: game.voting_booth_channel_id,
             permissionOverwrites: [
                 {
                     id: message.guild.roles.everyone.id,
@@ -1417,15 +1582,17 @@ class WerewolfBot {
                 }
             ]
         });
-        await votingBooth.setPosition(townSquare.position + 1); // Position voting booth below town square
+        try {
+            await votingBooth.setPosition(townSquare.position + 1); // Position voting booth below town square
+        } catch (e) {}
 
         // 6. <added channels> will be positioned here when created with Wolf.add_channel
 
         // 7. Wolf-Chat - Mods can see and type, Spectators can see but not type, Alive cannot see but can type (for wolves), everyone else cannot see
-        const wolfChat = await message.guild.channels.create({
+        const wolfChat = await ensureTextChannel({
+            label: 'Wolf Chat',
             name: `${config.game_prefix}${game.game_number}-wolf-chat`,
-            type: ChannelType.GuildText,
-            parent: category.id,
+            preferredId: game.wolf_chat_channel_id,
             permissionOverwrites: [
                 {
                     id: message.guild.roles.everyone.id,
@@ -1452,7 +1619,9 @@ class WerewolfBot {
                 },
             ]
         });
-        await wolfChat.setPosition(votingBooth.position + 1); // Position wolf chat below voting booth
+        try {
+            await wolfChat.setPosition(votingBooth.position + 1); // Position wolf chat below voting booth
+        } catch (e) {}
 
         // Rename signup channel to dead-chat and apply dead chat permissions
         await signupChannel.setName(`${config.game_prefix}${game.game_number}-dead-chat`);
@@ -1524,17 +1693,17 @@ class WerewolfBot {
         // Create channels for game_channels records where is_created is false
         try {
             const pendingChannelsResult = await this.db.query(
-                'SELECT channel_name, day_message, night_message, invited_users FROM game_channels WHERE game_id = $1 AND is_created = $2',
+                'SELECT channel_name, day_message, night_message, invited_users, open_at_dusk FROM game_channels WHERE game_id = $1 AND is_created = $2',
                 [game.id, false]
             );
 
             for (const channelData of pendingChannelsResult.rows) {
                 try {
                     // Create the channel with the same permissions as handleAddChannel
-                    const newChannel = await message.guild.channels.create({
+                    const newChannel = await ensureTextChannel({
+                        label: `Extra Channel "${channelData.channel_name}"`,
                         name: channelData.channel_name,
-                        type: ChannelType.GuildText,
-                        parent: category.id,
+                        preferredId: channelData.channel_id,
                         permissionOverwrites: [
                             {
                                 id: message.guild.roles.everyone.id,
@@ -1565,17 +1734,13 @@ class WerewolfBot {
                     // Alive shouldnt see the channel at all but can send messages if open_at_dusk is true
                     await newChannel.permissionOverwrites.edit(aliveRole.id, {
                         ViewChannel: false,
-                        SendMessages: channelData.open_at_dusk
+                        SendMessages: !!channelData.open_at_dusk
                     });
 
                     // Position the channel between voting booth and wolf chat (same as handleAddChannel)
                     try {
-                        const wolfChatChannel = category.children.cache.find(channel => 
-                            channel.name.includes('-wolf-chat')
-                        );
-                        
-                        if (wolfChatChannel) {
-                            await newChannel.setPosition(wolfChatChannel.position);
+                        if (wolfChat) {
+                            await newChannel.setPosition(wolfChat.position);
                             console.log(`Positioned new channel "${channelData.channel_name}" before wolf chat`);
                         }
                     } catch (positionError) {
@@ -1653,6 +1818,7 @@ class WerewolfBot {
              WHERE id = $7`,
             [townSquare.id, wolfChat.id, memos.id, results.id, votingBooth.id, new Date().toISOString(), game.id]
         );
+        log('Updated game row with core channel IDs + set active');
 
         // Send player list to dead chat
         await this.sendPlayerListToDeadChat(game.id, signupChannel);
