@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Search, Users, Shuffle, Moon, Sun, Filter, Check, Settings, Plus, ClipboardList } from "lucide-react"
+import { Search, Users, Shuffle, Moon, Sun, Filter, Check, Settings, Plus, ClipboardList, Server } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { SettingsModal } from "@/components/settings-modal"
@@ -15,6 +15,7 @@ import { AddChannelModal } from "@/components/add-channel-modal"
 import { ManageChannelsModal } from "@/components/manage-channels-modal"
 import { ActionCalculators } from "@/components/action-calculators"
 import { BreakdownBuilderModal } from "@/components/breakdown-builder-modal"
+import { ServerRolesModal } from "@/components/server-roles-modal"
 
 interface Player {
   id: number
@@ -113,6 +114,7 @@ export default function GameManagementPage() {
   const [addChannelModalOpen, setAddChannelModalOpen] = useState(false);
   const [manageChannelsModalOpen, setManageChannelsModalOpen] = useState(false);
   const [breakdownBuilderModalOpen, setBreakdownBuilderModalOpen] = useState(false);
+  const [serverRolesModalOpen, setServerRolesModalOpen] = useState(false);
 
   useEffect(() => {
     // Check if user is already authenticated for this game
@@ -951,6 +953,21 @@ export default function GameManagementPage() {
                 <Settings className="w-4 h-4" />
                 Settings
               </Button>
+
+              {gameData.phase === "signup" && gameData.serverId && (
+                <Button
+                  onClick={() => setServerRolesModalOpen(true)}
+                  variant="outline"
+                  size="sm"
+                  className={cn(
+                    "flex items-center gap-2",
+                    isDayPhase ? "bg-white/90" : "bg-white/10"
+                  )}
+                >
+                  <Server className="w-4 h-4" />
+                  Server Roles
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -1958,6 +1975,15 @@ export default function GameManagementPage() {
         gameId={gameId}
         isDayPhase={isDayPhase}
       />
+
+      {/* Server Roles Modal */}
+      {gameData.serverId && (
+        <ServerRolesModal
+          serverId={gameData.serverId}
+          isOpen={serverRolesModalOpen}
+          onClose={() => setServerRolesModalOpen(false)}
+        />
+      )}
     </div>
   )
 }
