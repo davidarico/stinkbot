@@ -7335,9 +7335,9 @@ class WerewolfBot {
                 allJournalChannels.push(...categoryChannels.values());
             }
 
-            // If we have less than 50 journals total, use the main Journals category
-            if (allJournalChannels.length < 50) {
-                return journalCategories.find(cat => cat.name === 'Journals');
+            // If we have one category with room, use it (avoid returning renamed "Journals" when we already split)
+            if (allJournalChannels.length < 50 && journalCategories.size === 1) {
+                return journalCategories.first();
             }
 
             // Sort all journals alphabetically
@@ -7365,28 +7365,36 @@ class WerewolfBot {
             const journalsPerCategory = Math.ceil((allJournalChannels.length + 1) / numCategoriesNeeded);
             const targetCategoryIndex = Math.floor(insertIndex / journalsPerCategory);
 
+            const getChannelCount = (category) => guild.channels.cache.filter(
+                ch => ch.parent?.id === category.id && ch.name.endsWith('-journal')
+            ).size;
+
             // Find the appropriate category
+            let chosenCategory = null;
             if (targetCategoryIndex === 0) {
                 // First category - could be "Journals" or "Journals (A-L)"
-                const firstCategory = journalCategories.find(cat => 
+                chosenCategory = journalCategories.find(cat =>
                     cat.name === 'Journals' || cat.name.startsWith('Journals (A-')
                 );
-                return firstCategory;
             } else {
                 // Find category by index
-                const sortedCategories = journalCategories.sort((a, b) => {
-                    const aName = a.name;
-                    const bName = b.name;
-                    return aName.localeCompare(bName);
-                });
-                
-                if (targetCategoryIndex < sortedCategories.size) {
-                    return sortedCategories.at(targetCategoryIndex);
+                const sortedCategories = [...journalCategories.values()].sort((a, b) =>
+                    a.name.localeCompare(b.name)
+                );
+                if (targetCategoryIndex < sortedCategories.length) {
+                    chosenCategory = sortedCategories[targetCategoryIndex];
                 }
             }
 
-            // Fallback to main Journals category
-            return journalCategories.find(cat => cat.name === 'Journals');
+            // Never return a category that's already at the Discord limit (50)
+            if (chosenCategory && getChannelCount(chosenCategory) >= maxChannelsPerCategory) {
+                chosenCategory = [...journalCategories.values()].find(cat => getChannelCount(cat) < maxChannelsPerCategory) || chosenCategory;
+            }
+            if (chosenCategory) return chosenCategory;
+
+            // Fallback to first category with room, or main Journals
+            return [...journalCategories.values()].find(cat => getChannelCount(cat) < maxChannelsPerCategory)
+                || journalCategories.find(cat => cat.name === 'Journals');
 
         } catch (error) {
             console.error('Error finding appropriate journal category:', error);
@@ -7481,9 +7489,10 @@ class WerewolfBot {
 
         const totalJournals = allJournalChannels.length;
         const maxChannelsPerCategory = 50;
+        const thresholdForSplitting = 49; // Split at 49 so adding one more doesn't hit the 50 limit
 
-        // If we have less than 50 journals, just alphabetize in current structure
-        if (totalJournals < maxChannelsPerCategory) {
+        // If we have fewer than 49 journals, just alphabetize in current structure (no split needed)
+        if (totalJournals < thresholdForSplitting) {
             // Find the main Journals category
             const mainCategory = journalCategories.find(cat => cat.name === 'Journals');
             if (mainCategory) {
@@ -7492,9 +7501,9 @@ class WerewolfBot {
             return;
         }
 
-        // We need to split into multiple categories (50+ journals, including exactly 50)
-        // For exactly 50 journals, we split into 2 categories of 25 each
-        const numCategoriesNeeded = totalJournals >= maxChannelsPerCategory ? Math.max(2, Math.ceil(totalJournals / maxChannelsPerCategory)) : 1;
+        // We need to split into multiple categories (49+ journals so we don't hit 50 in one category)
+        // At 49 we split into 2 categories (25 + 24); at 50+ we split accordingly
+        const numCategoriesNeeded = Math.max(2, Math.ceil(totalJournals / maxChannelsPerCategory));
         const journalsPerCategory = Math.ceil(totalJournals / numCategoriesNeeded);
 
         // Check if we need to rebalance (if any category has more than the target number)
