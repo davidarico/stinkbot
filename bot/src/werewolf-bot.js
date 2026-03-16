@@ -4611,7 +4611,9 @@ class WerewolfBot {
                     },
                     {
                         id: targetUser.id,
-                        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PIN_PERMISSION],
+                        // Omit PIN_PERMISSION here: Discord's PinMessages (1<<51) is not in discord.js 14's
+                        // PermissionFlagsBits, so including it causes BitFieldInvalid when creating the channel.
+                        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
                     },
                     ...(modRole ? [{
                         id: modRole.id,
