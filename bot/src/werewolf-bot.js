@@ -6768,17 +6768,16 @@ class WerewolfBot {
             try {
                 // Look up the journal owner from the map
                 const userId = journalMap.get(journal.id);
-
+                let member = null;
+                if (userId) {
+                    member = await message.guild.members.fetch(userId).catch(() => null);
+                }
                 if (!userId) {
                     failed.push(`\t${journal.name} has no user_id mapping in player_journals`);
                     await progressMsg.edit(`🔍 Processing journal ${processedCount}/${allJournalChannels.length}... ⚠️ ${journal.name} has no user_id mapping`);
-                    continue;
-                }
-                const member = await message.guild.members.fetch(userId).catch(() => null);
-                if (!member) {
+                } else if (!member) {
                     failed.push(`\t${journal.name} user ${userId} not in server`);
                     await progressMsg.edit(`🔍 Processing journal ${processedCount}/${allJournalChannels.length}... ⚠️ ${journal.name} user not found`);
-                    continue;
                 }
 
                 // Update progress message every 10 journals or for the first few
@@ -6808,11 +6807,13 @@ class WerewolfBot {
                     });
                 }
 
-                // Journal owner: can see and write
-                await journal.permissionOverwrites.edit(member.id, {
-                    ViewChannel: true,
-                    SendMessages: true
-                });
+                // Journal owner: can see and write (skip if user not found)
+                if (member) {
+                    await journal.permissionOverwrites.edit(member.id, {
+                        ViewChannel: true,
+                        SendMessages: true
+                    });
+                }
 
                 // Mods: can see and write (preserve moderator access)
                 if (modRole) {
