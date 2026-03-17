@@ -1282,6 +1282,218 @@ export class DatabaseService {
     }
   }
 
+  // Archive messages (replaces OpenSearch)
+  private mapArchiveRowToSource(row: any): any {
+    return {
+      messageId: row.message_id,
+      content: row.content,
+      userId: row.user_id,
+      username: row.username,
+      displayName: row.display_name,
+      timestamp: row.timestamp,
+      channelId: row.channel_id,
+      channelName: row.channel_name,
+      category: row.category,
+      categoryId: row.category_id,
+      replyToMessageId: row.reply_to_message_id,
+      attachments: row.attachments || [],
+      embeds: row.embeds || [],
+      reactions: row.reactions || [],
+      archivedAt: row.archived_at,
+      archivedBy: row.archived_by || {}
+    }
+  }
+
+  async searchArchiveMessages(params: {
+    query?: string
+    game?: string
+    channel?: string
+    user?: string
+    from: number
+    size: number
+    jumpToMessageId?: string
+  }): Promise<{
+    hits: { total: { value: number }; hits: Array<{ _id: string; _source: any }> }
+    aggregations?: { games: { buckets: any[] }; channels: { buckets: any[] }; users: { buckets: any[] } }
+    targetPage?: number | null
+  }> {
+    const conditions: string[] = []
+    const values: any[] = []
+    let paramIndex = 1
+
+    if (params.query && params.query.trim()) {
+      conditions.push(`to_tsvector('english', coalesce(content,'')) @@ plainto_tsquery('english', $${paramIndex})`)
+      values.push(params.query.trim())
+      paramIndex++
+    }
+    if (params.game) {
+      conditions.push(`category = $${paramIndex}`)
+      values.push(params.game)
+      paramIndex++
+    }
+    if (params.channel) {
+      conditions.push(`channel_name = $${paramIndex}`)
+      values.push(params.channel)
+      paramIndex++
+    }
+    if (params.user) {
+      const serverUsers = await this.getServerUsersByDisplayName(params.user)
+      if (serverUsers.length > 0) {
+        const userIds = serverUsers.map(u => u.user_id)
+        conditions.push(`user_id = ANY($${paramIndex})`)
+        values.push(userIds)
+        paramIndex++
+      } else {
+        conditions.push(`display_name = $${paramIndex}`)
+        values.push(params.user)
+        paramIndex++
+      }
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+
+    // Run count, data page, and aggregations in parallel to reduce latency
+    const valuesForPage = [...values, params.size, params.from]
+    const [countResult, dataResult, aggGames, aggChannels, aggUsers] = await Promise.all([
+      this.pool.query(
+        `SELECT count(*)::int as total FROM archive_messages ${whereClause}`,
+        values
+      ),
+      this.pool.query(
+        `SELECT * FROM archive_messages ${whereClause}
+         ORDER BY timestamp DESC
+         LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+        valuesForPage
+      ),
+      this.pool.query(
+        `SELECT category as key, count(*)::int as doc_count FROM archive_messages GROUP BY category ORDER BY doc_count DESC LIMIT 100`
+      ),
+      this.pool.query(
+        `SELECT channel_name as key, count(*)::int as doc_count FROM archive_messages GROUP BY channel_name ORDER BY doc_count DESC LIMIT 100`
+      ),
+      this.pool.query(
+        `SELECT user_id as key, count(*)::int as doc_count FROM archive_messages GROUP BY user_id ORDER BY doc_count DESC LIMIT 100`
+      )
+    ])
+
+    const total = countResult.rows[0]?.total ?? 0
+
+    // Optional: compute target page when jumping to a message
+    let targetPage: number | null = null
+    if (params.jumpToMessageId && total > 0) {
+      const countBeforeResult = await this.pool.query(
+        `SELECT count(*)::int as cnt FROM archive_messages ${whereClause} ${whereClause ? 'AND' : 'WHERE'} timestamp > (SELECT timestamp FROM archive_messages WHERE message_id = $${paramIndex} LIMIT 1)`,
+        [...values, params.jumpToMessageId]
+      )
+      const messagesBeforeTarget = countBeforeResult.rows[0]?.cnt ?? 0
+      targetPage = Math.floor(messagesBeforeTarget / params.size) + 1
+    }
+
+    const hits = dataResult.rows.map((row: any) => ({
+      _id: String(row.id),
+      _source: this.mapArchiveRowToSource(row)
+    }))
+
+    const games = { buckets: aggGames.rows }
+    const channels = { buckets: aggChannels.rows }
+    const users = { buckets: aggUsers.rows }
+
+    return {
+      hits: { total: { value: total }, hits },
+      aggregations: { games, channels, users },
+      targetPage: params.jumpToMessageId ? targetPage : null
+    }
+  }
+
+  async getArchiveAggregations(): Promise<{
+    games: { buckets: Array<{ key: string; doc_count: number }> }
+    channels: { buckets: Array<{ key: string; doc_count: number }> }
+    users: { buckets: Array<{ key: string; doc_count: number }> }
+  }> {
+    const [gamesRes, channelsRes, usersRes] = await Promise.all([
+      this.pool.query(`SELECT category as key, count(*)::int as doc_count FROM archive_messages GROUP BY category ORDER BY doc_count DESC LIMIT 100`),
+      this.pool.query(`SELECT channel_name as key, count(*)::int as doc_count FROM archive_messages GROUP BY channel_name ORDER BY doc_count DESC LIMIT 100`),
+      this.pool.query(`SELECT user_id as key, count(*)::int as doc_count FROM archive_messages GROUP BY user_id ORDER BY doc_count DESC LIMIT 100`)
+    ])
+    const userIds = usersRes.rows.map((r: any) => r.key)
+    let userDisplayNames: Record<string, string> = {}
+    if (userIds.length > 0) {
+      const serverUsers = await this.getServerUsersByUserIds(userIds)
+      userDisplayNames = Object.fromEntries(serverUsers.map((u: any) => [u.user_id, u.display_name]))
+    }
+    const usernameMap: Record<string, string> = {}
+    for (const userId of userIds) {
+      if (!userDisplayNames[userId]) {
+        const sample = await this.pool.query(
+          'SELECT username FROM archive_messages WHERE user_id = $1 LIMIT 1',
+          [userId]
+        )
+        usernameMap[userId] = sample.rows[0]?.username || `User ${userId}`
+      }
+    }
+    const userBuckets = usersRes.rows.map((r: any) => ({
+      key: userDisplayNames[r.key] || usernameMap[r.key] || `User ${r.key}`,
+      doc_count: r.doc_count
+    })).sort((a: any, b: any) => a.key.localeCompare(b.key, undefined, { numeric: true, sensitivity: 'base' }))
+
+    return {
+      games: { buckets: gamesRes.rows },
+      channels: { buckets: channelsRes.rows },
+      users: { buckets: userBuckets }
+    }
+  }
+
+  async getArchiveMessageByMessageId(messageId: string): Promise<{ _source: any } | null> {
+    const result = await this.pool.query(
+      'SELECT * FROM archive_messages WHERE message_id = $1 LIMIT 1',
+      [messageId]
+    )
+    if (result.rows.length === 0) return null
+    return { _source: this.mapArchiveRowToSource(result.rows[0]) }
+  }
+
+  async getArchiveHealth(): Promise<{
+    status: string
+    database: { connected: boolean; table: string; messageCount?: number }
+    config: { storage: string }
+  }> {
+    try {
+      const result = await this.pool.query(
+        'SELECT count(*)::int as cnt FROM archive_messages'
+      )
+      return {
+        status: 'healthy',
+        database: {
+          connected: true,
+          table: 'archive_messages',
+          messageCount: result.rows[0]?.cnt ?? 0
+        },
+        config: { storage: 'database' }
+      }
+    } catch {
+      return {
+        status: 'unhealthy',
+        database: { connected: false, table: 'archive_messages' },
+        config: { storage: 'database' }
+      }
+    }
+  }
+
+  async getArchiveContext(channelId: string, timestamp: string, limit: number): Promise<Array<{ _id: string; _source: any }>> {
+    const targetTime = new Date(timestamp).getTime()
+    const windowMs = 5 * 60 * 1000
+    const from = new Date(targetTime - windowMs).toISOString()
+    const to = new Date(targetTime + windowMs).toISOString()
+    const result = await this.pool.query(
+      `SELECT * FROM archive_messages WHERE channel_id = $1 AND timestamp >= $2 AND timestamp <= $3 ORDER BY timestamp ASC LIMIT $4`,
+      [channelId, from, to, limit * 2]
+    )
+    return result.rows.map((row: any) => ({
+      _id: String(row.id),
+      _source: this.mapArchiveRowToSource(row)
+    }))
+  }
+
   // Cleanup method to close the pool
   async close() {
     await this.pool.end()

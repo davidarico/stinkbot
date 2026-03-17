@@ -38,7 +38,7 @@ The application supports a wide variety of Werewolf roles including:
 - **Styling**: Tailwind CSS with custom UI components
 - **UI Components**: Radix UI primitives with custom styling
 - **Database**: PostgreSQL (via Supabase)
-- **Search Engine**: OpenSearch for message archives
+- **Archives**: PostgreSQL-backed search and browse of archived Discord messages
 - **Authentication**: Session-based authentication per game
 
 ## Project Structure
@@ -91,31 +91,22 @@ The application connects to a PostgreSQL database with the following key tables:
    DATABASE_URL=your_postgresql_connection_string
    NODE_ENV=development
    
-   # OpenSearch Configuration (if using archives feature)
-   OPENSEARCH_DOMAIN_ENDPOINT=http://localhost:9200
-   OS_BASIC_USER=your_username
-   OS_BASIC_PASS=your_plain_text_password
    ```
 
-3. Set up OpenSearch (if using archives feature):
-   ```bash
-   npm run setup-opensearch
-   ```
-
-4. Run the development server:
+3. Run the development server:
    ```bash
    npm run dev
    ```
 
-5. Open [http://localhost:3000](http://localhost:3000) in your browser
+4. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## Message Archives
 
-The archives feature allows users to search through archived Discord messages from Werewolf games. This feature requires:
+The archives feature allows users to search through archived Discord messages from Werewolf games. Archives are stored in PostgreSQL (table `archive_messages`).
 
 ### Prerequisites
-- OpenSearch instance running on localhost:9200 (or configure the endpoint in the API routes)
-- Discord messages indexed in OpenSearch with the correct schema
+- Database migration applied (includes `archive_messages` table)
+- Messages archived via the bot `Wolf.archive <category-name>` command (or migrated from S3)
 
 ### Features
 - **Full-text Search**: Search through message content with fuzzy matching

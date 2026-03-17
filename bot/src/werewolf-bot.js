@@ -8457,11 +8457,7 @@ class WerewolfBot {
                 return;
             }
 
-            // Check if OpenSearch is configured
-            if (!this.openSearchClient) {
-                await message.reply('❌ OpenSearch is not configured. Please set up the required environment variables.');
-                return;
-            }
+            // Archive uses the database (no OpenSearch required)
 
             // Parse comma-separated category names
             const input = args.join(' ');
@@ -8719,41 +8715,64 @@ class WerewolfBot {
                         }))
                     });
 
-                    // Index messages in batches to OpenSearch
+                    // Insert messages in batches into the database
                     if (messagesToIndex.length > 0) {
                         const batchSize = 100;
                         for (let i = 0; i < messagesToIndex.length; i += batchSize) {
                             const batch = messagesToIndex.slice(i, i + batchSize);
                             
                             try {
-                                const bulkBody = [];
-                                for (const msg of batch) {
-                                    bulkBody.push({ index: { _index: 'messages' } });
-                                    bulkBody.push(msg);
-                                }
-
-                                const response = await this.openSearchClient.bulk({
-                                    body: bulkBody
-                                });
-
-                                // Check for errors in bulk response
-                                if (response.body.errors) {
-                                    const errors = response.body.items.filter(item => item.index && item.index.error);
-                                    failedMessages += errors.length;
-                                    indexedMessages += batch.length - errors.length;
-                                    
-                                    if (errors.length > 0) {
-                                        console.error(`Failed to index ${errors.length} messages in batch:`, errors);
+                                const client = await this.db.connect();
+                                try {
+                                    for (const msg of batch) {
+                                        await client.query(
+                                            `INSERT INTO archive_messages (
+                                                message_id, content, user_id, username, display_name,
+                                                timestamp, channel_id, channel_name, category_id, category,
+                                                reply_to_message_id, attachments, embeds, reactions,
+                                                archived_at, archived_by, content_length,
+                                                has_attachments, has_embeds, has_reactions, is_reply
+                                            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+                                            ON CONFLICT (message_id) DO UPDATE SET
+                                                content = EXCLUDED.content,
+                                                display_name = EXCLUDED.display_name,
+                                                attachments = EXCLUDED.attachments,
+                                                embeds = EXCLUDED.embeds,
+                                                reactions = EXCLUDED.reactions,
+                                                archived_at = EXCLUDED.archived_at,
+                                                archived_by = EXCLUDED.archived_by`,
+                                            [
+                                                msg.messageId,
+                                                msg.content || null,
+                                                msg.userId,
+                                                msg.username,
+                                                msg.displayName || null,
+                                                msg.timestamp,
+                                                msg.channelId,
+                                                msg.channelName,
+                                                msg.categoryId,
+                                                msg.category,
+                                                msg.replyToMessageId || null,
+                                                JSON.stringify(msg.attachments || []),
+                                                JSON.stringify(msg.embeds || []),
+                                                JSON.stringify(msg.reactions || []),
+                                                msg.archivedAt,
+                                                JSON.stringify(msg.archivedBy || {}),
+                                                msg.contentLength || 0,
+                                                msg.hasAttachments || false,
+                                                msg.hasEmbeds || false,
+                                                msg.hasReactions || false,
+                                                msg.isReply || false
+                                            ]
+                                        );
                                     }
-                                } else {
                                     indexedMessages += batch.length;
+                                } finally {
+                                    client.release();
                                 }
-
-                                // Rate limiting for OpenSearch
                                 await new Promise(resolve => setTimeout(resolve, 50));
-
                             } catch (bulkError) {
-                                console.error(`Error indexing batch for channel ${channel.name}:`, bulkError);
+                                console.error(`Error inserting batch for channel ${channel.name}:`, bulkError);
                                 failedMessages += batch.length;
                             }
                         }
@@ -8814,7 +8833,7 @@ class WerewolfBot {
             const categoriesList = categories.map(c => `"${c.name}"`).join(', ');
             const embed = new EmbedBuilder()
                 .setTitle('✅ Archive Complete')
-                .setDescription(`Successfully archived ${categories.length === 1 ? 'category' : 'categories'}: ${categoriesList} to OpenSearch`)
+                .setDescription(`Successfully archived ${categories.length === 1 ? 'category' : 'categories'}: ${categoriesList} to database`)
                 .addFields(
                     { name: 'Categories Processed', value: categories.length.toString(), inline: true },
                     { name: 'Channels Processed', value: allChannels.length.toString(), inline: true },
@@ -8823,7 +8842,7 @@ class WerewolfBot {
                     { name: 'Failed Messages', value: failedMessages.toString(), inline: true },
                     { name: 'Images Processed', value: processedImages.toString(), inline: true },
                     { name: 'Backup Type', value: 'Full Archive (Disaster Recovery)', inline: true },
-                    { name: 'Storage', value: 'OpenSearch + S3', inline: true }
+                    { name: 'Storage', value: this.s3Client && process.env.AWS_S3_BUCKET_NAME ? 'Database + S3' : 'Database', inline: true }
                 )
                 .setColor(0x00AE86)
                 .setTimestamp();

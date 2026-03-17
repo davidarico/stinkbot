@@ -1,14 +1,34 @@
-const { Client } = require('@opensearch-project/opensearch');
-const { createAwsSigv4Signer } = require('@opensearch-project/opensearch/aws');
+const path = require('path');
+// Load env from repo root / database/.env so DATABASE_URL is available
+require('dotenv').config({ path: path.join(__dirname, '..', '..', 'database', '.env') });
+require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+
+const db = require('../src/database');
 const { S3Client, ListObjectsV2Command, GetObjectCommand } = require('@aws-sdk/client-s3');
-require('dotenv').config();
+
+const INSERT_SQL = `
+INSERT INTO archive_messages (
+    message_id, content, user_id, username, display_name,
+    timestamp, channel_id, channel_name, category_id, category,
+    reply_to_message_id, attachments, embeds, reactions,
+    archived_at, archived_by, content_length,
+    has_attachments, has_embeds, has_reactions, is_reply
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+ON CONFLICT (message_id) DO UPDATE SET
+    content = EXCLUDED.content,
+    display_name = EXCLUDED.display_name,
+    attachments = EXCLUDED.attachments,
+    embeds = EXCLUDED.embeds,
+    reactions = EXCLUDED.reactions,
+    archived_at = EXCLUDED.archived_at,
+    archived_by = EXCLUDED.archived_by
+`;
 
 async function migrateS3Archives() {
-    console.log('🔄 Starting migration of S3 archive files to OpenSearch...');
+    console.log('🔄 Starting migration of S3 archive files to database...');
 
-    // Validate required environment variables
-    const requiredEnvVars = ['OPENSEARCH_DOMAIN_ENDPOINT', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_REGION', 'AWS_S3_BUCKET_NAME'];
-
+    const requiredEnvVars = ['DATABASE_URL', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_REGION', 'AWS_S3_BUCKET_NAME'];
     for (const envVar of requiredEnvVars) {
         if (!process.env[envVar]) {
             console.error(`❌ Missing required environment variable: ${envVar}`);
@@ -16,7 +36,6 @@ async function migrateS3Archives() {
         }
     }
 
-    // Create S3 client
     const s3Client = new S3Client({
         region: process.env.AWS_REGION,
         credentials: {
@@ -25,53 +44,9 @@ async function migrateS3Archives() {
         }
     });
 
-    // Create OpenSearch client
-    const endpoint = process.env.OPENSEARCH_DOMAIN_ENDPOINT;
-    let client;
-
-    // Check if this is a local endpoint (no AWS authentication needed)
-    if (endpoint.includes('localhost') || endpoint.includes('127.0.0.1') || endpoint.startsWith('http://')) {
-        console.log('🏠 Detected local OpenSearch instance');
-        
-        // Check for basic authentication credentials
-        const clientConfig = {
-            node: endpoint
-        };
-
-        if (process.env.OS_BASIC_USER && process.env.OS_BASIC_PASS) {
-            console.log('🔐 Using basic authentication');
-            clientConfig.auth = {
-                username: process.env.OS_BASIC_USER,
-                password: process.env.OS_BASIC_PASS
-            };
-        } else {
-            console.log('⚠️ No basic authentication credentials provided (OS_BASIC_USER/OS_BASIC_PASS)');
-        }
-        
-        client = new Client(clientConfig);
-    } else {
-        console.log('☁️ Detected AWS OpenSearch instance');
-        
-        // Create OpenSearch client with AWS credentials
-        client = new Client({
-            ...createAwsSigv4Signer({
-                region: process.env.AWS_REGION,
-                service: 'es',
-                getCredentials: () => {
-                    return Promise.resolve({
-                        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-                        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-                    });
-                },
-            }),
-            node: endpoint,
-        });
-    }
-
     try {
-        // List all JSON files in the archives folder of S3 bucket
         console.log(`📁 Scanning S3 bucket: ${process.env.AWS_S3_BUCKET_NAME}/archives/`);
-        
+
         const listCommand = new ListObjectsV2Command({
             Bucket: process.env.AWS_S3_BUCKET_NAME,
             Prefix: 'archives/',
@@ -79,14 +54,13 @@ async function migrateS3Archives() {
         });
 
         const listResponse = await s3Client.send(listCommand);
-        
+
         if (!listResponse.Contents || listResponse.Contents.length === 0) {
             console.log('📁 No archive files found in S3 bucket');
             return;
         }
 
-        // Filter for JSON files
-        const jsonFiles = listResponse.Contents.filter(obj => 
+        const jsonFiles = listResponse.Contents.filter(obj =>
             obj.Key && obj.Key.endsWith('.json') && obj.Key.startsWith('archives/')
         );
 
@@ -105,14 +79,11 @@ async function migrateS3Archives() {
             try {
                 const filename = s3Object.Key.split('/').pop();
                 console.log(`\n📂 Processing: ${filename}`);
-                
-                // Download the file from S3
-                const getCommand = new GetObjectCommand({
+
+                const getResponse = await s3Client.send(new GetObjectCommand({
                     Bucket: process.env.AWS_S3_BUCKET_NAME,
                     Key: s3Object.Key
-                });
-
-                const getResponse = await s3Client.send(getCommand);
+                }));
                 const fileContent = await getResponse.Body.transformToString('utf8');
                 const archiveData = JSON.parse(fileContent);
 
@@ -124,7 +95,6 @@ async function migrateS3Archives() {
                 let archiveMessagesIndexed = 0;
                 let archiveMessagesFailed = 0;
 
-                // Process each channel in the archive
                 for (const channel of archiveData.channels) {
                     if (!channel.messages || !Array.isArray(channel.messages)) {
                         continue;
@@ -132,8 +102,7 @@ async function migrateS3Archives() {
 
                     console.log(`  📝 Processing ${channel.messages.length} messages from #${channel.channelName}`);
 
-                    // Transform messages to new format
-                    const messagesToIndex = channel.messages.map(msg => ({
+                    const messagesToInsert = channel.messages.map(msg => ({
                         messageId: msg.messageId,
                         content: msg.content,
                         userId: msg.userId,
@@ -149,55 +118,61 @@ async function migrateS3Archives() {
                         embeds: msg.embeds || [],
                         reactions: msg.reactions || [],
                         archivedAt: archiveData.archivedAt,
-                        archivedBy: archiveData.archivedBy,
+                        archivedBy: archiveData.archivedBy || {},
                         contentLength: msg.content ? msg.content.length : 0,
-                        hasAttachments: msg.attachments && msg.attachments.length > 0,
-                        hasEmbeds: msg.embeds && msg.embeds.length > 0,
-                        hasReactions: msg.reactions && msg.reactions.length > 0,
-                        isReply: msg.replyToMessageId ? true : false
+                        hasAttachments: !!(msg.attachments && msg.attachments.length > 0),
+                        hasEmbeds: !!(msg.embeds && msg.embeds.length > 0),
+                        hasReactions: !!(msg.reactions && msg.reactions.length > 0),
+                        isReply: !!msg.replyToMessageId
                     }));
 
-                    // Index messages in batches
                     const batchSize = 100;
-                    for (let i = 0; i < messagesToIndex.length; i += batchSize) {
-                        const batch = messagesToIndex.slice(i, i + batchSize);
-                        
+                    for (let i = 0; i < messagesToInsert.length; i += batchSize) {
+                        const batch = messagesToInsert.slice(i, i + batchSize);
+                        const client = await db.connect();
                         try {
-                            const bulkBody = [];
                             for (const msg of batch) {
-                                bulkBody.push({ index: { _index: 'messages' } });
-                                bulkBody.push(msg);
-                            }
-
-                            const response = await client.bulk({
-                                body: bulkBody
-                            });
-
-                            // Check for errors in bulk response
-                            if (response.body.errors) {
-                                const errors = response.body.items.filter(item => item.index && item.index.error);
-                                archiveMessagesFailed += errors.length;
-                                archiveMessagesIndexed += batch.length - errors.length;
-                                
-                                if (errors.length > 0) {
-                                    console.log(`    ⚠️ Failed to index ${errors.length} messages in batch`);
+                                try {
+                                    await client.query(INSERT_SQL, [
+                                        msg.messageId,
+                                        msg.content || null,
+                                        msg.userId,
+                                        msg.username,
+                                        msg.displayName || null,
+                                        msg.timestamp,
+                                        msg.channelId,
+                                        msg.channelName,
+                                        msg.categoryId,
+                                        msg.category,
+                                        msg.replyToMessageId || null,
+                                        JSON.stringify(msg.attachments),
+                                        JSON.stringify(msg.embeds),
+                                        JSON.stringify(msg.reactions),
+                                        msg.archivedAt,
+                                        JSON.stringify(msg.archivedBy),
+                                        msg.contentLength,
+                                        msg.hasAttachments,
+                                        msg.hasEmbeds,
+                                        msg.hasReactions,
+                                        msg.isReply
+                                    ]);
+                                    archiveMessagesIndexed++;
+                                } catch (err) {
+                                    archiveMessagesFailed++;
+                                    if (archiveMessagesFailed <= 3) {
+                                        console.log(`    ⚠️ Failed to insert message ${msg.messageId}:`, err.message);
+                                    }
                                 }
-                            } else {
-                                archiveMessagesIndexed += batch.length;
                             }
-
-                            // Rate limiting
-                            await new Promise(resolve => setTimeout(resolve, 50));
-
-                        } catch (bulkError) {
-                            console.error(`    ❌ Error indexing batch:`, bulkError.message);
-                            archiveMessagesFailed += batch.length;
+                        } finally {
+                            client.release();
                         }
+                        await new Promise(resolve => setTimeout(resolve, 50));
                     }
                 }
 
                 console.log(`  ✅ Archive processed: ${archiveMessagesIndexed} indexed, ${archiveMessagesFailed} failed`);
-                
+
                 totalArchivesProcessed++;
                 totalMessagesIndexed += archiveMessagesIndexed;
                 totalMessagesFailed += archiveMessagesFailed;
@@ -210,16 +185,17 @@ async function migrateS3Archives() {
         console.log(`\n🎉 Migration complete!`);
         console.log(`📊 Summary:`);
         console.log(`  - Archives processed: ${totalArchivesProcessed}`);
-        console.log(`  - Messages indexed: ${totalMessagesIndexed}`);
+        console.log(`  - Messages inserted: ${totalMessagesIndexed}`);
         console.log(`  - Messages failed: ${totalMessagesFailed}`);
 
     } catch (error) {
         console.error('❌ Migration failed:', error);
         process.exit(1);
+    } finally {
+        await db.end();
     }
 }
 
-// Run if called directly
 if (require.main === module) {
     migrateS3Archives();
 }
