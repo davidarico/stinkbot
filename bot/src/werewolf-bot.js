@@ -7539,11 +7539,18 @@ class WerewolfBot {
         // Handle category creation/renaming for proper alphabetical order
         const newCategories = [];
         
-        // Find the original "Journals" category
+        // Find the original "Journals" category (used for rename + as source for permissions on new categories)
         const originalJournalsCategory = guild.channels.cache.find(
             channel => channel.type === ChannelType.GuildCategory && channel.name === 'Journals'
         );
-        
+        // Capture permission overwrites to copy to any newly created categories (so they don't start with no permissions)
+        const categoryPermissionOverwrites = (originalJournalsCategory ?? journalCategories.values().next().value)
+            ?.permissionOverwrites?.cache?.map(overwrite => ({
+                id: overwrite.id,
+                allow: overwrite.allow.bitfield,
+                deny: overwrite.deny.bitfield,
+            })) ?? [];
+
         for (let i = 0; i < numCategoriesNeeded; i++) {
             const startIndex = i * journalsPerCategory;
             const endIndex = Math.min((i + 1) * journalsPerCategory, totalJournals);
@@ -7574,10 +7581,11 @@ class WerewolfBot {
                 );
                 
                 if (!category) {
-                    // Create new category
+                    // Create new category, copying permissions from the original Journals category so the category isn't left with no permissions
                     category = await guild.channels.create({
                         name: categoryName,
                         type: ChannelType.GuildCategory,
+                        permissionOverwrites: categoryPermissionOverwrites,
                     });
                     
                     // Position it after the previous category (which is now properly named)
