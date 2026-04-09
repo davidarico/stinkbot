@@ -75,6 +75,16 @@ interface Vote {
   targetUsername: string
 }
 
+/** Uniform random permutation (Fisher–Yates). Does not mutate the input. */
+function shuffleArray<T>(items: T[]): T[] {
+  const a = [...items]
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[a[i], a[j]] = [a[j], a[i]]
+  }
+  return a
+}
+
 export default function GameManagementPage() {
   const params = useParams()
   const opts = useSearchParams()
@@ -385,8 +395,8 @@ export default function GameManagementPage() {
       }
 
       // Now assign roles to players
-      const shuffledPlayers = [...players].sort(() => Math.random() - 0.5)
-      const shuffledRoles = [...selectedRoles].sort(() => Math.random() - 0.5)
+      const shuffledPlayers = shuffleArray(players)
+      const shuffledRoles = shuffleArray(selectedRoles)
 
       const assignments = shuffledPlayers.map((player, index) => ({
         playerId: player.id,
