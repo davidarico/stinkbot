@@ -374,13 +374,19 @@ class WerewolfBot {
         const command = args.shift().toLowerCase();
 
         // Commands that anyone can use
-        const playerCommands = ['in', 'out', 'vote', 'retract', 'alive', 'peed', 'help', 'meme', 'wolf_list', 'mylo', 'feedback', 'my_journal', 'players', 'rename_journal'];
-        const superUserCommands = ['mod', 'unmod'];
+        const playerCommands = ['in', 'out', 'vote', 'retract', 'alive', 'peed', 'help', 'meme', 'wolf_list', 'mylo', 'feedback', 'my_journal', 'players', 'rename_journal', 'speed_check', 'votecount', 'iaself'];
+        const superUserCommands = ['mod'];
         
         // Check permissions for admin-only commands
         if (superUserCommands.includes(command)) {
             const allowed = await this.isSuperUser(message.author?.id);
             if (!allowed) {
+                await message.reply('❌ You do not have permission to use this command.');
+                return;
+            }
+        } else if (command === 'unmod') {
+            const allowedUnmod = await this.isSuperUser(message.author?.id) || this.hasModeratorPermissions(message.member);
+            if (!allowedUnmod) {
                 await message.reply('❌ You do not have permission to use this command.');
                 return;
             }
@@ -510,6 +516,9 @@ class WerewolfBot {
                 case 'ia':
                     await this.handleIA(message, args);
                     break;
+                case 'iaself':
+                    await this.handleIA(message, args, { onlyUserId: message.author.id });
+                    break;
                 case 'speed':
                     await this.handleSpeed(message, args);
                     break;
@@ -524,6 +533,21 @@ class WerewolfBot {
                     break;
                 case 'get_votes':
                     await this.handleGetVotes(message);
+                    break;
+                case 'votecount':
+                    await this.handleVoteCount(message);
+                    break;
+                case 'ratio':
+                    await this.handleRatio(message);
+                    break;
+                case 'wolves_alive':
+                    await this.handleWolvesAlive(message);
+                    break;
+                case 'add_in':
+                    await this.handleAddIn(message, args);
+                    break;
+                case 'not_voted':
+                    await this.handleNotVoted(message);
                     break;
                 case 'archive':
                     await this.handleArchive(message, args);
@@ -617,10 +641,22 @@ class WerewolfBot {
     }
 
     async handleUnmod(message, args) {
-        const targetMember = message.mentions?.members?.first?.() || null;
+        const isSuper = await this.isSuperUser(message.author?.id);
+        let targetMember = message.mentions?.members?.first?.() || null;
+        if (!targetMember && args[0] && args[0].toLowerCase() === 'me') {
+            targetMember = message.member;
+        }
         if (!targetMember) {
-            await message.reply(`❌ Usage: ${this.prefix}unmod @user`);
+            await message.reply(`❌ Usage: \`${this.prefix}unmod @user\` or \`${this.prefix}unmod me\` (remove your own Mod role)`);
             return;
+        }
+
+        if (!isSuper) {
+            const canSelfDemod = this.hasModeratorPermissions(message.member) && targetMember.id === message.author.id;
+            if (!canSelfDemod) {
+                await message.reply('❌ Only super users can remove the Mod role from someone else. Moderators may use `Wolf.unmod me` to remove **their own** Mod role.');
+                return;
+            }
         }
 
         await this.removeRole(targetMember, 'Mod');
@@ -1115,7 +1151,7 @@ class WerewolfBot {
 
         // Check if signups are closed
         if (game.signups_closed) {
-            return message.reply('Sorry there is no way to get off Mr. Bones\' Wild Ride (Message a mod if you would really like to get out)');
+            return message.reply('There is no way to get off Mr. Bones\' Wild Ride (please ping a mod if you actually would like to leave)');
         }
 
         // Remove player
@@ -1791,7 +1827,8 @@ class WerewolfBot {
 
                             // Add view permission for this user to the channel
                             await channel.permissionOverwrites.edit(userId, {
-                                ViewChannel: true
+                                ViewChannel: true,
+                                SendMessages: true
                             });
                         } catch (permissionError) {
                             console.error(`Error adding view permission for user ${userId} to channel ${channelData.channel_name}:`, permissionError);
@@ -1819,6 +1856,16 @@ class WerewolfBot {
             [townSquare.id, wolfChat.id, memos.id, results.id, votingBooth.id, new Date().toISOString(), game.id]
         );
         log('Updated game row with core channel IDs + set active');
+
+        // Pin a town-square anchor so players/mods can scroll back to the start of the game (feedback #40)
+        try {
+            const anchorMsg = await townSquare.send({
+                content: '📌 **Game start marker** — This message marks the start of the game in town square. Scroll **up** from here to read messages from early phases (e.g. N1).'
+            });
+            await anchorMsg.pin('Game start anchor for town square');
+        } catch (anchorErr) {
+            console.warn('[Game start] Could not post or pin town square anchor message:', anchorErr?.message || anchorErr);
+        }
 
         // Send player list to dead chat
         await this.sendPlayerListToDeadChat(game.id, signupChannel);
@@ -2037,10 +2084,241 @@ class WerewolfBot {
         }
     }
 
+    /**
+     * Player-facing vote totals (counts only — no voter list). Same day rules as get_votes.
+     */
+    async handleVoteCount(message) {
+        const serverId = message.guild.id;
+        const gameResult = await this.db.query(
+            'SELECT * FROM games WHERE server_id = $1 AND status = $2',
+            [serverId, 'active']
+        );
+        if (!gameResult.rows.length) {
+            return message.reply('❌ No active game found.');
+        }
+        const game = gameResult.rows[0];
+        if (game.day_phase === 'night') {
+            return message.reply('❌ Voting is not active during the night phase.');
+        }
+        if (game.day_number < 2) {
+            return message.reply('❌ Voting counts are not shown on Day 1.');
+        }
+        try {
+            const votesResult = await this.db.query(
+                `SELECT p.username as target_username, COUNT(*)::int as vote_count
+                 FROM votes v
+                 JOIN players p ON v.target_user_id = p.user_id AND p.game_id = v.game_id
+                 WHERE v.game_id = $1 AND v.day_number = $2
+                 GROUP BY v.target_user_id, p.username
+                 ORDER BY vote_count DESC, p.username`,
+                [game.id, game.day_number]
+            );
+            let lines = 'No votes cast yet.';
+            if (votesResult.rows.length > 0) {
+                lines = votesResult.rows
+                    .map((row) => `**${row.target_username}**: ${row.vote_count}`)
+                    .join('\n');
+            }
+            const embed = new EmbedBuilder()
+                .setTitle(`🗳️ Vote totals — Day ${game.day_number}`)
+                .setDescription(`Hang threshold: **${game.votes_to_hang}** votes\n\n${lines}`)
+                .setFooter({ text: 'Who voted for whom is hidden here on purpose — ask a mod if you need the full breakdown.' })
+                .setColor(0x3498DB)
+                .setTimestamp();
+            await message.reply({ embeds: [embed] });
+        } catch (error) {
+            console.error('Error in handleVoteCount:', error);
+            await message.reply('❌ Could not load vote counts.');
+        }
+    }
+
+    /** Mod: Town / Wolf / Neutral seat counts from the game role list. */
+    async handleRatio(message) {
+        const serverId = message.guild.id;
+        const gameResult = await this.db.query(
+            'SELECT * FROM games WHERE server_id = $1 AND status = $2',
+            [serverId, 'active']
+        );
+        if (!gameResult.rows.length) {
+            return message.reply('❌ No active game found.');
+        }
+        const game = gameResult.rows[0];
+        try {
+            const rows = await this.db.query(
+                `SELECT LOWER(COALESCE(NULLIF(TRIM(r.team), ''), 'unknown')) AS team,
+                        SUM(gr.role_count)::bigint AS cnt
+                 FROM game_role gr
+                 JOIN roles r ON gr.role_id = r.id
+                 WHERE gr.game_id = $1
+                 GROUP BY LOWER(COALESCE(NULLIF(TRIM(r.team), ''), 'unknown'))`,
+                [game.id]
+            );
+            let town = 0;
+            let wolf = 0;
+            let neutral = 0;
+            for (const row of rows.rows) {
+                if (row.team === 'wolf') wolf = Number(row.cnt);
+                else if (row.team === 'neutral') neutral = Number(row.cnt);
+                else if (row.team === 'town') town = Number(row.cnt);
+            }
+            const total = town + wolf + neutral;
+            await message.reply(
+                `📊 **Role list ratio** (game ${game.game_number}): **${town}-${wolf}-${neutral}** (Town-Wolf-Neutral) — ${total} seats in setup.`
+            );
+        } catch (error) {
+            console.error('Error in handleRatio:', error);
+            await message.reply('❌ Could not compute ratio (is the game role list saved on the site?).');
+        }
+    }
+
+    /** Mod or Dead: how many wolves still have the Alive role in Discord. */
+    async handleWolvesAlive(message) {
+        const serverId = message.guild.id;
+        const deadRole = message.guild.roles.cache.find((r) => r.name === 'Dead');
+        const isDead = deadRole && message.member?.roles?.cache?.has(deadRole.id);
+        if (!this.hasModeratorPermissions(message.member) && !isDead) {
+            return message.reply('❌ Only moderators or **Dead** players can use this command.');
+        }
+        const gameResult = await this.db.query(
+            'SELECT * FROM games WHERE server_id = $1 AND status = $2',
+            [serverId, 'active']
+        );
+        if (!gameResult.rows.length) {
+            return message.reply('❌ No active game found.');
+        }
+        const game = gameResult.rows[0];
+        const aliveRole = message.guild.roles.cache.find((r) => r.name === 'Alive');
+        if (!aliveRole) {
+            return message.reply('❌ Alive role not found.');
+        }
+        try {
+            await message.guild.members.fetch().catch(() => null);
+            const wolves = await this.db.query(
+                `SELECT p.user_id, p.username FROM players p
+                 WHERE p.game_id = $1 AND p.is_wolf = TRUE`,
+                [game.id]
+            );
+            let aliveWolves = 0;
+            const names = [];
+            for (const row of wolves.rows) {
+                const mem = message.guild.members.cache.get(row.user_id);
+                if (mem && mem.roles.cache.has(aliveRole.id)) {
+                    aliveWolves++;
+                    names.push(row.username);
+                }
+            }
+            const isMod = this.hasModeratorPermissions(message.member);
+            const detail = isMod && names.length ? `\n_${names.join(', ')}_` : '';
+            await message.reply(`🐺 **Wolves still alive:** ${aliveWolves}${detail}`.trim());
+        } catch (error) {
+            console.error('Error in handleWolvesAlive:', error);
+            await message.reply('❌ Could not count wolves.');
+        }
+    }
+
+    /** Mod: force-add a Discord member to signups (same DB/roles as Wolf.in). */
+    async handleAddIn(message, args) {
+        const targetMember = message.mentions?.members?.first?.() || null;
+        if (!targetMember) {
+            return message.reply(`❌ Usage: \`${this.prefix}add_in @player\``);
+        }
+        const serverId = message.guild.id;
+        const gameResult = await this.db.query(
+            'SELECT * FROM games WHERE server_id = $1 AND status = $2',
+            [serverId, 'signup']
+        );
+        if (!gameResult.rows.length) {
+            return message.reply('❌ No game in signup phase.');
+        }
+        const game = gameResult.rows[0];
+        if (game.signups_closed) {
+            return message.reply('❌ Signups are closed — cannot add players.');
+        }
+        const bannedUser = await this.db.query('SELECT * FROM banned_users WHERE user_id = $1', [targetMember.id]);
+        if (bannedUser.rows.length > 0) {
+            return message.reply('❌ That user is banned from signing up.');
+        }
+        const existingPlayer = await this.db.query(
+            'SELECT * FROM players WHERE game_id = $1 AND user_id = $2',
+            [game.id, targetMember.id]
+        );
+        if (existingPlayer.rows.length > 0) {
+            return message.reply('❌ That user is already signed up.');
+        }
+        const displayName = targetMember.displayName || targetMember.user.username;
+        await this.db.query(
+            'INSERT INTO players (game_id, user_id, username) VALUES ($1, $2, $3)',
+            [game.id, targetMember.id, displayName]
+        );
+        await this.ensureUserHasJournal(message, targetMember.user);
+        await this.assignRole(targetMember, 'Signed Up');
+        await this.removeRole(targetMember, 'Spectator');
+        await this.updateSignupMessage(game);
+        await message.reply(`✅ Added **${displayName}** to the signup list.`);
+    }
+
+    /** Mod: alive players who have not cast a vote today (Day 2+). */
+    async handleNotVoted(message) {
+        const serverId = message.guild.id;
+        const gameResult = await this.db.query(
+            'SELECT * FROM games WHERE server_id = $1 AND status = $2',
+            [serverId, 'active']
+        );
+        if (!gameResult.rows.length) {
+            return message.reply('❌ No active game found.');
+        }
+        const game = gameResult.rows[0];
+        if (game.day_phase === 'night') {
+            return message.reply('❌ Use this during the day phase.');
+        }
+        if (game.day_number < 2) {
+            return message.reply('❌ Not applicable on Day 1.');
+        }
+        const aliveRole = message.guild.roles.cache.find((r) => r.name === 'Alive');
+        if (!aliveRole) {
+            return message.reply('❌ Alive role not found.');
+        }
+        try {
+            await message.guild.members.fetch().catch(() => null);
+            const players = await this.db.query(
+                'SELECT user_id, username FROM players WHERE game_id = $1',
+                [game.id]
+            );
+            const voted = await this.db.query(
+                'SELECT DISTINCT voter_user_id FROM votes WHERE game_id = $1 AND day_number = $2',
+                [game.id, game.day_number]
+            );
+            const votedSet = new Set(voted.rows.map((r) => r.voter_user_id));
+            const notVoted = [];
+            for (const p of players.rows) {
+                const mem = message.guild.members.cache.get(p.user_id);
+                if (!mem || !mem.roles.cache.has(aliveRole.id)) continue;
+                if (!votedSet.has(p.user_id)) {
+                    notVoted.push(p.username);
+                }
+            }
+            notVoted.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+            const body = notVoted.length ? notVoted.map((n, i) => `${i + 1}. ${n}`).join('\n') : 'Everyone alive has cast a vote today (or no alive players).';
+            const embed = new EmbedBuilder()
+                .setTitle(`🤐 Alive with no vote — Day ${game.day_number}`)
+                .setDescription(body)
+                .setColor(0xe67e22)
+                .setTimestamp();
+            await message.reply({ embeds: [embed] });
+        } catch (error) {
+            console.error('Error in handleNotVoted:', error);
+            await message.reply('❌ Could not build the list.');
+        }
+    }
+
     async sendPlayerListToDeadChat(gameId, deadChatChannel) {
-        // Get all players in the game
         const playersResult = await this.db.query(
-            'SELECT username FROM players WHERE game_id = $1 ORDER BY username',
+            `SELECT p.username,
+                    LOWER(COALESCE(NULLIF(TRIM(r.team), ''), CASE WHEN p.is_wolf THEN 'wolf' ELSE 'town' END)) AS team
+             FROM players p
+             LEFT JOIN roles r ON p.role_id = r.id
+             WHERE p.game_id = $1
+             ORDER BY p.username`,
             [gameId]
         );
 
@@ -2048,14 +2326,33 @@ class WerewolfBot {
             return;
         }
 
-        const playerList = playersResult.rows.map(player => `• ${player.username}`).join('\n');
-        
+        const counts = { town: 0, wolf: 0, neutral: 0 };
+        for (const row of playersResult.rows) {
+            const t = row.team || 'town';
+            if (t === 'wolf') counts.wolf++;
+            else if (t === 'neutral') counts.neutral++;
+            else counts.town++;
+        }
+
+        const titleParts = [];
+        if (counts.town > 0) titleParts.push(`TOWN (${counts.town})`);
+        if (counts.wolf > 0) titleParts.push(`WOLF (${counts.wolf})`);
+        if (counts.neutral > 0) titleParts.push(`NEUTRAL (${counts.neutral})`);
+        const factionTitle = titleParts.length ? titleParts.join(' · ') : 'Faction counts pending';
+
+        const playerList = playersResult.rows.map((player) => `• ${player.username}`).join('\n');
+
         const embed = new EmbedBuilder()
-            .setTitle('👥 Player List')
+            .setTitle(`👥 Player List — ${factionTitle}`)
             .setDescription(`Here are all the players in this game:\n\n${playerList}`)
             .setColor(0x9B59B6);
 
-        await deadChatChannel.send({ embeds: [embed] });
+        const listMessage = await deadChatChannel.send({ embeds: [embed] });
+        try {
+            await listMessage.pin('Player list at game start');
+        } catch (pinErr) {
+            console.warn('[sendPlayerListToDeadChat] Could not pin player list:', pinErr?.message || pinErr);
+        }
     }
 
     async sendRoleNotificationsToJournals(gameId, serverId) {
@@ -2825,7 +3122,7 @@ class WerewolfBot {
             });
 
             votingBoothEmbed = new EmbedBuilder()
-                .setTitle(`📊 Day ${game.day_number} Voting Results`)
+                .setTitle(`📊 Day ${game.day_number} votes → Night ${newDay}`)
                 .setDescription(votingBoothDescription)
                 .setColor(0x2C3E50);
                 
@@ -2839,7 +3136,7 @@ class WerewolfBot {
 
                 // Create voting booth embed for no votes
                 votingBoothEmbed = new EmbedBuilder()
-                    .setTitle('📊 Final Vote Results')
+                    .setTitle(`📊 Day ${game.day_number} votes → Night ${newDay}`)
                     .setDescription(`**📊 Day ${game.day_number} Voting Results:**\n*No votes were cast today.*`)
                     .setColor(0x2C3E50);
             }
@@ -3289,7 +3586,10 @@ class WerewolfBot {
                     '`Wolf.rename_journal <new-name>` - 📝 Rename your personal journal\n' +
                     '`Wolf.meme` - 😤 I dare you to try me\n' +
                     '`Wolf.help` - Show this help message\n' +
-                    '`Wolf.feedback` - Submit feedback to Stinky',
+                    '`Wolf.feedback` - Submit feedback to Stinky\n' +
+                    '`Wolf.votecount` - Vote totals only (no voter names; Day 2+ day phase)\n' +
+                    '`Wolf.iaself` - Your message count (same defaults as `Wolf.ia`, yourself only)\n' +
+                    '`Wolf.speed_check` - Message counts since last phase change (town square)',
                 inline: false 
             }
         );
@@ -3299,9 +3599,8 @@ class WerewolfBot {
             {
                 name: '🛡️ Super User Commands',
                 value:
-                    '`Wolf.mod @user` - Grant the Mod role to a user\n' +
-                    '`Wolf.unmod @user` - Remove the Mod role from a user\n' +
-                    'Requires you to be a super user',
+                    '`Wolf.mod @user` - Grant the Mod role to a user (super users only)\n' +
+                    '`Wolf.unmod` - See moderator section: super users can remove Mod from anyone; moderators can `Wolf.unmod me`',
                 inline: false
             }
         );
@@ -3329,7 +3628,11 @@ class WerewolfBot {
                     value: 
                         '`Wolf.add_channel <n>` - Create additional channel in game category\n' +
                         '`Wolf.create_vote` - 🗳️ Manually create a voting message (voting booth only)\n' +
-                        '`Wolf.get_votes` - 📊 Get current vote counts and status\n' +
+                        '`Wolf.get_votes` - 📊 Get current vote counts and **who** voted (mod)\n' +
+                        '`Wolf.ratio` - Town / Wolf / Neutral seat counts from the saved role list\n' +
+                        '`Wolf.wolves_alive` - Count wolves who still have Alive (mods see names; Dead see count only)\n' +
+                        '`Wolf.add_in @user` - Add someone to signups without them running `Wolf.in`\n' +
+                        '`Wolf.not_voted` - Alive players with no vote yet today (Day 2+ day)\n' +
                         '`Wolf.set_voting_booth <channel-name>` - 🗳️ Set voting booth channel for current game\n' +
                         '`Wolf.lockdown` - 🔒 Lock down townsquare and memos (alive players cannot speak)\n' +
                         '`Wolf.lockdown lift` - 🔓 Lift lockdown and restore normal permissions\n' +
@@ -3355,7 +3658,8 @@ class WerewolfBot {
                         '`Wolf.role_config` - ⚙️ Show role configuration for current game\n' +
                         '`Wolf.kill @player` - 🔫 Removes Alive and adds Dead role\n' +   
                         '`Wolf.inlist` - Show all players signed up (mobile-friendly format)\n' +
-                        '`Wolf.dead` - 💀 Show all players currently dead', 
+                        '`Wolf.dead` - 💀 Show all players currently dead\n' +
+                        '`Wolf.unmod @user` or `Wolf.unmod me` - Remove Mod role (super user: anyone; mod: self only)', 
                     inline: false 
                 },
                 { 
@@ -3983,6 +4287,11 @@ class WerewolfBot {
                         id: aliveRole.id,
                         deny: ['ViewChannel'],
                         allow: ['SendMessages']
+                    },
+                    {
+                        id: deadRole.id,
+                        allow: ['ViewChannel'],
+                        deny: ['SendMessages']
                     }
                 ]
             });
@@ -4828,8 +5137,9 @@ class WerewolfBot {
         }
     }
 
-    async handleIA(message, args) {
+    async handleIA(message, args, opts = {}) {
         const serverId = message.guild.id;
+        const onlyUserId = opts && opts.onlyUserId ? opts.onlyUserId : null;
 
         // Get active game
         const gameResult = await this.db.query(
@@ -4842,6 +5152,16 @@ class WerewolfBot {
         }
 
         const game = gameResult.rows[0];
+
+        if (onlyUserId) {
+            const selfInGame = await this.db.query(
+                'SELECT 1 FROM players WHERE game_id = $1 AND user_id = $2',
+                [game.id, onlyUserId]
+            );
+            if (!selfInGame.rows.length) {
+                return message.reply('❌ You are not listed as a player in this game.');
+            }
+        }
 
         // Arguments can be:
         // - none: default channel (town square) + default start time (same as before)
@@ -4986,11 +5306,16 @@ class WerewolfBot {
                 return message.reply(`❌ Can't read messages from \`${activityChannel.name || channelArg}\`.`);
             }
 
-            // Get all players in the game
-            const playersResult = await this.db.query(
-                'SELECT user_id, username FROM players WHERE game_id = $1',
-                [game.id]
-            );
+            // Get all players in the game (optionally only one user for iaself)
+            const playersResult = onlyUserId
+                ? await this.db.query(
+                    'SELECT user_id, username FROM players WHERE game_id = $1 AND user_id = $2',
+                    [game.id, onlyUserId]
+                )
+                : await this.db.query(
+                    'SELECT user_id, username FROM players WHERE game_id = $1',
+                    [game.id]
+                );
 
             if (playersResult.rows.length === 0) {
                 return message.reply('❌ No players found in the current game.');
@@ -5022,7 +5347,7 @@ class WerewolfBot {
                 }
                 
                 if (alivePlayers.length === 0) {
-                    return message.reply('❌ No alive players found in the current game.');
+                    return message.reply(onlyUserId ? '❌ You do not have the Alive role (or you are not in this game).' : '❌ No alive players found in the current game.');
                 }
 
                 // Randomize the player order to prevent role inference
@@ -5094,10 +5419,10 @@ class WerewolfBot {
                     : 'No messages found from players in the specified time period.';
 
                 const embed = new EmbedBuilder()
-                    .setTitle('📊 Activity Report')
-                    .setDescription(`Message count per player since **${dateTimeStr} EST**`)
+                    .setTitle(onlyUserId ? '📊 Your activity (IA)' : '📊 Activity Report')
+                    .setDescription(onlyUserId ? `Your message count since **${dateTimeStr} EST**` : `Message count per player since **${dateTimeStr} EST**`)
                     .addFields(
-                        { name: `Player Activity (${sortedPlayers.length} players)`, value: playerList },
+                        { name: onlyUserId ? 'Your messages' : `Player Activity (${sortedPlayers.length} players)`, value: playerList },
                         { name: 'Summary', value: `**Total messages**: ${totalMessages}\n**Channel**: ${activityChannel.name}`, inline: false }
                     )
                     .setColor(0x3498DB)
@@ -5116,7 +5441,7 @@ class WerewolfBot {
             }
 
             if (alivePlayers.length === 0) {
-                return message.reply('❌ No alive players found in the current game.');
+                return message.reply(onlyUserId ? '❌ You do not have the Alive role (or you are not in this game).' : '❌ No alive players found in the current game.');
             }
 
             // Randomize the player order to prevent role inference
@@ -5188,10 +5513,10 @@ class WerewolfBot {
                 : 'No messages found from players in the specified time period.';
 
             const embed = new EmbedBuilder()
-                .setTitle('📊 Activity Report')
-                .setDescription(`Message count per player since **${dateTimeStr} EST**`)
+                .setTitle(onlyUserId ? '📊 Your activity (IA)' : '📊 Activity Report')
+                .setDescription(onlyUserId ? `Your message count since **${dateTimeStr} EST**` : `Message count per player since **${dateTimeStr} EST**`)
                 .addFields(
-                    { name: `Player Activity (${sortedPlayers.length} players)`, value: playerList },
+                    { name: onlyUserId ? 'Your messages' : `Player Activity (${sortedPlayers.length} players)`, value: playerList },
                     { name: 'Summary', value: `**Total messages**: ${totalMessages}\n**Channel**: ${activityChannel.name}`, inline: false }
                 )
                 .setColor(0x3498DB)
@@ -5816,10 +6141,29 @@ class WerewolfBot {
 
     async handleReaction(reaction, user) {
         try {
+            const fullReaction = reaction.partial ? await reaction.fetch() : reaction;
+            const msg = fullReaction.message;
+            const guild = msg?.guild;
+            if (guild && msg && !user.bot) {
+                const emojiName = fullReaction.emoji?.name;
+                const isPinEmoji = emojiName === 'pushpin' || fullReaction.emoji?.toString() === '📌';
+                if (isPinEmoji) {
+                    const member = await guild.members.fetch(user.id).catch(() => null);
+                    if (member && this.hasModeratorPermissions(member)) {
+                        try {
+                            await msg.pin(`Pinned by ${member.displayName} via 📌 reaction`);
+                        } catch (pinErr) {
+                            console.warn('[handleReaction] Mod pin via reaction failed:', pinErr?.message || pinErr);
+                        }
+                    }
+                }
+            }
+
             // Check if this is a speed vote message
+            const reactionMessageId = msg?.id || reaction.message?.id;
             const speedVote = await this.db.query(
                 'SELECT * FROM game_speed WHERE message_id = $1',
-                [reaction.message.id]
+                [reactionMessageId]
             );
 
             if (speedVote.rows.length === 0) return;
@@ -5832,12 +6176,12 @@ class WerewolfBot {
             if (customEmoji.startsWith('<:') && customEmoji.endsWith('>')) {
                 // Custom emoji format: <:name:id>
                 const emojiId = customEmoji.match(/:(\d+)>/)?.[1];
-                if (emojiId && reaction.emoji.id === emojiId) {
+                if (emojiId && fullReaction.emoji.id === emojiId) {
                     isCorrectEmoji = true;
                 }
             } else {
                 // Unicode emoji
-                if (reaction.emoji.name === customEmoji || reaction.emoji.toString() === customEmoji) {
+                if (fullReaction.emoji.name === customEmoji || fullReaction.emoji.toString() === customEmoji) {
                     isCorrectEmoji = true;
                 }
             }
@@ -5845,15 +6189,15 @@ class WerewolfBot {
             if (!isCorrectEmoji) return;
 
             // Check if the user has the "Alive" role
-            const guild = reaction.message.guild;
-            const member = await guild.members.fetch(user.id).catch(() => null);
+            const speedGuild = msg?.guild || reaction.message.guild;
+            const member = await speedGuild.members.fetch(user.id).catch(() => null);
             
             if (!member) {
                 console.log(`Could not fetch member ${user.tag} for reaction check`);
                 return;
             }
 
-            const aliveRole = guild.roles.cache.find(r => r.name === 'Alive');
+            const aliveRole = speedGuild.roles.cache.find(r => r.name === 'Alive');
             if (!aliveRole) {
                 console.log('Alive role not found in guild, allowing reaction');
                 return;
@@ -5868,7 +6212,7 @@ class WerewolfBot {
                 try {
                     const gameResult = await this.db.query(
                         'SELECT mod_chat_channel_id FROM games WHERE server_id = $1 AND status = $2',
-                        [guild.id, 'active']
+                        [speedGuild.id, 'active']
                     );
                     
                     if (gameResult.rows.length > 0 && gameResult.rows[0].mod_chat_channel_id) {

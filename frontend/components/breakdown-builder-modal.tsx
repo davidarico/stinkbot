@@ -55,11 +55,29 @@ export function BreakdownBuilderModal({
   const { toast } = useToast()
   const [breakdownRoles, setBreakdownRoles] = useState<Role[]>([])
   const [gameRolesInBreakdown, setGameRolesInBreakdown] = useState<Role[]>([])
+  const [playerRoster, setPlayerRoster] = useState<string[]>([])
 
   // Load player roles when modal opens
   useEffect(() => {
     if (isOpen) {
       loadPlayerRoles()
+      void (async () => {
+        try {
+          const res = await fetch(`/api/games/${gameId}/players`)
+          if (res.ok) {
+            const data: { username?: string }[] = await res.json()
+            const names = data
+              .map((p) => p.username)
+              .filter((n): n is string => Boolean(n))
+              .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
+            setPlayerRoster(names)
+          } else {
+            setPlayerRoster([])
+          }
+        } catch {
+          setPlayerRoster([])
+        }
+      })()
     }
   }, [isOpen, gameId])
 
@@ -174,17 +192,31 @@ export function BreakdownBuilderModal({
       })
     }
 
+    if (playerRoster.length > 0) {
+      breakdown += "\n\n**Players (from signups)**\n"
+      breakdown += playerRoster.map((name, i) => `${i + 1}. ${name}`).join("\n")
+    }
+
     return breakdown.trim()
   }
 
   const copyToClipboard = async () => {
+    const gameRoleIds = new Set(gameRolesInBreakdown.map((r) => r.id))
+    const manualNotOnSheet = breakdownRoles.filter((r) => !gameRoleIds.has(r.id))
     const breakdownText = generateBreakdownText()
     try {
       await navigator.clipboard.writeText(breakdownText)
-      toast({
-        title: "Copied to Clipboard",
-        description: "Role breakdown has been copied to your clipboard.",
-      })
+      if (manualNotOnSheet.length > 0) {
+        toast({
+          title: "Copied — verify manual roles",
+          description: `Breakdown copied. Roles not on the assigned sheet: ${manualNotOnSheet.map((r) => r.name).join(", ")}.`,
+        })
+      } else {
+        toast({
+          title: "Copied to Clipboard",
+          description: "Role breakdown has been copied to your clipboard.",
+        })
+      }
     } catch (error) {
       toast({
         title: "Copy Failed",

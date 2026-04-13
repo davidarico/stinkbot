@@ -29,7 +29,7 @@ if (!process.env.DISCORD_TOKEN) {
 }
 
 const werewolfBot = new WerewolfBot(client, db);
-const aliveMentionDetector = new AliveMentionDetector(client);
+const aliveMentionDetector = new AliveMentionDetector(client, db);
 
 client.once('ready', async () => {
     console.log(`🤖 ${client.user.tag} is online!`);
@@ -68,8 +68,10 @@ client.once('ready', async () => {
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
     
-    // Handle alive role mentions first
-    // await aliveMentionDetector.handleMessage(message);
+    // Optional: @Alive mention limits (town square of active game only when DB pool is wired)
+    if (process.env.ENABLE_ALIVE_MENTION_DETECTION === 'true') {
+        await aliveMentionDetector.handleMessage(message);
+    }
     
     const prefix = process.env.BOT_PREFIX || 'Wolf.';
     if (!message.content.toLowerCase().startsWith(prefix.toLowerCase())) return;

@@ -2,8 +2,10 @@ const SQLiteManager = require('./sqlite-manager');
 const cron = require('node-cron');
 
 class AliveMentionDetector {
-    constructor(client) {
+    constructor(client, pool = null) {
         this.client = client;
+        /** When set, @Alive mention penalties only apply in the active game's town square (feedback #23). */
+        this.pool = pool;
         this.sqliteManager = new SQLiteManager();
         this.aliveRoleIds = new Map(); // serverId -> roleId
         this.modRoleIds = new Map(); // serverId -> roleId
@@ -65,13 +67,31 @@ class AliveMentionDetector {
         if (!message.guild) return; // DM messages
 
         const serverId = message.guild.id;
-        const aliveRoleId = this.aliveRoleIds.get(serverId);
+
+        if (this.pool) {
+            try {
+                const tsRes = await this.pool.query(
+                    'SELECT town_square_channel_id FROM games WHERE server_id = $1 AND status = $2 LIMIT 1',
+                    [serverId, 'active']
+                );
+                const tsId = tsRes.rows[0]?.town_square_channel_id;
+                if (!tsId || message.channel.id !== tsId) {
+                    return;
+                }
+            } catch (e) {
+                console.warn('[AliveMentionDetector] Town square lookup failed:', e.message);
+                return;
+            }
+        }
+
+        let aliveRoleId = this.aliveRoleIds.get(serverId);
         
         if (!aliveRoleId) {
             // Try to find the role if not cached
             const aliveRole = message.guild.roles.cache.find(role => role.name === 'Alive');
             if (aliveRole) {
                 this.aliveRoleIds.set(serverId, aliveRole.id);
+                aliveRoleId = aliveRole.id;
             } else {
                 return; // No alive role in this server
             }

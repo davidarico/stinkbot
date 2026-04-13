@@ -7,6 +7,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Calculator, ChevronDown, ChevronRight } from "lucide-react"
 import { BartenderCalculator } from "@/components/calculators/bartender-calculator"
 import { SleepwalkerCalculator } from "@/components/calculators/sleepwalker-calculator"
+import { BloodhoundCalculator } from "@/components/calculators/bloodhound-calculator"
 
 interface Player {
   id: number
@@ -70,6 +71,8 @@ export function ActionCalculators({ players, gameRoles, isDayPhase }: ActionCalc
               <SleepwalkerCalculator 
                 players={alivePlayers}
               />
+
+              <BloodhoundCalculator players={alivePlayers} gameRoles={gameRoles} />
               
               {/* Placeholder for future calculators */}
               <Card className="bg-white/5 border-dashed border-white/20">

@@ -28,8 +28,37 @@ if (!process.env.DATABASE_URL) {
 
 console.log('🔗 Using connection string for Supabase');
 
+/**
+ * TLS for pg: Node can reject Supabase / pooler chains locally (SELF_SIGNED_CERT_IN_CHAIN)
+ * while the same URL works on a server. Mirrors frontend `database.ts` heuristic + explicit override.
+ */
+function postgresSslOption() {
+    const url = process.env.DATABASE_URL || '';
+    const strict = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === 'true';
+    const relaxed = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === 'false';
+    const isProd = process.env.NODE_ENV === 'production';
+    const looksLikeSupabase = /supabase\.co(m)?\b/i.test(url);
+
+    if (strict) {
+        return undefined;
+    }
+    if (relaxed) {
+        console.warn('⚠️ Postgres TLS: DATABASE_SSL_REJECT_UNAUTHORIZED=false — certificate chain is not verified.');
+        return { rejectUnauthorized: false };
+    }
+    if (!isProd && looksLikeSupabase) {
+        console.warn(
+            '⚠️ Postgres TLS (dev): Supabase URL detected — using relaxed SSL (rejectUnauthorized: false). ' +
+                'Set DATABASE_SSL_REJECT_UNAUTHORIZED=true to enforce verification, or false to keep relaxed in production-like NODE_ENV.'
+        );
+        return { rejectUnauthorized: false };
+    }
+    return undefined;
+}
+
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
+    ssl: postgresSslOption(),
     // Connection pooling settings for Supabase
     max: 20, // Maximum connections in pool
     idleTimeoutMillis: 30000,
