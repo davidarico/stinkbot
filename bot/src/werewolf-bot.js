@@ -2146,7 +2146,7 @@ class WerewolfBot {
         try {
             const rows = await this.db.query(
                 `SELECT LOWER(COALESCE(NULLIF(TRIM(r.team), ''), 'unknown')) AS team,
-                        SUM(gr.role_count)::bigint AS cnt
+                        COUNT(*)::bigint AS cnt
                  FROM game_role gr
                  JOIN roles r ON gr.role_id = r.id
                  WHERE gr.game_id = $1
@@ -2380,10 +2380,15 @@ class WerewolfBot {
             const playersResult = await this.db.query(
                 `SELECT p.user_id, p.username, p.role_id, p.is_wolf, 
                         r.name as role_name, r.in_wolf_chat, r.team,
-                        gr.custom_name, p.charges_left, p.win_by_number
+                        COALESCE(NULLIF(TRIM(p.thematic_custom_name), ''), (
+                          SELECT gr.custom_name FROM game_role gr
+                          WHERE gr.game_id = p.game_id AND gr.role_id = p.role_id
+                          ORDER BY gr.sort_index NULLS LAST
+                          LIMIT 1
+                        )) as custom_name,
+                        p.charges_left, p.win_by_number
                  FROM players p
                  LEFT JOIN roles r ON p.role_id = r.id
-                 LEFT JOIN game_role gr ON p.game_id = gr.game_id AND p.role_id = gr.role_id
                  WHERE p.game_id = $1`,
                 [gameId]
             );
@@ -6545,10 +6550,14 @@ class WerewolfBot {
         const playersResult = await this.db.query(
             `SELECT p.user_id, p.username, p.role_id, p.status, p.is_wolf,
                     r.name as role_name, r.team, r.in_wolf_chat,
-                    gr.custom_name
+                    COALESCE(NULLIF(TRIM(p.thematic_custom_name), ''), (
+                      SELECT gr.custom_name FROM game_role gr
+                      WHERE gr.game_id = p.game_id AND gr.role_id = p.role_id
+                      ORDER BY gr.sort_index NULLS LAST
+                      LIMIT 1
+                    )) as custom_name
              FROM players p
              LEFT JOIN roles r ON p.role_id = r.id
-             LEFT JOIN game_role gr ON p.game_id = gr.game_id AND p.role_id = gr.role_id
              WHERE p.game_id = $1 ORDER BY p.username`,
             [game.id]
         );
@@ -9498,7 +9507,7 @@ class WerewolfBot {
                 FROM game_role gr 
                 JOIN roles r ON gr.role_id = r.id 
                 WHERE gr.game_id = $1
-                ORDER BY r.team, r.name
+                ORDER BY gr.sort_index ASC, r.team, r.name
             `;
             
             const roleResult = await this.db.query(roleQuery, [game.id]);
@@ -9516,7 +9525,7 @@ class WerewolfBot {
             roleResult.rows.forEach(row => {
                 const roleInfo = {
                     name: row.custom_name || row.role_name,
-                    count: row.role_count,
+                    count: 1,
                     charges: row.charges || 0,
                     winByNumber: row.win_by_number || 0,
                     hasCharges: row.has_charges,
@@ -9612,7 +9621,7 @@ class WerewolfBot {
             }
             
             // Add summary
-            const totalCount = roleResult.rows.reduce((sum, row) => sum + row.role_count, 0);
+            const totalCount = roleResult.rows.length;
             
             embed.addFields({ 
                 name: '📊 Summary', 

@@ -127,10 +127,11 @@ export class DatabaseAdapter {
     // Real database implementation
     try {
       const result = await this.db!.query(
-        `SELECT r.*, gr.role_count, gr.custom_name, gr.charges
+        `SELECT r.*, gr.custom_name, gr.charges, gr.sort_index
          FROM game_role gr 
          JOIN roles r ON gr.role_id = r.id 
-         WHERE gr.game_id = $1`,
+         WHERE gr.game_id = $1
+         ORDER BY gr.sort_index ASC`,
         [gameId]
       );
       

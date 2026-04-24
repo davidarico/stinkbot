@@ -33,6 +33,7 @@ interface Player {
   username: string
   status: string
   role_id?: number
+  thematic_custom_name?: string | null
   skinned_role?: string
   is_wolf: boolean
   is_dead: boolean
@@ -55,9 +56,10 @@ interface Vote {
 }
 
 interface GameRole {
+  id?: number
   game_id: number
+  sort_index: number
   role_id: number
-  role_count: number
   custom_name?: string
   charges?: number
   win_by_number?: number
@@ -221,56 +223,73 @@ export class DatabaseService {
     }
   }
 
-  async assignRoles(gameId: string, assignments: Array<{playerId: number, roleId: number, isWolf: boolean, skinnedRole?: string}>) {
+  async assignRoles(gameId: string, assignments: Array<{
+    playerId: number
+    roleId: number
+    isWolf: boolean
+    skinnedRole?: string
+    thematicCustomName?: string | null
+    gameRoleSortIndex?: number
+  }>) {
     try {
       const client = await this.pool.connect()
       
       try {
         await client.query('BEGIN')
         
-        // First, get the game roles to get charges and win_by_number values
         const gameRoles = await this.getGameRoles(gameId)
-        const gameRoleMap = new Map(gameRoles.map(gr => [gr.role_id, gr]))
+        const gameRoleBySortIndex = new Map(gameRoles.map(gr => [gr.sort_index, gr]))
+        const gameRoleByRoleIdFirst = (roleId: number) =>
+          gameRoles.find(gr => gr.role_id === roleId) ?? null
         
         for (const assignment of assignments) {
-          // Update basic role assignment
+          const thematic =
+            assignment.thematicCustomName !== undefined
+              ? assignment.thematicCustomName
+              : null
+
           await client.query(
-            'UPDATE players SET role_id = $1, is_wolf = $2, skinned_role = $3 WHERE id = $4 AND game_id = $5',
-            [assignment.roleId, assignment.isWolf, assignment.skinnedRole || null, assignment.playerId, parseInt(gameId)]
+            'UPDATE players SET role_id = $1, is_wolf = $2, skinned_role = $3, thematic_custom_name = $4 WHERE id = $5 AND game_id = $6',
+            [
+              assignment.roleId,
+              assignment.isWolf,
+              assignment.skinnedRole || null,
+              thematic,
+              assignment.playerId,
+              parseInt(gameId),
+            ]
           )
           
-          // Set charges and win_by_number from game_role table
-          const gameRole = gameRoleMap.get(assignment.roleId)
+          const gameRole =
+            assignment.gameRoleSortIndex !== undefined && assignment.gameRoleSortIndex !== null
+              ? gameRoleBySortIndex.get(assignment.gameRoleSortIndex) ?? null
+              : gameRoleByRoleIdFirst(assignment.roleId)
+
           if (gameRole) {
-            // Set charges if the role has charges, otherwise clear them
             if (gameRole.charges !== undefined && gameRole.charges > 0) {
               await client.query(
                 'UPDATE players SET charges_left = $1 WHERE id = $2 AND game_id = $3',
                 [gameRole.charges, assignment.playerId, parseInt(gameId)]
               )
             } else {
-              // Clear charges for roles that don't have them
               await client.query(
                 'UPDATE players SET charges_left = NULL WHERE id = $1 AND game_id = $2',
                 [assignment.playerId, parseInt(gameId)]
               )
             }
             
-            // Set win_by_number if the role has win_by_number, otherwise clear it
             if (gameRole.win_by_number !== undefined && gameRole.win_by_number > 0) {
               await client.query(
                 'UPDATE players SET win_by_number = $1 WHERE id = $2 AND game_id = $3',
                 [gameRole.win_by_number, assignment.playerId, parseInt(gameId)]
               )
             } else {
-              // Clear win_by_number for roles that don't have it
               await client.query(
                 'UPDATE players SET win_by_number = NULL WHERE id = $1 AND game_id = $2',
                 [assignment.playerId, parseInt(gameId)]
               )
             }
           } else {
-            // If no game role found, clear both charges and win_by_number
             await client.query(
               'UPDATE players SET charges_left = NULL, win_by_number = NULL WHERE id = $1 AND game_id = $2',
               [assignment.playerId, parseInt(gameId)]
@@ -396,7 +415,8 @@ export class DatabaseService {
         `SELECT gr.*, r.name as role_name, r.team as role_team, r.has_charges, r.default_charges, r.has_win_by_number, r.default_win_by_number, r.in_wolf_chat
          FROM game_role gr 
          JOIN roles r ON gr.role_id = r.id 
-         WHERE gr.game_id = $1`,
+         WHERE gr.game_id = $1
+         ORDER BY gr.sort_index ASC`,
         [parseInt(gameId)]
       )
       return result.rows
@@ -430,7 +450,7 @@ export class DatabaseService {
     }
   }
 
-  async saveGameRoles(gameId: string, gameRoles: Array<{roleId: number, roleCount: number, customName?: string, charges?: number, winByNumber?: number}>) {
+  async saveGameRoles(gameId: string, gameRoles: Array<{ sortIndex: number; roleId: number; customName?: string; charges?: number; winByNumber?: number }>) {
     try {
       const client = await this.pool.connect()
       
@@ -454,12 +474,19 @@ export class DatabaseService {
         // Clear existing game roles
         await client.query('DELETE FROM game_role WHERE game_id = $1', [parseInt(gameId)])
         
-        // Insert new game roles
-        for (const gameRole of gameRoles) {
+        const sorted = [...gameRoles].sort((a, b) => a.sortIndex - b.sortIndex)
+        for (const gameRole of sorted) {
           try {
             await client.query(
-              'INSERT INTO game_role (game_id, role_id, role_count, custom_name, charges, win_by_number) VALUES ($1, $2, $3, $4, $5, $6)',
-              [parseInt(gameId), gameRole.roleId, gameRole.roleCount, gameRole.customName || null, gameRole.charges ?? 0, gameRole.winByNumber ?? 0]
+              'INSERT INTO game_role (game_id, sort_index, role_id, custom_name, charges, win_by_number) VALUES ($1, $2, $3, $4, $5, $6)',
+              [
+                parseInt(gameId),
+                gameRole.sortIndex,
+                gameRole.roleId,
+                gameRole.customName || null,
+                gameRole.charges ?? 0,
+                gameRole.winByNumber ?? 0,
+              ]
             )
           } catch (insertError) {
             console.error('Failed to insert game role:', insertError)
@@ -483,7 +510,7 @@ export class DatabaseService {
     }
   }
 
-  private async saveGameRolesIndividually(gameId: string, gameRoles: Array<{roleId: number, roleCount: number, customName?: string, charges?: number, winByNumber?: number}>) {
+  private async saveGameRolesIndividually(gameId: string, gameRoles: Array<{ sortIndex: number; roleId: number; customName?: string; charges?: number; winByNumber?: number }>) {
     try {
       const client = await this.pool.connect()
       
@@ -493,16 +520,22 @@ export class DatabaseService {
         // Clear existing game roles
         await client.query('DELETE FROM game_role WHERE game_id = $1', [parseInt(gameId)])
         
-        // Insert new game roles one by one
-        for (const gameRole of gameRoles) {
+        const sorted = [...gameRoles].sort((a, b) => a.sortIndex - b.sortIndex)
+        for (const gameRole of sorted) {
           try {
             await client.query(
-              'INSERT INTO game_role (game_id, role_id, role_count, custom_name, charges, win_by_number) VALUES ($1, $2, $3, $4, $5, $6)',
-              [parseInt(gameId), gameRole.roleId, gameRole.roleCount, gameRole.customName || null, gameRole.charges ?? 0, gameRole.winByNumber ?? 0]
+              'INSERT INTO game_role (game_id, sort_index, role_id, custom_name, charges, win_by_number) VALUES ($1, $2, $3, $4, $5, $6)',
+              [
+                parseInt(gameId),
+                gameRole.sortIndex,
+                gameRole.roleId,
+                gameRole.customName || null,
+                gameRole.charges ?? 0,
+                gameRole.winByNumber ?? 0,
+              ]
             )
           } catch (insertError) {
             console.warn('Failed to insert game role:', insertError)
-            // Continue with other roles
           }
         }
         

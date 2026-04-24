@@ -12,13 +12,23 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const players = await db.getPlayers(gameId)
     const game = await db.getGame(gameId)
     
-          return NextResponse.json(players.map(player => ({
+          return NextResponse.json(players.map(player => {
+        const mechanicalName = player.role
+        const themedFlavor = (player as { thematic_custom_name?: string | null }).thematic_custom_name
+        let displayRole = mechanicalName
+        if (game?.is_skinned && player.skinned_role) {
+          displayRole = player.skinned_role
+        } else if (game?.is_themed && themedFlavor) {
+          displayRole = `${themedFlavor} (${mechanicalName})`
+        }
+        return {
         id: player.id,
         username: player.username,
         status: player.status,
         role: player.role,
         roleId: player.role_id,
         skinnedRole: player.skinned_role,
+        thematicCustomName: themedFlavor ?? undefined,
         alignment: player.is_wolf ? "wolf" : 
                    (player as any).role_team === 'wolf' ? "wolf" : 
                    (player as any).role_team === 'neutral' ? "neutral" : "town",
@@ -27,8 +37,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         isDead: player.is_dead,
         charges: player.charges,
         winByNumber: player.win_by_number,
-        displayRole: game?.is_skinned && player.skinned_role ? player.skinned_role : player.role
-      })))
+        displayRole
+      }
+      }))
   } catch (error) {
     console.error("Database error:", error)
     return NextResponse.json({ error: "Database error" }, { status: 500 })

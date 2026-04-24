@@ -58,16 +58,19 @@ CREATE TABLE game_meta (
     UNIQUE(game_id, night, user_id)
 );
 
--- Table to store roles assigned to games, allowing for custom names and theme overrides
+-- Table to store roles assigned to games (one row per seat/slot, ordered by sort_index)
 CREATE TABLE game_role (
+    id SERIAL PRIMARY KEY,
     game_id INTEGER NOT NULL,
+    sort_index INTEGER NOT NULL,
     role_id INTEGER NOT NULL,
-    role_count INTEGER NOT NULL DEFAULT 1,
     custom_name TEXT,
-    charges INTEGER DEFAULT 0,
-    win_by_number INTEGER DEFAULT 0,
-    PRIMARY KEY (game_id, role_id)
+    charges INTEGER NOT NULL DEFAULT 0,
+    win_by_number INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (game_id, sort_index)
 );
+
+CREATE INDEX idx_game_role_game_id ON game_role (game_id);
 
 -- Table to store speed vote information
 CREATE TABLE game_speed (
@@ -156,6 +159,7 @@ CREATE TABLE players (
     is_wolf BOOLEAN DEFAULT FALSE,
     signed_up_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     role_id INTEGER REFERENCES roles(id),
+    thematic_custom_name VARCHAR(255),
     skinned_role VARCHAR(100) DEFAULT NULL,
     is_dead BOOLEAN DEFAULT FALSE,
     is_framed BOOLEAN DEFAULT FALSE,

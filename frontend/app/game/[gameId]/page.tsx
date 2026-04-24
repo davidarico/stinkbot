@@ -24,6 +24,7 @@ interface Player {
   role?: string
   roleId?: number
   skinnedRole?: string
+  thematicCustomName?: string | null
   displayRole?: string
   alignment?: string
   isFramed?: boolean
@@ -46,6 +47,13 @@ interface Role {
   inWolfChat?: boolean
 }
 
+interface SelectedRoleSlot {
+  role: Role
+  customName: string
+  charges?: number
+  winByNumber?: number
+}
+
 interface GameData {
   id: string
   phase: "signup" | "night" | "day"
@@ -64,7 +72,7 @@ interface GameData {
 interface GameRole {
   roleId: number
   roleName: string
-  roleCount: number
+  sortIndex: number
   customName?: string
   charges?: number
   winByNumber?: number
@@ -83,6 +91,18 @@ function shuffleArray<T>(items: T[]): T[] {
     ;[a[i], a[j]] = [a[j], a[i]]
   }
   return a
+}
+
+function sortSlotsByAlignmentAndName(slots: SelectedRoleSlot[]): SelectedRoleSlot[] {
+  return [...slots].sort((a, b) => {
+    const alignmentOrder = { town: 1, wolf: 2, neutral: 3 }
+    const aOrder = alignmentOrder[a.role.alignment] || 4
+    const bOrder = alignmentOrder[b.role.alignment] || 4
+    if (aOrder !== bOrder) {
+      return aOrder - bOrder
+    }
+    return a.role.name.localeCompare(b.role.name)
+  })
 }
 
 export default function GameManagementPage() {
@@ -106,11 +126,8 @@ export default function GameManagementPage() {
   const [players, setPlayers] = useState<Player[]>([])
   const [availableRoles, setAvailableRoles] = useState<Role[]>([])
 
-  const [selectedRoles, setSelectedRoles] = useState<Role[]>([])
+  const [selectedRoleSlots, setSelectedRoleSlots] = useState<SelectedRoleSlot[]>([])
   const [gameRoles, setGameRoles] = useState<GameRole[]>([])
-  const [customRoleNames, setCustomRoleNames] = useState<Record<number, string>>({})
-  const [roleCharges, setRoleCharges] = useState<Record<number, number>>({})
-  const [roleWinByNumbers, setRoleWinByNumbers] = useState<Record<number, number>>({})
   const [themeInput, setThemeInput] = useState("")
   const [roleSearch, setRoleSearch] = useState("")
   const [alignmentFilter, setAlignmentFilter] = useState<string>("all")
@@ -180,49 +197,39 @@ export default function GameManagementPage() {
         }
       }
 
-      // Load game roles
+      // Load game roles (one API row per seat / sort_index)
       const gameRolesResponse = await fetch(`/api/games/${gameId}/roles`)
       if (gameRolesResponse.ok) {
         const gameRolesData = await gameRolesResponse.json()
-        setGameRoles(gameRolesData)
+        const rows = [...gameRolesData].sort((a: any, b: any) => (a.sort_index ?? 0) - (b.sort_index ?? 0))
+        setGameRoles(
+          rows.map((gr: any) => ({
+            roleId: gr.role_id,
+            roleName: gr.role_name,
+            sortIndex: gr.sort_index,
+            customName: gr.custom_name || undefined,
+            charges: gr.charges,
+            winByNumber: gr.win_by_number,
+          })),
+        )
 
-        // Build custom role names map
-        const customNames: Record<number, string> = {}
-        const charges: Record<number, number> = {}
-        const winByNumbers: Record<number, number> = {}
-        gameRolesData.forEach((gr: any) => {
-          if (gr.custom_name) {
-            customNames[gr.role_id] = gr.custom_name
-          }
-          if (gr.charges !== undefined) {
-            charges[gr.role_id] = gr.charges
-          }
-          if (gr.win_by_number !== undefined) {
-            winByNumbers[gr.role_id] = gr.win_by_number
-          }
-        })
-        setCustomRoleNames(customNames)
-        setRoleCharges(charges)
-        setRoleWinByNumbers(winByNumbers)
-
-        // Convert game roles to selected roles for display
-        const rolesForSelection: Role[] = []
-        gameRolesData.forEach((gr: any) => {
-          for (let i = 0; i < gr.role_count; i++) {
-            rolesForSelection.push({
-              id: gr.role_id,
-              name: gr.role_name,
-              alignment: gr.role_team || gr.team || 'town', // Try both role_team and team
-              description: '',
-              hasCharges: gr.has_charges || false,
-              defaultCharges: gr.default_charges || 0,
-              hasWinByNumber: gr.has_win_by_number || false,
-              defaultWinByNumber: gr.default_win_by_number || 0,
-              inWolfChat: gr.in_wolf_chat || false
-            })
-          }
-        })
-        setSelectedRoles(sortRolesByAlignmentAndName(rolesForSelection))
+        const slots: SelectedRoleSlot[] = rows.map((gr: any) => ({
+          role: {
+            id: gr.role_id,
+            name: gr.role_name,
+            alignment: gr.role_team || gr.team || "town",
+            description: "",
+            hasCharges: gr.has_charges || false,
+            defaultCharges: gr.default_charges || 0,
+            hasWinByNumber: gr.has_win_by_number || false,
+            defaultWinByNumber: gr.default_win_by_number || 0,
+            inWolfChat: gr.in_wolf_chat || false,
+          },
+          customName: gr.custom_name || "",
+          charges: gr.charges !== undefined ? gr.charges : undefined,
+          winByNumber: gr.win_by_number !== undefined ? gr.win_by_number : undefined,
+        }))
+        setSelectedRoleSlots(sortSlotsByAlignmentAndName(slots))
       }
 
       // Load votes for current day (only during day phase)
@@ -306,51 +313,62 @@ export default function GameManagementPage() {
     }
   }
 
-  const sortRolesByAlignmentAndName = (roles: Role[]): Role[] => {
-    return [...roles].sort((a, b) => {
-      // Sort by alignment priority: town, wolf, neutral
-      const alignmentOrder = { town: 1, wolf: 2, neutral: 3 }
-      const aOrder = alignmentOrder[a.alignment] || 4
-      const bOrder = alignmentOrder[b.alignment] || 4
+  const addRoleToGame = (role: Role) => {
+    const existingForRole = selectedRoleSlots.filter((s) => s.role.id === role.id)
+    const inheritedCharges =
+      existingForRole[0]?.charges !== undefined
+        ? existingForRole[0].charges
+        : role.hasCharges
+          ? role.defaultCharges || 0
+          : undefined
+    const inheritedWin =
+      existingForRole[0]?.winByNumber !== undefined
+        ? existingForRole[0].winByNumber
+        : role.hasWinByNumber
+          ? role.defaultWinByNumber || 0
+          : undefined
 
-      if (aOrder !== bOrder) {
-        return aOrder - bOrder
+    const slot: SelectedRoleSlot = {
+      role,
+      customName: "",
+      charges: role.hasCharges ? inheritedCharges : undefined,
+      winByNumber: role.hasWinByNumber ? inheritedWin : undefined,
+    }
+    setSelectedRoleSlots((prev) => sortSlotsByAlignmentAndName([...prev, slot]))
+  }
+
+  const removeRoleFromGame = (slotIndex: number) => {
+    setSelectedRoleSlots((prev) =>
+      sortSlotsByAlignmentAndName(prev.filter((_, index) => index !== slotIndex)),
+    )
+  }
+
+  const buildGameRolePayloadFromOrderedSlots = (orderedSlots: SelectedRoleSlot[]) => {
+    return orderedSlots.map((slot, sortIndex) => {
+      const charges =
+        slot.charges !== undefined
+          ? slot.charges
+          : slot.role.hasCharges
+            ? slot.role.defaultCharges || 0
+            : 0
+      const winByNumber =
+        slot.winByNumber !== undefined
+          ? slot.winByNumber
+          : slot.role.hasWinByNumber
+            ? slot.role.defaultWinByNumber || 0
+            : 0
+      return {
+        sortIndex,
+        roleId: slot.role.id,
+        customName: slot.customName.trim() || undefined,
+        charges,
+        winByNumber,
       }
-
-      // Then sort alphabetically by name within each alignment
-      return a.name.localeCompare(b.name)
     })
   }
 
-  const addRoleToGame = (role: Role) => {
-    // Always add the role, allowing duplicates
-    const newSelectedRoles = [...selectedRoles, role]
-    setSelectedRoles(sortRolesByAlignmentAndName(newSelectedRoles))
-
-    // Initialize charges if this role has charges and isn't already set
-    if (role.hasCharges && roleCharges[role.id] === undefined) {
-      setRoleCharges(prev => ({
-        ...prev,
-        [role.id]: role.defaultCharges || 0
-      }))
-    }
-
-    // Initialize win_by_number if this role has win_by_number and isn't already set
-    if (role.hasWinByNumber && roleWinByNumbers[role.id] === undefined) {
-      setRoleWinByNumbers(prev => ({
-        ...prev,
-        [role.id]: role.defaultWinByNumber || 0
-      }))
-    }
-  }
-
-  const removeRoleFromGame = (roleIndex: number) => {
-    const newSelectedRoles = selectedRoles.filter((_, index) => index !== roleIndex)
-    setSelectedRoles(sortRolesByAlignmentAndName(newSelectedRoles))
-  }
-
   const assignRoles = async () => {
-    if (selectedRoles.length !== players.length) {
+    if (selectedRoleSlots.length !== players.length) {
       toast({
         title: "Role Count Mismatch",
         description: `Need exactly ${players.length} roles for ${players.length} players`,
@@ -360,25 +378,9 @@ export default function GameManagementPage() {
     }
 
     try {
-      // First, save the game roles to ensure charges and win_by_number are saved
-      const roleCountMap: Record<number, number> = {}
-      selectedRoles.forEach(role => {
-        roleCountMap[role.id] = (roleCountMap[role.id] || 0) + 1
-      })
+      const orderedSlots = sortSlotsByAlignmentAndName([...selectedRoleSlots])
+      const gameRoleData = buildGameRolePayloadFromOrderedSlots(orderedSlots)
 
-      const gameRoleData = Object.entries(roleCountMap).map(([roleId, count]) => {
-        const roleIdNum = parseInt(roleId)
-        const role = availableRoles.find(r => r.id === roleIdNum)
-        return {
-          roleId: roleIdNum,
-          roleCount: count,
-          customName: customRoleNames[roleIdNum] || undefined,
-          charges: roleCharges[roleIdNum] !== undefined ? roleCharges[roleIdNum] : (role?.hasCharges ? role.defaultCharges : undefined),
-          winByNumber: roleWinByNumbers[roleIdNum] !== undefined ? roleWinByNumbers[roleIdNum] : (role?.hasWinByNumber ? role.defaultWinByNumber : undefined)
-        }
-      })
-
-      // Save game roles first
       const saveRolesResponse = await fetch(`/api/games/${gameId}/roles`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -394,15 +396,19 @@ export default function GameManagementPage() {
         return
       }
 
-      // Now assign roles to players
+      const slotsWithSortIndex = orderedSlots.map((slot, sortIndex) => ({ ...slot, sortIndex }))
       const shuffledPlayers = shuffleArray(players)
-      const shuffledRoles = shuffleArray(selectedRoles)
+      const shuffledSlots = shuffleArray(slotsWithSortIndex)
 
       const assignments = shuffledPlayers.map((player, index) => ({
         playerId: player.id,
-        roleId: shuffledRoles[index].id,
-        isWolf: shuffledRoles[index].alignment === "wolf",
-        skinnedRole: gameData.isSkinned ? shuffledRoles[index].name : undefined
+        roleId: shuffledSlots[index].role.id,
+        isWolf: shuffledSlots[index].role.alignment === "wolf",
+        skinnedRole: gameData.isSkinned ? shuffledSlots[index].role.name : undefined,
+        thematicCustomName: gameData.isThemed
+          ? shuffledSlots[index].customName.trim() || null
+          : null,
+        gameRoleSortIndex: shuffledSlots[index].sortIndex,
       }))
 
       const response = await fetch(`/api/games/${gameId}/players`, {
@@ -445,7 +451,7 @@ export default function GameManagementPage() {
 
   // Helper function to count couple roles in selected roles
   const getCoupleCount = (): number => {
-    return selectedRoles.filter(role => role.name === "Couple").length
+    return selectedRoleSlots.filter((s) => s.role.name === "Couple").length
   }
 
   // Helper function to get couple validation message
@@ -566,8 +572,55 @@ export default function GameManagementPage() {
     }
   }
 
+  /** Persists theme flags + name to the server. Used when saving role configuration. */
+  const persistThemeSettings = async (): Promise<boolean> => {
+    if (gameData.isThemed && !themeInput.trim()) {
+      toast({
+        title: "Theme Name Required",
+        description: "Please enter a theme name",
+        variant: "destructive",
+      })
+      return false
+    }
+
+    try {
+      const response = await fetch(`/api/games/${gameId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "updateTheme",
+          isThemed: gameData.isThemed,
+          isSkinned: gameData.isSkinned,
+          themeName: gameData.isThemed ? themeInput.trim() : null,
+        }),
+      })
+
+      if (response.ok) {
+        setGameData((prev) => ({
+          ...prev,
+          themeName: gameData.isThemed ? themeInput.trim() : undefined,
+        }))
+        return true
+      }
+      toast({
+        title: "Save Failed",
+        description: "Failed to save theme settings",
+        variant: "destructive",
+      })
+      return false
+    } catch (error) {
+      console.error("Error saving theme settings:", error)
+      toast({
+        title: "Save Error",
+        description: "Error saving theme settings",
+        variant: "destructive",
+      })
+      return false
+    }
+  }
+
   const saveGameRoles = async () => {
-    if (selectedRoles.length === 0) {
+    if (selectedRoleSlots.length === 0) {
       toast({
         title: "No Roles Selected",
         description: "Please select some roles first",
@@ -576,23 +629,11 @@ export default function GameManagementPage() {
       return
     }
 
-    // Convert selected roles to game roles format
-    const roleCountMap: Record<number, number> = {}
-    selectedRoles.forEach(role => {
-      roleCountMap[role.id] = (roleCountMap[role.id] || 0) + 1
-    })
+    const themeOk = await persistThemeSettings()
+    if (!themeOk) return
 
-    const gameRoleData = Object.entries(roleCountMap).map(([roleId, count]) => {
-      const roleIdNum = parseInt(roleId)
-      const role = availableRoles.find(r => r.id === roleIdNum)
-      return {
-        roleId: roleIdNum,
-        roleCount: count,
-        customName: customRoleNames[roleIdNum] || undefined,
-        charges: roleCharges[roleIdNum] !== undefined ? roleCharges[roleIdNum] : (role?.hasCharges ? role.defaultCharges : undefined),
-        winByNumber: roleWinByNumbers[roleIdNum] !== undefined ? roleWinByNumbers[roleIdNum] : (role?.hasWinByNumber ? role.defaultWinByNumber : undefined)
-      }
-    })
+    const orderedSlots = sortSlotsByAlignmentAndName([...selectedRoleSlots])
+    const gameRoleData = buildGameRolePayloadFromOrderedSlots(orderedSlots)
 
     try {
       const response = await fetch(`/api/games/${gameId}/roles`, {
@@ -606,11 +647,20 @@ export default function GameManagementPage() {
           title: "Success",
           description: "Role configuration saved successfully!",
         })
-        // Don't reload all data - just update the game roles state
         const gameRolesResponse = await fetch(`/api/games/${gameId}/roles`)
         if (gameRolesResponse.ok) {
           const gameRolesData = await gameRolesResponse.json()
-          setGameRoles(gameRolesData)
+          const rows = [...gameRolesData].sort((a: any, b: any) => (a.sort_index ?? 0) - (b.sort_index ?? 0))
+          setGameRoles(
+            rows.map((gr: any) => ({
+              roleId: gr.role_id,
+              roleName: gr.role_name,
+              sortIndex: gr.sort_index,
+              customName: gr.custom_name || undefined,
+              charges: gr.charges,
+              winByNumber: gr.win_by_number,
+            })),
+          )
         }
       } else {
         toast({
@@ -624,54 +674,6 @@ export default function GameManagementPage() {
       toast({
         title: "Save Error",
         description: "Error saving game roles",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const saveThemeSettings = async () => {
-    if (gameData.isThemed && !themeInput.trim()) {
-      toast({
-        title: "Theme Name Required",
-        description: "Please enter a theme name",
-        variant: "destructive",
-      })
-      return
-    }
-
-    try {
-      const response = await fetch(`/api/games/${gameId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'updateTheme',
-          isThemed: gameData.isThemed,
-          isSkinned: gameData.isSkinned,
-          themeName: gameData.isThemed ? themeInput.trim() : null
-        })
-      })
-
-      if (response.ok) {
-        toast({
-          title: "Success",
-          description: "Theme settings saved successfully!",
-        })
-        setGameData(prev => ({
-          ...prev,
-          themeName: gameData.isThemed ? themeInput.trim() : undefined
-        }))
-      } else {
-        toast({
-          title: "Save Failed",
-          description: "Failed to save theme settings",
-          variant: "destructive",
-        })
-      }
-    } catch (error) {
-      console.error('Error saving theme settings:', error)
-      toast({
-        title: "Save Error",
-        description: "Error saving theme settings",
         variant: "destructive",
       })
     }
@@ -702,7 +704,7 @@ export default function GameManagementPage() {
           themeName: undefined
         }))
         setThemeInput("")
-        setCustomRoleNames({})
+        setSelectedRoleSlots((prev) => prev.map((s) => ({ ...s, customName: "" })))
       } else {
         toast({
           title: "Reset Failed",
@@ -740,33 +742,31 @@ export default function GameManagementPage() {
       return player.skinnedRole
     }
 
-    if (gameData.isThemed && player.roleId && customRoleNames[player.roleId]) {
-      const actualRoleName = player.role || 'Unknown'
-      return `${customRoleNames[player.roleId]} (${actualRoleName})`
+    const flavor = player.thematicCustomName?.trim()
+    if (gameData.isThemed && flavor) {
+      const actualRoleName = player.role || "Unknown"
+      return `${flavor} (${actualRoleName})`
     }
 
-    return player.role || 'Unknown'
+    return player.role || "Unknown"
   }
 
-  const updateCustomRoleName = (roleId: number, customName: string) => {
-    setCustomRoleNames(prev => ({
-      ...prev,
-      [roleId]: customName
-    }))
+  const updateSlotCustomName = (slotIndex: number, customName: string) => {
+    setSelectedRoleSlots((prev) =>
+      prev.map((slot, i) => (i === slotIndex ? { ...slot, customName } : slot)),
+    )
   }
 
   const updateRoleCharges = (roleId: number, charges: number) => {
-    setRoleCharges(prev => ({
-      ...prev,
-      [roleId]: charges
-    }))
+    setSelectedRoleSlots((prev) =>
+      prev.map((slot) => (slot.role.id === roleId ? { ...slot, charges } : slot)),
+    )
   }
 
   const updateRoleWinByNumber = (roleId: number, winByNumber: number) => {
-    setRoleWinByNumbers(prev => ({
-      ...prev,
-      [roleId]: winByNumber
-    }))
+    setSelectedRoleSlots((prev) =>
+      prev.map((slot) => (slot.role.id === roleId ? { ...slot, winByNumber } : slot)),
+    )
   }
 
   const roleHasCharges = (player: Player): boolean => {
@@ -799,9 +799,9 @@ export default function GameManagementPage() {
     })
 
   const roleCount = {
-    town: selectedRoles.filter((r) => r.alignment === "town").length,
-    wolf: selectedRoles.filter((r) => r.alignment === "wolf").length,
-    neutral: selectedRoles.filter((r) => r.alignment === "neutral").length,
+    town: selectedRoleSlots.filter((s) => s.role.alignment === "town").length,
+    wolf: selectedRoleSlots.filter((s) => s.role.alignment === "wolf").length,
+    neutral: selectedRoleSlots.filter((s) => s.role.alignment === "neutral").length,
   }
 
   const assignedRoleCount = {
@@ -819,6 +819,20 @@ export default function GameManagementPage() {
   )
 
   const isDayPhase = gameData.phase === "day"
+
+  // Night / signup UI uses dark surfaces; shadcn `foreground` only flips with `.dark`.
+  // Toggle on <html> so portaled dialogs pick up the same tokens as the page.
+  useEffect(() => {
+    const root = document.documentElement
+    if (!isAuthenticated || loading || error) {
+      root.classList.remove("dark")
+      return
+    }
+    root.classList.toggle("dark", !isDayPhase)
+    return () => {
+      root.classList.remove("dark")
+    }
+  }, [isAuthenticated, loading, error, isDayPhase])
 
   if (!isAuthenticated) {
     return (
@@ -1012,7 +1026,7 @@ export default function GameManagementPage() {
             <Card className={isDayPhase ? "bg-white/90" : "bg-white/10"}>
               <CardHeader>
                 <CardTitle className={cn(isDayPhase ? "text-gray-900" : "text-white")}>
-                  Selected Roles ({selectedRoles.length})
+                  Selected Roles ({selectedRoleSlots.length})
                 </CardTitle>
 
                 {/* Theme Settings */}
@@ -1050,24 +1064,14 @@ export default function GameManagementPage() {
                         onChange={(e) => setThemeInput(e.target.value)}
                         className="text-sm"
                       />
-                      <div className="flex gap-2">
-                        <Button
-                          onClick={saveThemeSettings}
-                          size="sm"
-                          disabled={!themeInput.trim()}
-                          className="flex-1"
-                        >
-                          Save Theme Settings
-                        </Button>
-                        <Button
-                          onClick={resetThemeSettings}
-                          size="sm"
-                          variant="destructive"
-                          className="flex-1"
-                        >
-                          Reset Theme Settings
-                        </Button>
-                      </div>
+                      <Button
+                        onClick={resetThemeSettings}
+                        size="sm"
+                        variant="destructive"
+                        className="w-full"
+                      >
+                        Reset Theme Settings
+                      </Button>
                     </div>
                   )}
                 </div>
@@ -1157,7 +1161,7 @@ export default function GameManagementPage() {
                             {alignment} ({rolesInAlignment.length})
                           </div>
                           {rolesInAlignment.map((role) => {
-                            const selectedCount = selectedRoles.filter(r => r.id === role.id).length
+                            const selectedCount = selectedRoleSlots.filter((s) => s.role.id === role.id).length
                             return (
                               <div
                                 key={role.id}
@@ -1203,7 +1207,7 @@ export default function GameManagementPage() {
                   ) : (
                     // Show flat list when filtering by specific alignment
                     filteredRoles.map((role) => {
-                      const selectedCount = selectedRoles.filter(r => r.id === role.id).length
+                      const selectedCount = selectedRoleSlots.filter((s) => s.role.id === role.id).length
                       return (
                         <div
                           key={role.id}
@@ -1259,15 +1263,26 @@ export default function GameManagementPage() {
                 <div className="space-y-2">
                   {/* Group selected roles by name and show counts */}
                   {Object.entries(
-                    selectedRoles.reduce((acc, role, index) => {
-                      if (!acc[role.name]) {
-                        acc[role.name] = { role, count: 0, indices: [] }
-                      }
-                      acc[role.name].count++
-                      acc[role.name].indices.push(index)
-                      return acc
-                    }, {} as Record<string, { role: Role; count: number; indices: number[] }>)
-                  ).map(([roleName, { role, count, indices }]) => (
+                    selectedRoleSlots.reduce(
+                      (acc, slot, index) => {
+                        const name = slot.role.name
+                        if (!acc[name]) {
+                          acc[name] = { role: slot.role, count: 0, indices: [] as number[] }
+                        }
+                        acc[name].count++
+                        acc[name].indices.push(index)
+                        return acc
+                      },
+                      {} as Record<string, { role: Role; count: number; indices: number[] }>,
+                    ),
+                  ).map(([roleName, { role, count, indices }]) => {
+                    const firstIdx = indices[0]
+                    const sample = selectedRoleSlots[firstIdx]
+                    const chargeVal =
+                      sample?.charges !== undefined ? sample.charges : role.defaultCharges || 0
+                    const winVal =
+                      sample?.winByNumber !== undefined ? sample.winByNumber : role.defaultWinByNumber || 0
+                    return (
                     <div
                       key={roleName}
                       className={cn(
@@ -1320,24 +1335,24 @@ export default function GameManagementPage() {
                         <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
                           <div className="flex items-center justify-between">
                             <span className={cn("text-xs font-medium", isDayPhase ? "text-gray-700" : "text-gray-300")}>
-                              Charges: {roleCharges[role.id] || role.defaultCharges || 0}
+                              Charges: {chargeVal}
                             </span>
                             <div className="flex items-center gap-1">
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => updateRoleCharges(role.id, (roleCharges[role.id] || role.defaultCharges || 0) + 1)}
+                                onClick={() => updateRoleCharges(role.id, chargeVal + 1)}
                                 className="px-2 py-1 h-5 text-xs"
-                                disabled={(roleCharges[role.id] || role.defaultCharges || 0) >= 10}
+                                disabled={chargeVal >= 10}
                               >
                                 +
                               </Button>
                               <Button
                                 size="sm"
                                 variant="destructive"
-                                onClick={() => updateRoleCharges(role.id, Math.max(0, (roleCharges[role.id] || role.defaultCharges || 0) - 1))}
+                                onClick={() => updateRoleCharges(role.id, Math.max(0, chargeVal - 1))}
                                 className="px-2 py-1 h-5 text-xs"
-                                disabled={(roleCharges[role.id] || role.defaultCharges || 0) <= 0}
+                                disabled={chargeVal <= 0}
                               >
                                 -
                               </Button>
@@ -1351,24 +1366,24 @@ export default function GameManagementPage() {
                         <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
                           <div className="flex items-center justify-between">
                             <span className={cn("text-xs font-medium", isDayPhase ? "text-gray-700" : "text-gray-300")}>
-                              Win by number: {roleWinByNumbers[role.id] || role.defaultWinByNumber || 0}
+                              Win by number: {winVal}
                             </span>
                             <div className="flex items-center gap-1">
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => updateRoleWinByNumber(role.id, (roleWinByNumbers[role.id] || role.defaultWinByNumber || 0) + 1)}
+                                onClick={() => updateRoleWinByNumber(role.id, winVal + 1)}
                                 className="px-2 py-1 h-5 text-xs"
-                                disabled={(roleWinByNumbers[role.id] || role.defaultWinByNumber || 0) >= 20}
+                                disabled={winVal >= 20}
                               >
                                 +
                               </Button>
                               <Button
                                 size="sm"
                                 variant="destructive"
-                                onClick={() => updateRoleWinByNumber(role.id, Math.max(0, (roleWinByNumbers[role.id] || role.defaultWinByNumber || 0) - 1))}
+                                onClick={() => updateRoleWinByNumber(role.id, Math.max(0, winVal - 1))}
                                 className="px-2 py-1 h-5 text-xs"
-                                disabled={(roleWinByNumbers[role.id] || role.defaultWinByNumber || 0) <= 0}
+                                disabled={winVal <= 0}
                               >
                                 -
                               </Button>
@@ -1378,44 +1393,46 @@ export default function GameManagementPage() {
                       )}
 
                     </div>
-                  ))}
-                  {selectedRoles.length === 0 && (
+                  )
+                  })}
+                  {selectedRoleSlots.length === 0 && (
                     <p className={cn("text-center py-4", isDayPhase ? "text-gray-500" : "text-gray-300")}>
                       No roles selected. Click on roles above to add them.
                     </p>
                   )}
                 </div>
 
-                {/* Custom Role Names (when themed) */}
-                {gameData.isThemed && selectedRoles.length > 0 && (
+                {/* Custom Role Names (when themed) — one field per selected seat */}
+                {gameData.isThemed && selectedRoleSlots.length > 0 && (
                   <div className="pt-4 border-t border-white/20">
                     <h4 className={cn("font-medium mb-3 text-sm", isDayPhase ? "text-gray-900" : "text-white")}>
                       Custom Role Names
                     </h4>
                     <div className="space-y-2 max-h-40 overflow-y-auto">
-                      {Object.entries(
-                        selectedRoles.reduce((acc, role) => {
-                          if (!acc[role.id]) {
-                            acc[role.id] = { role, count: 0 }
-                          }
-                          acc[role.id].count++
-                          return acc
-                        }, {} as Record<number, { role: Role; count: number }>)
-                      ).map(([roleId, { role, count }]) => (
-                        <div key={roleId} className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className={cn("text-xs font-medium", isDayPhase ? "text-gray-700" : "text-gray-300")}>
-                              {role.name} {count > 1 && `(x${count})`}
-                            </span>
+                      {selectedRoleSlots.map((slot, index) => {
+                        const dupIndex = selectedRoleSlots
+                          .slice(0, index + 1)
+                          .filter((s) => s.role.id === slot.role.id).length
+                        const hasDupes =
+                          dupIndex > 1 ||
+                          selectedRoleSlots.some((s, i) => i > index && s.role.id === slot.role.id)
+                        const label = hasDupes ? `${slot.role.name} (${dupIndex})` : slot.role.name
+                        return (
+                          <div key={`slot-${index}`} className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className={cn("text-xs font-medium", isDayPhase ? "text-gray-700" : "text-gray-300")}>
+                                {label}
+                              </span>
+                            </div>
+                            <Input
+                              placeholder={`Custom name for ${slot.role.name}...`}
+                              value={slot.customName}
+                              onChange={(e) => updateSlotCustomName(index, e.target.value)}
+                              className="text-sm"
+                            />
                           </div>
-                          <Input
-                            placeholder={`Custom name for ${role.name}...`}
-                            value={customRoleNames[parseInt(roleId)] || ""}
-                            onChange={(e) => updateCustomRoleName(parseInt(roleId), e.target.value)}
-                            className="text-sm"
-                          />
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
                 )}
@@ -1425,7 +1442,7 @@ export default function GameManagementPage() {
                   <Button
                     onClick={saveGameRoles}
                     className="w-full"
-                    disabled={selectedRoles.length === 0}
+                    disabled={selectedRoleSlots.length === 0}
                   >
                     Save Role Configuration
                   </Button>
@@ -1455,7 +1472,7 @@ export default function GameManagementPage() {
                 <Button
                   onClick={assignRoles}
                   className="w-full mb-4"
-                  disabled={selectedRoles.length !== players.length}
+                  disabled={selectedRoleSlots.length !== players.length}
                 >
                   <Shuffle className="w-4 h-4 mr-2" />
                   Assign Roles

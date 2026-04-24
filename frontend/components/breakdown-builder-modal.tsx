@@ -437,7 +437,7 @@ export function BreakdownBuilderModal({
                                     </Badge>
                                   )}
                                   {isGameRole && (
-                                    <Badge variant="outline" className="text-xs bg-blue-50">
+                                    <Badge variant="outline" className="text-xs bg-blue-50 text-black">
                                       In Game
                                     </Badge>
                                   )}
