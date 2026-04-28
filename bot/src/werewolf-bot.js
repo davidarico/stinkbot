@@ -5142,6 +5142,111 @@ class WerewolfBot {
         }
     }
 
+    // Wolf.ia: embed field values max 1024 chars — chunk long lists like handleAlive.
+    _buildActivityReportEmbeds(sortedPlayers, totalMessages, activityChannel, dateTimeStr, onlyUserId) {
+        const title = onlyUserId ? '📊 Your activity (IA)' : '📊 Activity Report';
+        const description = onlyUserId
+            ? `Your message count since **${dateTimeStr} EST**`
+            : `Message count per player since **${dateTimeStr} EST**`;
+        const summaryField = {
+            name: 'Summary',
+            value: `**Total messages**: ${totalMessages}\n**Channel**: ${activityChannel.name}`,
+            inline: false,
+        };
+        const playerCount = sortedPlayers.length;
+
+        const lines =
+            sortedPlayers.length > 0
+                ? sortedPlayers.map(
+                      (player, index) => `${index + 1}. **${player.username}**: ${player.count} messages`
+                  )
+                : ['No messages found from players in the specified time period.'];
+
+        const playerList = lines.join('\n');
+
+        if (playerList.length <= 1024) {
+            const embed = new EmbedBuilder()
+                .setTitle(title)
+                .setDescription(description)
+                .addFields(
+                    {
+                        name: onlyUserId ? 'Your messages' : `Player Activity (${playerCount} players)`,
+                        value: playerList,
+                    },
+                    summaryField
+                )
+                .setColor(0x3498DB)
+                .setTimestamp();
+            return [embed];
+        }
+
+        const chunks = [];
+        let currentChunk = '';
+        let chunkStartIndex = 1;
+        let currentIndex = 1;
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            if ((currentChunk + line + '\n').length > 1024) {
+                if (currentChunk) {
+                    chunks.push({
+                        text: currentChunk.trim(),
+                        startIndex: chunkStartIndex,
+                        endIndex: currentIndex - 1,
+                    });
+                }
+                currentChunk = line + '\n';
+                chunkStartIndex = currentIndex;
+            } else {
+                currentChunk += line + '\n';
+            }
+            currentIndex++;
+        }
+        if (currentChunk) {
+            chunks.push({
+                text: currentChunk.trim(),
+                startIndex: chunkStartIndex,
+                endIndex: lines.length,
+            });
+        }
+
+        return chunks.map((chunk, index) => {
+            const chunkTitle = index === 0 ? title : `${title} (continued)`;
+            const activityLabel = onlyUserId ? 'Your messages' : 'Player Activity';
+            const fieldName =
+                chunks.length > 1
+                    ? `${activityLabel} ${chunk.startIndex}-${chunk.endIndex} (${playerCount} total)`
+                    : onlyUserId
+                      ? 'Your messages'
+                      : `Player Activity (${playerCount} players)`;
+
+            const embed = new EmbedBuilder()
+                .setTitle(chunkTitle)
+                .setColor(0x3498DB)
+                .setTimestamp()
+                .addFields({ name: fieldName, value: chunk.text });
+
+            if (index === 0) {
+                embed.setDescription(description);
+                embed.addFields(summaryField);
+            }
+
+            return embed;
+        });
+    }
+
+    async _replyEmbedsWithinLimit(message, embeds) {
+        const maxEmbeds = 10;
+        if (embeds.length <= maxEmbeds) {
+            return message.reply({ embeds });
+        }
+        const first = await message.reply({ embeds: embeds.slice(0, maxEmbeds) });
+        for (let i = maxEmbeds; i < embeds.length; i += maxEmbeds) {
+            await message.channel.send({ embeds: embeds.slice(i, i + maxEmbeds) });
+        }
+        return first;
+    }
+
     async handleIA(message, args, opts = {}) {
         const serverId = message.guild.id;
         const onlyUserId = opts && opts.onlyUserId ? opts.onlyUserId : null;
@@ -5415,25 +5520,15 @@ class WerewolfBot {
                 const sortedPlayers = Object.values(messageCounts)
                     .sort((a, b) => b.count - a.count);
 
-                // Create the response embed
                 const totalMessages = allMessages.length;
-                const playerList = sortedPlayers.length > 0 
-                    ? sortedPlayers.map((player, index) => 
-                        `${index + 1}. **${player.username}**: ${player.count} messages`
-                    ).join('\n')
-                    : 'No messages found from players in the specified time period.';
-
-                const embed = new EmbedBuilder()
-                    .setTitle(onlyUserId ? '📊 Your activity (IA)' : '📊 Activity Report')
-                    .setDescription(onlyUserId ? `Your message count since **${dateTimeStr} EST**` : `Message count per player since **${dateTimeStr} EST**`)
-                    .addFields(
-                        { name: onlyUserId ? 'Your messages' : `Player Activity (${sortedPlayers.length} players)`, value: playerList },
-                        { name: 'Summary', value: `**Total messages**: ${totalMessages}\n**Channel**: ${activityChannel.name}`, inline: false }
-                    )
-                    .setColor(0x3498DB)
-                    .setTimestamp();
-
-                return await message.reply({ embeds: [embed] });
+                const embeds = this._buildActivityReportEmbeds(
+                    sortedPlayers,
+                    totalMessages,
+                    activityChannel,
+                    dateTimeStr,
+                    onlyUserId
+                );
+                return await this._replyEmbedsWithinLimit(message, embeds);
             }
 
             // Use cached members for much faster processing
@@ -5509,25 +5604,15 @@ class WerewolfBot {
             const sortedPlayers = Object.values(messageCounts)
                 .sort((a, b) => b.count - a.count);
 
-            // Create the response embed
             const totalMessages = allMessages.length;
-            const playerList = sortedPlayers.length > 0 
-                ? sortedPlayers.map((player, index) => 
-                    `${index + 1}. **${player.username}**: ${player.count} messages`
-                ).join('\n')
-                : 'No messages found from players in the specified time period.';
-
-            const embed = new EmbedBuilder()
-                .setTitle(onlyUserId ? '📊 Your activity (IA)' : '📊 Activity Report')
-                .setDescription(onlyUserId ? `Your message count since **${dateTimeStr} EST**` : `Message count per player since **${dateTimeStr} EST**`)
-                .addFields(
-                    { name: onlyUserId ? 'Your messages' : `Player Activity (${sortedPlayers.length} players)`, value: playerList },
-                    { name: 'Summary', value: `**Total messages**: ${totalMessages}\n**Channel**: ${activityChannel.name}`, inline: false }
-                )
-                .setColor(0x3498DB)
-                .setTimestamp();
-
-            return await message.reply({ embeds: [embed] });
+            const embeds = this._buildActivityReportEmbeds(
+                sortedPlayers,
+                totalMessages,
+                activityChannel,
+                dateTimeStr,
+                onlyUserId
+            );
+            return await this._replyEmbedsWithinLimit(message, embeds);
 
         } catch (error) {
             console.error('Error fetching message activity:', error);
