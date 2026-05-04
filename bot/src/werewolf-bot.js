@@ -1770,7 +1770,8 @@ class WerewolfBot {
                     // Alive shouldnt see the channel at all but can send messages if open_at_dusk is true
                     await newChannel.permissionOverwrites.edit(aliveRole.id, {
                         ViewChannel: false,
-                        SendMessages: !!channelData.open_at_dusk
+                        SendMessages: !!channelData.open_at_dusk,
+                        AddReactions: !!channelData.open_at_dusk
                     });
 
                     // Position the channel between voting booth and wolf chat (same as handleAddChannel)
@@ -1827,8 +1828,7 @@ class WerewolfBot {
 
                             // Add view permission for this user to the channel
                             await channel.permissionOverwrites.edit(userId, {
-                                ViewChannel: true,
-                                SendMessages: true
+                                ViewChannel: true
                             });
                         } catch (permissionError) {
                             console.error(`Error adding view permission for user ${userId} to channel ${channelData.channel_name}:`, permissionError);
@@ -3056,18 +3056,22 @@ class WerewolfBot {
                     }
 
                     let shouldAllowSendMessages = false;
+                    let shouldAllowAddReactions = false;
                     
                     if (newPhase === 'day') {
                         // During day phase, check open_at_dawn flag
                         shouldAllowSendMessages = channelData.open_at_dawn;
+                        shouldAllowAddReactions = channelData.open_at_dawn;
                     } else {
                         // During night phase, check open_at_dusk flag
                         shouldAllowSendMessages = channelData.open_at_dusk;
+                        shouldAllowAddReactions = channelData.open_at_dusk;
                     }
 
                     // Update Alive role permissions for this channel
                     await channel.permissionOverwrites.edit(aliveRole.id, {
-                        SendMessages: shouldAllowSendMessages
+                        SendMessages: shouldAllowSendMessages,
+                        AddReactions: shouldAllowAddReactions
                     });
 
                     console.log(`[DEBUG] Updated channel ${channel.name} permissions: Alive role can send messages = ${shouldAllowSendMessages} (${newPhase} phase)`);
