@@ -48,7 +48,8 @@ async handleNext(message) {
 
         votingResults = votesResult.rows;
 
-        // Clear all votes for the game at the end of each day
+        // Intentional: clear ALL votes for the game at phase change, not just today's.
+        // The votes table is a live working set; historical vote data lives in the archive.
         await this.db.query(
             'DELETE FROM votes WHERE game_id = $1',
             [game.id]

@@ -210,6 +210,9 @@ async handleCreate(message) {
 
     // Create mod chat channel
     const modRole = message.guild.roles.cache.find(r => r.name === 'Mod');
+    if (!modRole) {
+        return message.reply('❌ Mod role not found. Run `Wolf.server_roles` first.');
+    }
 
     const modChatName = `${config.game_prefix}${config.game_counter}-mod-chat`;
     const modChat = await message.guild.channels.create({
@@ -634,6 +637,14 @@ async handleStart(message, args = []) {
     const deadRole = message.guild.roles.cache.find(r => r.name === 'Dead');
     const spectatorRole = message.guild.roles.cache.find(r => r.name === 'Spectator');
     const modRole = message.guild.roles.cache.find(r => r.name === 'Mod');
+
+    const missingRoles = [['Alive', aliveRole], ['Dead', deadRole], ['Spectator', spectatorRole], ['Mod', modRole]]
+        .filter(([, role]) => !role)
+        .map(([name]) => name);
+    if (missingRoles.length > 0) {
+        return message.reply(`❌ Missing required roles: ${missingRoles.join(', ')}. Run \`Wolf.server_roles\` first.`);
+    }
+
     const logPrefix = `[Wolf.start][server:${serverId}][game:${game.id}#${game.game_number}]`;
     const log = (...parts) => console.log(logPrefix, ...parts);
     const warn = (...parts) => console.warn(logPrefix, ...parts);

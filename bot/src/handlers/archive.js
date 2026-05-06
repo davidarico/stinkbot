@@ -1,6 +1,6 @@
 'use strict';
 
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, ChannelType } = require('discord.js');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const { Client } = require('@opensearch-project/opensearch');
 const { createAwsSigv4Signer } = require('@opensearch-project/opensearch/aws');

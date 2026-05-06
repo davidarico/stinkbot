@@ -36,3 +36,5 @@ build/
 *.tmp
 *.temp
 archive_*.json
+
+__pycache__/

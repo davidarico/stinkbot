@@ -14,4 +14,4 @@
 -- ALTER TABLE games DROP COLUMN IF EXISTS example_column;
 
 -- Note: Rollbacks should undo everything the migration does, in reverse order!
-DELETE TABLE IF EXISTS roles CASCADE;
+DROP TABLE IF EXISTS roles CASCADE;

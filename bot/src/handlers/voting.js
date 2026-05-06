@@ -3,6 +3,9 @@
 const { EmbedBuilder } = require('discord.js');
 const moment = require('moment-timezone');
 
+// https://discord.com/developers/docs/topics/permissions
+const PIN_PERMISSION = 0x0008000000000000;
+
 module.exports = {
 
 async createVotingMessage(gameId, votingChannel) {

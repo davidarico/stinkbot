@@ -7,7 +7,8 @@ import { ExternalLink, Play, Image as ImageIcon, Loader2 } from 'lucide-react'
 interface OEmbedData {
   type: string
   url?: string
-  html?: string
+  media_url?: string
+  thumbnail_url?: string
   width?: number
   height?: number
   title?: string
@@ -81,13 +82,16 @@ function EmbeddedMedia({ url, platform }: { url: string; platform: string }) {
   }
 
   // Render based on oEmbed type
-  if (oembedData.html) {
-    // For Giphy and Tenor that provide HTML
+  const imageUrl = oembedData.media_url || oembedData.thumbnail_url
+  if (imageUrl) {
     return (
-      <div 
-        className="rounded-lg overflow-hidden"
-        dangerouslySetInnerHTML={{ __html: oembedData.html }}
-      />
+      <div className="relative group">
+        <img
+          src={imageUrl}
+          alt={oembedData.title || `${platform} content`}
+          className="rounded-lg max-w-full max-h-96 object-contain"
+        />
+      </div>
     )
   }
 

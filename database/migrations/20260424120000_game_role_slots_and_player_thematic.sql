@@ -1,5 +1,7 @@
 -- Per-slot game roles (duplicate mechanical roles can have different themed names)
 -- and per-player themed display name set at assignment.
+-- WARNING: No rollback file exists for this migration. It drops and rebuilds game_role.
+-- Take a database snapshot before applying.
 
 ALTER TABLE players ADD COLUMN IF NOT EXISTS thematic_custom_name VARCHAR(255);
 

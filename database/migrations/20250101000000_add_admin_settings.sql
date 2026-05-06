@@ -7,5 +7,6 @@ CREATE TABLE admin_settings (
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
--- Insert initial admin password
-INSERT INTO admin_settings (setting_key, setting_value) VALUES ('admin_password', 'imastinker');
+-- Initial admin password must be set manually after deployment.
+-- Run: INSERT INTO admin_settings (setting_key, setting_value) VALUES ('admin_password', '<your-password>');
+-- Never commit a real password to version control.

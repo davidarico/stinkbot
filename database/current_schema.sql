@@ -141,7 +141,6 @@ CREATE TABLE night_action (
 CREATE TABLE player_journals (
     id SERIAL PRIMARY KEY,
     server_id VARCHAR(20) NOT NULL,
-    server_id VARCHAR(20) NOT NULL,
     user_id VARCHAR(20) NOT NULL,
     channel_id VARCHAR(20) NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,

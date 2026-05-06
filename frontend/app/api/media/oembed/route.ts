@@ -13,47 +13,51 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    let oembedUrl: string
-    let params: Record<string, string> = {}
-
     switch (platform) {
-      case 'giphy':
-        // Extract Giphy ID from URL
+      case 'giphy': {
         const giphyMatch = url.match(/giphy\.com\/gifs\/([^\/\?]+)/)
         if (!giphyMatch) {
-          return NextResponse.json(
-            { error: 'Invalid Giphy URL' },
-            { status: 400 }
-          )
+          return NextResponse.json({ error: 'Invalid Giphy URL' }, { status: 400 })
         }
-        const giphyId = giphyMatch[1]
-        oembedUrl = `https://giphy.com/services/oembed`
-        params = {
-          url: `https://giphy.com/gifs/${giphyId}`,
-          format: 'json'
-        }
-        break
+        const slug = giphyMatch[1]
+        // Last hyphen-separated token is the Giphy ID
+        const giphyId = slug.split('-').pop() ?? slug
 
-      case 'tenor':
-        oembedUrl = 'https://tenor.com/oembed'
-        params = {
-          url: url,
-          format: 'json'
-        }
-        break
+        const oembedUrl = new URL('https://giphy.com/services/oembed')
+        oembedUrl.searchParams.set('url', `https://giphy.com/gifs/${slug}`)
+        oembedUrl.searchParams.set('format', 'json')
 
-      case 'imgur':
-        // Imgur doesn't have a public oEmbed API, so we'll create a custom response
+        const res = await fetch(oembedUrl.toString())
+        if (!res.ok) throw new Error(`Giphy oEmbed failed: ${res.status}`)
+        const { html: _html, ...data } = await res.json()
+
+        // Inject a direct media URL so the client can render an <img> without
+        // dangerouslySetInnerHTML. Giphy media URLs follow a stable pattern.
+        return NextResponse.json({
+          ...data,
+          type: 'photo',
+          media_url: `https://media.giphy.com/media/${giphyId}/giphy.gif`,
+        })
+      }
+
+      case 'tenor': {
+        const oembedUrl = new URL('https://tenor.com/oembed')
+        oembedUrl.searchParams.set('url', url)
+        oembedUrl.searchParams.set('format', 'json')
+
+        const res = await fetch(oembedUrl.toString())
+        if (!res.ok) throw new Error(`Tenor oEmbed failed: ${res.status}`)
+        // Strip html; Tenor also returns thumbnail_url which the client uses.
+        const { html: _html, ...data } = await res.json()
+        return NextResponse.json(data)
+      }
+
+      case 'imgur': {
         const imgurMatch = url.match(/imgur\.com\/([a-zA-Z0-9]+)/)
         if (!imgurMatch) {
-          return NextResponse.json(
-            { error: 'Invalid Imgur URL' },
-            { status: 400 }
-          )
+          return NextResponse.json({ error: 'Invalid Imgur URL' }, { status: 400 })
         }
         const imgurId = imgurMatch[1]
-        
-        // Return a custom oEmbed response for Imgur
         return NextResponse.json({
           type: 'photo',
           url: `https://i.imgur.com/${imgurId}.jpg`,
@@ -61,37 +65,15 @@ export async function GET(request: NextRequest) {
           height: 360,
           title: 'Imgur Image',
           provider_name: 'Imgur',
-          provider_url: 'https://imgur.com'
+          provider_url: 'https://imgur.com',
         })
+      }
 
       default:
-        return NextResponse.json(
-          { error: 'Unsupported platform' },
-          { status: 400 }
-        )
+        return NextResponse.json({ error: 'Unsupported platform' }, { status: 400 })
     }
-
-    // Build the oEmbed URL with parameters
-    const urlObj = new URL(oembedUrl)
-    Object.entries(params).forEach(([key, value]) => {
-      urlObj.searchParams.append(key, value)
-    })
-
-    // Fetch oEmbed data
-    const response = await fetch(urlObj.toString())
-    
-    if (!response.ok) {
-      throw new Error(`oEmbed request failed: ${response.status}`)
-    }
-
-    const oembedData = await response.json()
-    
-    return NextResponse.json(oembedData)
   } catch (error) {
     console.error('oEmbed error:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch media data' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to fetch media data' }, { status: 500 })
   }
 }

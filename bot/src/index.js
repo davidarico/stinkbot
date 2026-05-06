@@ -20,12 +20,11 @@ const client = new Client({
     ]
 });
 
-// Log discord token
 if (!process.env.DISCORD_TOKEN) {
     console.error('❌ DISCORD_TOKEN is not set in the environment variables.');
     process.exit(1);
 } else {
-    console.log(`🔑 Using Discord token: ${process.env.DISCORD_TOKEN}`);
+    console.log('🔑 Discord token loaded.');
 }
 
 const werewolfBot = new WerewolfBot(client, db);
