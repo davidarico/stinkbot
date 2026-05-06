@@ -7,6 +7,9 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "test": "node test/test-bot.js",
+    "test:unit": "jest",
+    "test:unit:watch": "jest --watch",
+    "test:unit:coverage": "jest --coverage",
     "test:sqlite": "node test/test-sqlite.js",
     "test:alive-mentions": "node test/test-alive-mentions.js",
     "test:mod-detection": "node test/test-mod-detection.js",
@@ -41,6 +44,17 @@
     "sqlite3": "^5.1.6"
   },
   "devDependencies": {
+    "jest": "^29.7.0",
     "nodemon": "^3.0.2"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/src/tests/**/*.test.js"
+    ],
+    "collectCoverageFrom": [
+      "src/handlers/**/*.js",
+      "src/werewolf-bot.js"
+    ]
   }
 }
