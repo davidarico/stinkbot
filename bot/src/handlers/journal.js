@@ -608,7 +608,8 @@ async handleFixJournals(message) {
             if (member) {
                 await journal.permissionOverwrites.edit(member.id, {
                     ViewChannel: true,
-                    SendMessages: true
+                    SendMessages: true,
+                    [PIN_PERMISSION]: true
                 });
             }
 
