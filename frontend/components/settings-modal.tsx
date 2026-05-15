@@ -131,26 +131,26 @@ export function SettingsModal({ gameId, isOpen, onClose, initialSettings }: Sett
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-gray-900 border border-gray-700 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto m-4">
-        <div className="flex items-center justify-between p-6 border-b border-gray-700">
+      <div className="bg-background border border-border rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto m-4">
+        <div className="flex items-center justify-between p-6 border-b border-border">
           <div className="flex items-center gap-2">
             <Settings className="w-5 h-5 text-white" />
             <h2 className="text-xl font-semibold text-white">Game Settings</h2>
           </div>
-          <Button variant="ghost" size="sm" onClick={onClose} className="text-gray-300 hover:text-white hover:bg-gray-800">
+          <Button variant="ghost" size="sm" onClick={onClose} className="text-muted-foreground hover:text-white hover:bg-card">
             <X className="w-4 h-4" />
           </Button>
         </div>
 
         <div className="p-6 space-y-6">
           {/* Game Configuration */}
-          <Card className="bg-gray-800 border-gray-700">
+          <Card className="bg-card border-border">
             <CardHeader>
               <CardTitle className="text-white">Game Configuration</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-300">Votes to Hang</label>
+                <label className="text-sm font-medium text-muted-foreground">Votes to Hang</label>
                 <Input
                   type="number"
                   min="1"
@@ -158,74 +158,74 @@ export function SettingsModal({ gameId, isOpen, onClose, initialSettings }: Sett
                   placeholder="Number of votes needed to hang a player..."
                   value={settings.votesToHang || 4}
                   onChange={(e) => setSettings(prev => ({ ...prev, votesToHang: parseInt(e.target.value) || 4 }))}
-                  className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
+                  className="bg-secondary border-border text-white placeholder:text-muted-foreground"
                 />
               </div>
             </CardContent>
           </Card>
 
           {/* Main Game Messages */}
-          <Card className="bg-gray-800 border-gray-700">
+          <Card className="bg-card border-border">
             <CardHeader>
               <CardTitle className="text-white">Main Game Messages</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-300">Day Message</label>
+                <label className="text-sm font-medium text-muted-foreground">Day Message</label>
                 <Textarea
                   placeholder="Message sent when day begins..."
                   value={settings.dayMessage || ""}
                   onChange={(e) => setSettings(prev => ({ ...prev, dayMessage: e.target.value }))}
                   rows={3}
-                  className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
+                  className="bg-secondary border-border text-white placeholder:text-muted-foreground"
                 />
               </div>
               
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-300">Night Message</label>
+                <label className="text-sm font-medium text-muted-foreground">Night Message</label>
                 <Textarea
                   placeholder="Message sent when night begins..."
                   value={settings.nightMessage || ""}
                   onChange={(e) => setSettings(prev => ({ ...prev, nightMessage: e.target.value }))}
                   rows={3}
-                  className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
+                  className="bg-secondary border-border text-white placeholder:text-muted-foreground"
                 />
               </div>
             </CardContent>
           </Card>
 
           {/* Wolf Chat Messages */}
-          <Card className="bg-gray-800 border-gray-700">
+          <Card className="bg-card border-border">
             <CardHeader>
               <CardTitle className="text-white">Wolf Chat Messages</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-300">Wolf Day Message</label>
+                <label className="text-sm font-medium text-muted-foreground">Wolf Day Message</label>
                 <Textarea
                   placeholder="Message sent to wolf chat when day begins..."
                   value={settings.wolfDayMessage || ""}
                   onChange={(e) => setSettings(prev => ({ ...prev, wolfDayMessage: e.target.value }))}
                   rows={3}
-                  className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
+                  className="bg-secondary border-border text-white placeholder:text-muted-foreground"
                 />
               </div>
               
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-300">Wolf Night Message</label>
+                <label className="text-sm font-medium text-muted-foreground">Wolf Night Message</label>
                 <Textarea
                   placeholder="Message sent to wolf chat when night begins..."
                   value={settings.wolfNightMessage || ""}
                   onChange={(e) => setSettings(prev => ({ ...prev, wolfNightMessage: e.target.value }))}
                   rows={3}
-                  className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
+                  className="bg-secondary border-border text-white placeholder:text-muted-foreground"
                 />
               </div>
             </CardContent>
           </Card>
 
           {/* Game Channels */}
-          <Card className="bg-gray-800 border-gray-700">
+          <Card className="bg-card border-border">
             <CardHeader>
               <CardTitle className="text-white">Game Channels</CardTitle>
               {channelsLoading && (
@@ -236,7 +236,7 @@ export function SettingsModal({ gameId, isOpen, onClose, initialSettings }: Sett
               {settings.gameChannels && settings.gameChannels.length > 0 ? (
                 <div className="space-y-4">
                   {settings.gameChannels.map((channel) => (
-                    <div key={channel.id} className="border border-gray-600 rounded-lg p-4 space-y-4 bg-gray-700">
+                    <div key={channel.id} className="border border-border rounded-lg p-4 space-y-4 bg-secondary">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <h4 className="font-medium text-white">{channel.channel_name}</h4>
@@ -245,24 +245,24 @@ export function SettingsModal({ gameId, isOpen, onClose, initialSettings }: Sett
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <label className="text-sm font-medium text-gray-300">Day Message</label>
+                          <label className="text-sm font-medium text-muted-foreground">Day Message</label>
                           <Textarea
                             placeholder="Channel-specific day message..."
                             value={channel.day_message || ""}
                             onChange={(e) => updateChannelSetting(channel.id, 'day_message', e.target.value)}
                             rows={2}
-                            className="bg-gray-600 border-gray-500 text-white placeholder-gray-400"
+                            className="bg-gray-600 border-gray-500 text-white placeholder:text-muted-foreground"
                           />
                         </div>
                         
                         <div className="space-y-2">
-                          <label className="text-sm font-medium text-gray-300">Night Message</label>
+                          <label className="text-sm font-medium text-muted-foreground">Night Message</label>
                           <Textarea
                             placeholder="Channel-specific night message..."
                             value={channel.night_message || ""}
                             onChange={(e) => updateChannelSetting(channel.id, 'night_message', e.target.value)}
                             rows={2}
-                            className="bg-gray-600 border-gray-500 text-white placeholder-gray-400"
+                            className="bg-gray-600 border-gray-500 text-white placeholder:text-muted-foreground"
                           />
                         </div>
                       </div>
@@ -278,7 +278,7 @@ export function SettingsModal({ gameId, isOpen, onClose, initialSettings }: Sett
                               updateChannelSetting(channel.id, 'open_at_dawn', checked === true)
                             }
                           />
-                          <label htmlFor={`open-dawn-${channel.id}`} className="text-sm font-medium text-gray-300">
+                          <label htmlFor={`open-dawn-${channel.id}`} className="text-sm font-medium text-muted-foreground">
                             Open at Day
                           </label>
                         </div>
@@ -291,7 +291,7 @@ export function SettingsModal({ gameId, isOpen, onClose, initialSettings }: Sett
                               updateChannelSetting(channel.id, 'open_at_dusk', checked === true)
                             }
                           />
-                          <label htmlFor={`open-dusk-${channel.id}`} className="text-sm font-medium text-gray-300">
+                          <label htmlFor={`open-dusk-${channel.id}`} className="text-sm font-medium text-muted-foreground">
                             Open at Night
                           </label>
                         </div>
@@ -300,7 +300,7 @@ export function SettingsModal({ gameId, isOpen, onClose, initialSettings }: Sett
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-gray-400 text-center py-4">
+                <p className="text-sm text-muted-foreground text-center py-4">
                   No additional game channels found.
                 </p>
               )}
@@ -308,8 +308,8 @@ export function SettingsModal({ gameId, isOpen, onClose, initialSettings }: Sett
           </Card>
         </div>
 
-        <div className="flex items-center justify-end gap-2 p-6 border-t border-gray-700">
-          <Button variant="outline" onClick={onClose} className="border-gray-600 text-black hover:bg-gray-800 hover:text-white">
+        <div className="flex items-center justify-end gap-2 p-6 border-t border-border">
+          <Button variant="outline" onClick={onClose} className="border-border text-black hover:bg-card hover:text-white">
             Cancel
           </Button>
           <Button onClick={handleSave} disabled={loading} className="bg-blue-600 hover:bg-blue-700">

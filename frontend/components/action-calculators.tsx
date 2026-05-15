@@ -56,7 +56,7 @@ export function ActionCalculators({ players, gameRoles, isDayPhase }: ActionCalc
         
         <CollapsibleContent>
           <CardContent className="space-y-4">
-            <p className="text-gray-300 text-sm">
+            <p className="text-muted-foreground text-sm">
               Generate night action results for specific roles. Select a calculator below:
             </p>
             
@@ -77,7 +77,7 @@ export function ActionCalculators({ players, gameRoles, isDayPhase }: ActionCalc
               {/* Placeholder for future calculators */}
               <Card className="bg-white/5 border-dashed border-white/20">
                 <CardContent className="p-4 text-center">
-                  <p className="text-gray-400 text-sm">
+                  <p className="text-muted-foreground text-sm">
                     More action calculators coming soon...
                   </p>
                   <p className="text-gray-500 text-xs mt-1">

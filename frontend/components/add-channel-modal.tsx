@@ -199,8 +199,8 @@ export function AddChannelModal({ gameId, isOpen, onClose, onChannelAdded }: Add
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-gray-900 border border-gray-700 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto m-4">
-        <div className="flex items-center justify-between p-6 border-b border-gray-700">
+      <div className="bg-background border border-border rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto m-4">
+        <div className="flex items-center justify-between p-6 border-b border-border">
           <div className="flex items-center gap-2">
             <Plus className="w-5 h-5 text-white" />
             <h2 className="text-xl font-semibold text-white">Add Game Channel</h2>
@@ -208,25 +208,25 @@ export function AddChannelModal({ gameId, isOpen, onClose, onChannelAdded }: Add
         </div>
 
         <div className="p-6 space-y-6">
-          <Card className="bg-gray-800 border-gray-700">
+          <Card className="bg-card border-border">
             <CardHeader>
               <CardTitle className="text-white">Channel Information</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-300">Channel Name</label>
+                <label className="text-sm font-medium text-muted-foreground">Channel Name</label>
                 <div className="space-y-2">
                   {loadingPrefix ? (
-                    <div className="text-sm text-gray-400">Loading prefix...</div>
+                    <div className="text-sm text-muted-foreground">Loading prefix...</div>
                   ) : channelPrefix ? (
-                    <div className="text-sm text-gray-400">
+                    <div className="text-sm text-muted-foreground">
                       Channel will be created as: <span className="font-mono text-blue-400">{getFullChannelName() || `${channelPrefix}-`}</span>
                     </div>
                   ) : null}
                   
                   <div className="relative">
                     {channelPrefix && (
-                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-mono text-sm pointer-events-none">
+                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-mono text-sm pointer-events-none">
                         {channelPrefix}-
                       </div>
                     )}
@@ -237,7 +237,7 @@ export function AddChannelModal({ gameId, isOpen, onClose, onChannelAdded }: Add
                         const sanitized = sanitizeChannelName(e.target.value)
                         setFormData(prev => ({ ...prev, channelName: sanitized }))
                       }}
-                      className={`bg-gray-700 border-gray-600 text-white placeholder-gray-400 ${
+                      className={`bg-secondary border-border text-white placeholder:text-muted-foreground ${
                         channelPrefix ? 'pl-20' : ''
                       }`}
                       style={{ paddingLeft: channelPrefix ? `${channelPrefix.length * 8 + 24}px` : undefined }}
@@ -252,36 +252,36 @@ export function AddChannelModal({ gameId, isOpen, onClose, onChannelAdded }: Add
             </CardContent>
           </Card>
 
-          <Card className="bg-gray-800 border-gray-700">
+          <Card className="bg-card border-border">
             <CardHeader>
               <CardTitle className="text-white">Channel Messages</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-300">Day Message (Optional)</label>
+                <label className="text-sm font-medium text-muted-foreground">Day Message (Optional)</label>
                 <Textarea
                   placeholder="Message sent to this channel when day begins..."
                   value={formData.dayMessage}
                   onChange={(e) => setFormData(prev => ({ ...prev, dayMessage: e.target.value }))}
                   rows={3}
-                  className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
+                  className="bg-secondary border-border text-white placeholder:text-muted-foreground"
                 />
               </div>
               
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-300">Night Message (Optional)</label>
+                <label className="text-sm font-medium text-muted-foreground">Night Message (Optional)</label>
                 <Textarea
                   placeholder="Message sent to this channel when night begins..."
                   value={formData.nightMessage}
                   onChange={(e) => setFormData(prev => ({ ...prev, nightMessage: e.target.value }))}
                   rows={3}
-                  className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
+                  className="bg-secondary border-border text-white placeholder:text-muted-foreground"
                 />
               </div>
             </CardContent>
           </Card>
 
-          <Card className="bg-gray-800 border-gray-700">
+          <Card className="bg-card border-border">
             <CardHeader>
               <CardTitle className="text-white">Channel Behavior</CardTitle>
             </CardHeader>
@@ -295,7 +295,7 @@ export function AddChannelModal({ gameId, isOpen, onClose, onChannelAdded }: Add
                       setFormData(prev => ({ ...prev, openAtDawn: checked as boolean }))
                     }
                   />
-                  <label htmlFor="open-dawn" className="text-sm font-medium text-gray-300">
+                  <label htmlFor="open-dawn" className="text-sm font-medium text-muted-foreground">
                     Open at Day
                   </label>
                 </div>
@@ -308,7 +308,7 @@ export function AddChannelModal({ gameId, isOpen, onClose, onChannelAdded }: Add
                       setFormData(prev => ({ ...prev, openAtDusk: checked as boolean }))
                     }
                   />
-                  <label htmlFor="open-dusk" className="text-sm font-medium text-gray-300">
+                  <label htmlFor="open-dusk" className="text-sm font-medium text-muted-foreground">
                     Open at Night
                   </label>
                 </div>
@@ -317,8 +317,8 @@ export function AddChannelModal({ gameId, isOpen, onClose, onChannelAdded }: Add
           </Card>
         </div>
 
-        <div className="flex items-center justify-end gap-2 p-6 border-t border-gray-700">
-          <Button variant="outline" onClick={handleClose} className="border-gray-600 text-black hover:bg-gray-800 hover:text-white">
+        <div className="flex items-center justify-end gap-2 p-6 border-t border-border">
+          <Button variant="outline" onClick={handleClose} className="border-border text-black hover:bg-card hover:text-white">
             Cancel
           </Button>
           <Button onClick={handleSave} disabled={loading} className="bg-blue-600 hover:bg-blue-700">

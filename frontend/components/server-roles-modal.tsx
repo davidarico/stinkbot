@@ -194,7 +194,7 @@ export function ServerRolesModal({ serverId, isOpen, onClose }: ServerRolesModal
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="!max-w-[95vw] w-[95vw] max-h-[80vh] overflow-y-auto bg-gray-900 border-gray-700 text-white">
+        <DialogContent className="!max-w-[95vw] w-[95vw] max-h-[80vh] overflow-y-auto bg-background border-border text-white">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-white">
               <Server className="w-5 h-5" />
@@ -205,7 +205,7 @@ export function ServerRolesModal({ serverId, isOpen, onClose }: ServerRolesModal
           {loading ? (
             <div className="text-center py-8">
               <Loader2 className="h-8 w-8 animate-spin text-white mx-auto mb-4" />
-              <p className="text-gray-300">Loading roles...</p>
+              <p className="text-muted-foreground">Loading roles...</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -222,13 +222,13 @@ export function ServerRolesModal({ serverId, isOpen, onClose }: ServerRolesModal
               {roles.length === 0 ? (
                 <div className="text-center py-8">
                   <Server className="h-12 w-12 mx-auto text-gray-500 mb-4" />
-                  <p className="text-gray-400">No server-specific roles found. Create one to get started.</p>
+                  <p className="text-muted-foreground">No server-specific roles found. Create one to get started.</p>
                 </div>
               ) : (
-                <div className="border border-gray-700 rounded-lg overflow-x-auto">
+                <div className="border border-border rounded-lg overflow-x-auto">
                   <Table>
                     <TableHeader>
-                      <TableRow className="bg-gray-800 hover:bg-gray-800">
+                      <TableRow className="bg-card hover:bg-card">
                         <TableHead className="text-white whitespace-nowrap">Role Name</TableHead>
                         <TableHead className="text-white whitespace-nowrap">Team</TableHead>
                         <TableHead className="text-white whitespace-nowrap">In Wolf Chat</TableHead>
@@ -241,7 +241,7 @@ export function ServerRolesModal({ serverId, isOpen, onClose }: ServerRolesModal
                     </TableHeader>
                     <TableBody>
                       {roles.map((role) => (
-                        <TableRow key={role.id} className="border-gray-700">
+                        <TableRow key={role.id} className="border-border">
                           <TableCell className="text-white font-medium whitespace-nowrap">{role.name}</TableCell>
                           <TableCell className="text-white capitalize whitespace-nowrap">{role.alignment || 'Unknown'}</TableCell>
                           <TableCell className="text-white whitespace-nowrap">
@@ -282,7 +282,7 @@ export function ServerRolesModal({ serverId, isOpen, onClose }: ServerRolesModal
 
       {/* Add Role Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="bg-gray-800 border-gray-700 text-white max-h-[90vh] overflow-y-auto">
+        <DialogContent className="bg-card border-border text-white max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-white">Add Server-Specific Role</DialogTitle>
           </DialogHeader>
@@ -293,14 +293,14 @@ export function ServerRolesModal({ serverId, isOpen, onClose }: ServerRolesModal
                 id="name"
                 value={newRole.name}
                 onChange={(e) => setNewRole({ ...newRole, name: e.target.value })}
-                className="bg-gray-700 border-gray-600 text-white"
+                className="bg-secondary border-border text-white"
                 placeholder="e.g., Custom Seer"
               />
             </div>
             <div>
               <Label htmlFor="team" className="text-white">Team</Label>
               <Select value={newRole.team} onValueChange={(value) => setNewRole({ ...newRole, team: value })}>
-                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                <SelectTrigger className="bg-secondary border-border text-white">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -334,7 +334,7 @@ export function ServerRolesModal({ serverId, isOpen, onClose }: ServerRolesModal
                   type="number"
                   value={newRole.defaultCharges}
                   onChange={(e) => setNewRole({ ...newRole, defaultCharges: parseInt(e.target.value) || 0 })}
-                  className="bg-gray-700 border-gray-600 text-white"
+                  className="bg-secondary border-border text-white"
                   min="0"
                 />
               </div>
@@ -355,7 +355,7 @@ export function ServerRolesModal({ serverId, isOpen, onClose }: ServerRolesModal
                   type="number"
                   value={newRole.defaultWinByNumber}
                   onChange={(e) => setNewRole({ ...newRole, defaultWinByNumber: parseInt(e.target.value) || 0 })}
-                  className="bg-gray-700 border-gray-600 text-white"
+                  className="bg-secondary border-border text-white"
                   min="0"
                 />
               </div>
@@ -365,7 +365,7 @@ export function ServerRolesModal({ serverId, isOpen, onClose }: ServerRolesModal
             <Button
               variant="outline"
               onClick={() => setIsDialogOpen(false)}
-              className="border-gray-600 text-gray-300 hover:bg-gray-700"
+              className="border-border text-muted-foreground hover:bg-secondary"
             >
               Cancel
             </Button>
@@ -379,22 +379,22 @@ export function ServerRolesModal({ serverId, isOpen, onClose }: ServerRolesModal
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white">
+        <DialogContent className="bg-background border-border text-white">
           <DialogHeader>
             <DialogTitle className="text-red-400">Delete Role</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <p className="text-gray-300">
+            <p className="text-muted-foreground">
               Are you sure you want to delete the role "{roleToDelete?.name}"?
             </p>
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-muted-foreground">
               This action cannot be undone.
             </p>
             <div className="flex justify-end gap-3">
               <Button
                 variant="outline"
                 onClick={() => setShowDeleteConfirm(false)}
-                className="border-gray-600 text-gray-300 hover:bg-gray-800"
+                className="border-border text-muted-foreground hover:bg-card"
               >
                 Cancel
               </Button>

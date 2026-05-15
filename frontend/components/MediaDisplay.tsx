@@ -51,9 +51,9 @@ function EmbeddedMedia({ url, platform }: { url: string; platform: string }) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-4 bg-gray-700 rounded-lg">
-        <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
-        <span className="ml-2 text-sm text-gray-400">Loading {platform} content...</span>
+      <div className="flex items-center justify-center p-4 bg-secondary rounded-lg">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <span className="ml-2 text-sm text-muted-foreground">Loading {platform} content...</span>
       </div>
     )
   }
@@ -115,10 +115,10 @@ function EmbeddedMedia({ url, platform }: { url: string; platform: string }) {
 
   // Fallback to link
   return (
-    <div className="border border-gray-600 rounded-lg p-3 bg-gray-700">
+    <div className="border border-border rounded-lg p-3 bg-secondary">
       <div className="flex items-center gap-2 mb-2">
-        <ExternalLink className="h-4 w-4 text-gray-400" />
-        <span className="text-sm text-gray-300">{oembedData.title || platform}</span>
+        <ExternalLink className="h-4 w-4 text-muted-foreground" />
+        <span className="text-sm text-muted-foreground">{oembedData.title || platform}</span>
       </div>
       <a
         href={url}
@@ -212,10 +212,10 @@ export function MediaDisplay({ media, className = '' }: MediaDisplayProps) {
 
       case 'embed':
         return (
-          <div key={index} className="border border-gray-600 rounded-lg p-3 bg-gray-700">
+          <div key={index} className="border border-border rounded-lg p-3 bg-secondary">
             <div className="flex items-center gap-2 mb-2">
-              <ExternalLink className="h-4 w-4 text-gray-400" />
-              <span className="text-sm text-gray-300">{item.title}</span>
+              <ExternalLink className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">{item.title}</span>
             </div>
             <a
               href={item.url}

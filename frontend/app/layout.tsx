@@ -4,12 +4,14 @@ import { Inter } from "next/font/google"
 import "./globals.css"
 import { Toaster } from "@/components/ui/toaster"
 
-const inter = Inter({ subsets: ["latin"] })
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+})
 
 export const metadata: Metadata = {
-  title: "Stinkwolf - Werewolf Game Management",
-  description: "Advanced Discord bot for managing Werewolf games with role assignments, voting, and phase management.",
-    generator: 'v0.dev'
+  title: "Stinkwolf — Werewolf Game Console",
+  description: "Discord-integrated game management for Werewolf — role assignment, vote tracking, and phase control.",
 }
 
 export default function RootLayout({
@@ -18,7 +20,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className={`dark ${inter.variable}`}>
       <body className={inter.className}>
         {children}
         <Toaster />

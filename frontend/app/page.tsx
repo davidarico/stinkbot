@@ -3,60 +3,82 @@ import { Button } from "@/components/ui/button"
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
-      <div className="container mx-auto px-4 py-16">
-        <div className="text-center mb-8">
-          <h1 className="text-6xl font-bold text-white mb-6">Stinkwolf</h1>
-          <p className="text-xl text-purple-200 mb-8">The Future of Werewolf Game Management</p>
-        </div>
+    <div className="min-h-screen bg-background flex flex-col">
+      {/* subtle top-center glow */}
+      <div
+        className="pointer-events-none fixed inset-0 -z-10"
+        style={{
+          background:
+            "radial-gradient(ellipse 70% 40% at 50% -5%, oklch(0.62 0.22 285 / 0.10) 0%, transparent 70%)",
+        }}
+      />
 
-        <div className="text-center space-y-4">
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-4">
+      {/* Nav */}
+      <header className="flex items-center justify-between px-8 py-5 border-b border-border/60">
+        <span className="text-sm font-semibold tracking-[0.12em] uppercase text-foreground/80">
+          Stinkwolf
+        </span>
+        <nav className="flex items-center gap-6">
+          <Link href="/roles" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+            Roles
+          </Link>
+          <Link href="/archives" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+            Archives
+          </Link>
+        </nav>
+      </header>
+
+      {/* Hero */}
+      <main className="flex flex-col items-center justify-center flex-1 px-6 text-center">
+        <div className="max-w-2xl">
+          <p className="text-xs font-medium tracking-[0.18em] uppercase text-primary mb-6">
+            Stinky Solutions LLC
+          </p>
+          <h1 className="text-5xl sm:text-6xl font-semibold tracking-tight text-foreground mb-5 leading-[1.08]">
+            Game Master<br />Console
+          </h1>
+          <p className="text-lg text-muted-foreground mb-10 max-w-lg mx-auto leading-relaxed">
+            Role assignment, live vote tracking, and phase management for Werewolf games — integrated directly with Discord.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link href="/roles">
-              <Button
-                variant="outline"
-                size="lg"
-                className="border-purple-400 text-purple-200 hover:bg-purple-800/50 px-8 py-3 text-lg bg-transparent"
-              >
+              <Button size="lg" className="px-8 font-medium">
                 View All Roles
               </Button>
             </Link>
             <Link href="/archives">
-              <Button
-                variant="outline"
-                size="lg"
-                className="border-purple-400 text-purple-200 hover:bg-purple-800/50 px-8 py-3 text-lg bg-transparent"
-              >
+              <Button size="lg" variant="outline" className="px-8 font-medium">
                 Message Archives
               </Button>
             </Link>
           </div>
         </div>
+      </main>
 
-        <div className="max-w-4xl mx-auto bg-white/10 backdrop-blur-lg rounded-lg p-8 mb-8">
-          <h2 className="text-3xl font-bold text-white mb-6">Welcome to Stinky Solutions LLC</h2>
-          <p className="text-lg text-purple-100 leading-relaxed mb-6">
-            At Stinky Solutions LLC, we are revolutionizing the ancient art of Werewolf gameplay by bringing
-            cutting-edge technology to your Discord server. Gone are the days of cumbersome Excel spreadsheets and
-            manual role tracking that plague traditional game masters. Our sophisticated Stinkwolf bot represents the
-            pinnacle of lycanthropic gaming innovation, seamlessly integrating with Discord's ecosystem to provide an
-            unparalleled gaming experience.
-          </p>
-          <p className="text-lg text-purple-100 leading-relaxed mb-6">
-            Our proprietary technology stack leverages advanced algorithms for role assignment, real-time vote tracking,
-            and dynamic phase management. Whether you're managing a intimate village of 8 players or orchestrating chaos
-            among 20+ participants, Stinkwolf's intelligent systems adapt to your game's unique requirements. The
-            platform's intuitive interface eliminates the tedious administrative overhead that traditionally burdens
-            game moderators, allowing them to focus on what truly matters: creating memorable moments of betrayal,
-            deduction, and strategic gameplay.
-          </p>
-          <p className="text-lg text-purple-100 leading-relaxed">
-            Join the thousands of Discord communities who have already embraced the future of social deduction gaming.
-            With Stinkwolf, every game becomes a masterpiece of organized chaos, where technology meets tradition in
-            perfect harmony.
-          </p>
+      {/* Feature strip */}
+      <footer className="border-t border-border/60 px-8 py-8">
+        <div className="max-w-4xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-6">
+          {[
+            {
+              label: "Role Management",
+              description: "Build game compositions from a full role library. Set charges, win conditions, and custom names.",
+            },
+            {
+              label: "Live Vote Tracking",
+              description: "Watch votes accumulate in real-time during the day phase. Configurable hang threshold.",
+            },
+            {
+              label: "Phase Control",
+              description: "Night and day phases driven by the Discord bot. The UI reflects state instantly.",
+            },
+          ].map((f) => (
+            <div key={f.label} className="space-y-1.5">
+              <p className="text-sm font-medium text-foreground">{f.label}</p>
+              <p className="text-sm text-muted-foreground leading-relaxed">{f.description}</p>
+            </div>
+          ))}
         </div>
-      </div>
+      </footer>
     </div>
   )
 }

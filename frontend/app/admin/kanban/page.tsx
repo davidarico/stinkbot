@@ -219,7 +219,7 @@ export default function KanbanPage() {
 
   if (isAuthenticated === null) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-white" />
       </div>
     )
@@ -232,14 +232,14 @@ export default function KanbanPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-white" />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className="min-h-screen bg-background text-white">
       <div className="container mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-4">
@@ -247,14 +247,14 @@ export default function KanbanPage() {
               onClick={() => router.push('/admin')} 
               variant="outline" 
               size="sm"
-              className="bg-gray-600 text-white hover:bg-gray-700"
+              className="bg-gray-600 text-white hover:bg-secondary"
             >
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back to Admin
             </Button>
             <div>
               <h1 className="text-3xl font-bold text-white">Development Kanban</h1>
-              <p className="text-gray-300 mt-2">Track development tasks and project progress</p>
+              <p className="text-muted-foreground mt-2">Track development tasks and project progress</p>
             </div>
           </div>
           
@@ -265,10 +265,10 @@ export default function KanbanPage() {
                 Add Task
               </Button>
             </DialogTrigger>
-            <DialogContent className="bg-gray-800 border-gray-700">
+            <DialogContent className="bg-card border-border">
               <DialogHeader>
                 <DialogTitle className="text-white">Create New Task</DialogTitle>
-                <DialogDescription className="text-gray-300">
+                <DialogDescription className="text-muted-foreground">
                   Add a new task to the kanban board
                 </DialogDescription>
               </DialogHeader>
@@ -280,7 +280,7 @@ export default function KanbanPage() {
                     value={newTask.title}
                     onChange={(e) => setNewTask(prev => ({ ...prev, title: e.target.value }))}
                     placeholder="Enter task title"
-                    className="bg-gray-700 border-gray-600 text-white placeholder:text-gray-400"
+                    className="bg-secondary border-border text-white placeholder:text-muted-foreground"
                   />
                 </div>
                 <div>
@@ -290,7 +290,7 @@ export default function KanbanPage() {
                     value={newTask.description}
                     onChange={(e) => setNewTask(prev => ({ ...prev, description: e.target.value }))}
                     placeholder="Enter task description"
-                    className="bg-gray-700 border-gray-600 text-white placeholder:text-gray-400"
+                    className="bg-secondary border-border text-white placeholder:text-muted-foreground"
                     rows={3}
                   />
                 </div>
@@ -299,7 +299,7 @@ export default function KanbanPage() {
                 <Button 
                   variant="outline" 
                   onClick={() => setIsCreating(false)}
-                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                  className="border-border text-muted-foreground hover:bg-secondary"
                 >
                   Cancel
                 </Button>
@@ -358,10 +358,10 @@ export default function KanbanPage() {
 
         {/* Edit Task Dialog */}
         <Dialog open={!!editingTask} onOpenChange={() => setEditingTask(null)}>
-          <DialogContent className="bg-gray-800 border-gray-700">
+          <DialogContent className="bg-card border-border">
             <DialogHeader>
               <DialogTitle className="text-white">Edit Task</DialogTitle>
-              <DialogDescription className="text-gray-300">
+              <DialogDescription className="text-muted-foreground">
                 Update task details
               </DialogDescription>
             </DialogHeader>
@@ -373,7 +373,7 @@ export default function KanbanPage() {
                   value={editForm.title}
                   onChange={(e) => setEditForm(prev => ({ ...prev, title: e.target.value }))}
                   placeholder="Enter task title"
-                  className="bg-gray-700 border-gray-600 text-white placeholder:text-gray-400"
+                  className="bg-secondary border-border text-white placeholder:text-muted-foreground"
                 />
               </div>
               <div>
@@ -383,7 +383,7 @@ export default function KanbanPage() {
                   value={editForm.description}
                   onChange={(e) => setEditForm(prev => ({ ...prev, description: e.target.value }))}
                   placeholder="Enter task description"
-                  className="bg-gray-700 border-gray-600 text-white placeholder:text-gray-400"
+                  className="bg-secondary border-border text-white placeholder:text-muted-foreground"
                   rows={3}
                 />
               </div>
@@ -392,7 +392,7 @@ export default function KanbanPage() {
               <Button 
                 variant="outline" 
                 onClick={cancelEdit}
-                className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                className="border-border text-muted-foreground hover:bg-secondary"
               >
                 Cancel
               </Button>

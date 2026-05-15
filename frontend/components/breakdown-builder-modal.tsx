@@ -252,11 +252,11 @@ export function BreakdownBuilderModal({
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className={cn(
         "border rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-y-auto m-4",
-        isDayPhase ? "bg-white/95 text-gray-900 border-gray-300" : "bg-gray-900 border-gray-700 text-white"
+        isDayPhase ? "bg-white/95 text-gray-900 border-gray-300" : "bg-background border-border text-white"
       )}>
         <div className={cn(
           "flex items-center justify-between p-6 border-b",
-          isDayPhase ? "border-gray-300" : "border-gray-700"
+          isDayPhase ? "border-gray-300" : "border-border"
         )}>
           <div className="flex items-center gap-2">
             <h2 className={cn("text-xl font-semibold", isDayPhase ? "text-gray-900" : "text-white")}>
@@ -270,7 +270,7 @@ export function BreakdownBuilderModal({
             className={cn(
               isDayPhase 
                 ? "text-gray-900 hover:text-gray-700 hover:bg-gray-100" 
-                : "text-gray-100 hover:text-white hover:bg-gray-800"
+                : "text-gray-100 hover:text-white hover:bg-card"
             )}
           >
             <X className="w-4 h-4" />
@@ -287,7 +287,7 @@ export function BreakdownBuilderModal({
                 <CardTitle className={cn(isDayPhase ? "text-gray-900" : "text-white")}>
                   Available Roles
                 </CardTitle>
-                <p className={cn("text-sm", isDayPhase ? "text-gray-600" : "text-gray-300")}>
+                <p className={cn("text-sm", isDayPhase ? "text-gray-600" : "text-muted-foreground")}>
                   Click on roles to add them to the breakdown list
                 </p>
               </CardHeader>
@@ -325,7 +325,7 @@ export function BreakdownBuilderModal({
                                 {role.name}
                               </span>
                             </div>
-                            <Plus className="w-4 h-4 text-gray-400" />
+                            <Plus className="w-4 h-4 text-muted-foreground" />
                           </div>
                         </div>
                       ))}
@@ -333,7 +333,7 @@ export function BreakdownBuilderModal({
                   </div>
                 ))}
                 {availableForBreakdown.length === 0 && (
-                  <p className={cn("text-center py-4 text-sm", isDayPhase ? "text-gray-500" : "text-gray-300")}>
+                  <p className={cn("text-center py-4 text-sm", isDayPhase ? "text-gray-500" : "text-muted-foreground")}>
                     All available roles have been added to the breakdown list.
                   </p>
                 )}
@@ -356,7 +356,7 @@ export function BreakdownBuilderModal({
                       onClick={clearBreakdown}
                       disabled={breakdownRoles.length === 0}
                       className={cn(
-                        isDayPhase ? "border-gray-300" : "border-gray-600"
+                        isDayPhase ? "border-gray-300" : "border-border"
                       )}
                     >
                       Clear Added
@@ -372,7 +372,7 @@ export function BreakdownBuilderModal({
                     </Button>
                   </div>
                 </div>
-                <p className={cn("text-sm", isDayPhase ? "text-gray-600" : "text-gray-300")}>
+                <p className={cn("text-sm", isDayPhase ? "text-gray-600" : "text-muted-foreground")}>
                   Roles organized by alignment and alphabetically
                 </p>
               </CardHeader>
@@ -421,7 +421,7 @@ export function BreakdownBuilderModal({
                                   isGameRole 
                                     ? isDayPhase
                                       ? "bg-gray-50 border-gray-200"
-                                      : "bg-gray-800/20 border-gray-600"
+                                      : "bg-card/20 border-border"
                                     : isDayPhase
                                       ? "bg-green-50 border-green-200"
                                       : "bg-green-900/20 border-green-700"
@@ -466,7 +466,7 @@ export function BreakdownBuilderModal({
                     })}
                   </div>
                 ) : (
-                  <p className={cn("text-center py-8 text-sm", isDayPhase ? "text-gray-500" : "text-gray-300")}>
+                  <p className={cn("text-center py-8 text-sm", isDayPhase ? "text-gray-500" : "text-muted-foreground")}>
                     No roles in breakdown list. Game roles will appear here automatically.
                   </p>
                 )}
@@ -478,13 +478,13 @@ export function BreakdownBuilderModal({
 
         <div className={cn(
           "flex items-center justify-end gap-2 p-6 border-t",
-          isDayPhase ? "border-gray-300" : "border-gray-700"
+          isDayPhase ? "border-gray-300" : "border-border"
         )}>
           <Button 
             variant="outline" 
             onClick={onClose} 
             className={cn(
-              "bg-gray-900 hover:bg-gray-800 text-white",
+              "bg-background hover:bg-card text-white",
             )}
           >
             Close

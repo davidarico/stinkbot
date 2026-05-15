@@ -43,7 +43,7 @@ export function KanbanTask({ task, isDragging = false, onEdit }: KanbanTaskProps
     <Card
       ref={setNodeRef}
       style={style}
-      className={`bg-gray-700 border-gray-600 cursor-grab active:cursor-grabbing hover:bg-gray-650 transition-colors ${opacity < 1 ? 'opacity-50' : ''}`}
+      className={`bg-secondary border-border cursor-grab active:cursor-grabbing hover:bg-accent transition-colors ${opacity < 1 ? 'opacity-50' : ''}`}
       {...attributes}
       {...listeners}
     >
@@ -60,19 +60,19 @@ export function KanbanTask({ task, isDragging = false, onEdit }: KanbanTaskProps
                 e.stopPropagation()
                 onEdit()
               }}
-              className="h-6 w-6 p-0 text-gray-400 hover:text-white hover:bg-gray-600"
+              className="h-6 w-6 p-0 text-muted-foreground hover:text-white hover:bg-gray-600"
             >
               <Edit2 className="h-3 w-3" />
             </Button>
           </div>
           
           {task.description && (
-            <p className="text-gray-300 text-xs leading-relaxed">
+            <p className="text-muted-foreground text-xs leading-relaxed">
               {task.description}
             </p>
           )}
           
-          <div className="text-xs text-gray-400">
+          <div className="text-xs text-muted-foreground">
             Created {new Date(task.created_at).toLocaleDateString()}
           </div>
         </div>

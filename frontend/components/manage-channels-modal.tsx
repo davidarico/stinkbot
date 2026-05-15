@@ -225,7 +225,7 @@ export function ManageChannelsModal({ gameId, isOpen, onClose }: ManageChannelsM
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto bg-gray-900 border-gray-700 text-white">
+      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto bg-background border-border text-white">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-white">
             <Users className="w-5 h-5" />
@@ -235,13 +235,13 @@ export function ManageChannelsModal({ gameId, isOpen, onClose }: ManageChannelsM
 
         {loading ? (
           <div className="text-center py-8">
-            <p className="text-gray-300">Loading channels...</p>
+            <p className="text-muted-foreground">Loading channels...</p>
           </div>
         ) : (
           <div className="space-y-6">
             {channels.length === 0 ? (
               <div className="text-center py-8">
-                <p className="text-gray-400">No channels found for this game.</p>
+                <p className="text-muted-foreground">No channels found for this game.</p>
               </div>
             ) : (
               channels.map((channel) => {
@@ -249,19 +249,19 @@ export function ManageChannelsModal({ gameId, isOpen, onClose }: ManageChannelsM
                 const invitedUsers = channel.invited_users || []
 
                 return (
-                  <Card key={channel.id} className="bg-gray-800 border-gray-600">
+                  <Card key={channel.id} className="bg-card border-border">
                     <CardHeader>
                       <CardTitle className="flex items-center justify-between text-white">
                         <div className="flex items-center gap-2">
                           <span>{channel.channel_name}</span>
                           {channel.is_created && (
-                            <Badge variant="secondary" className="text-xs bg-gray-700 text-gray-300">
+                            <Badge variant="secondary" className="text-xs bg-secondary text-muted-foreground">
                               Created
                             </Badge>
                           )}
                         </div>
                         <div className="flex items-center gap-4">
-                          <div className="flex items-center gap-2 text-sm text-gray-400">
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <span>Dawn: {channel.open_at_dawn ? "Yes" : "No"}</span>
                             <span>Dusk: {channel.open_at_dusk ? "Yes" : "No"}</span>
                           </div>
@@ -284,7 +284,7 @@ export function ManageChannelsModal({ gameId, isOpen, onClose }: ManageChannelsM
                         {invitedUsers.length > 0 ? (
                           <div className="flex flex-wrap gap-2">
                             {invitedUsers.map((userId) => (
-                              <Badge key={userId} variant="outline" className="flex items-center gap-1 bg-gray-700 border-gray-600 text-gray-300">
+                              <Badge key={userId} variant="outline" className="flex items-center gap-1 bg-secondary border-border text-muted-foreground">
                                 {getUsernameFromUserId(userId)}
                                 <button
                                   onClick={() => removeUserFromChannel(channel.id, userId)}
@@ -296,7 +296,7 @@ export function ManageChannelsModal({ gameId, isOpen, onClose }: ManageChannelsM
                             ))}
                           </div>
                         ) : (
-                          <p className="text-sm text-gray-400">No users invited yet</p>
+                          <p className="text-sm text-muted-foreground">No users invited yet</p>
                         )}
                       </div>
 
@@ -310,7 +310,7 @@ export function ManageChannelsModal({ gameId, isOpen, onClose }: ManageChannelsM
                               onChange={(e) => {
                                 setSelectedUserId(e.target.value)
                               }}
-                              className="w-full bg-gray-700 border-gray-600 text-white rounded-md px-3 py-2"
+                              className="w-full bg-secondary border-border text-white rounded-md px-3 py-2"
                             >
                               <option value="">Select a user to invite...</option>
                               {availableUsers.map((player) => (
@@ -337,7 +337,7 @@ export function ManageChannelsModal({ gameId, isOpen, onClose }: ManageChannelsM
                       )}
 
                       {availableUsers.length === 0 && invitedUsers.length > 0 && (
-                        <p className="text-sm text-gray-400">All signed up players are already invited to this channel</p>
+                        <p className="text-sm text-muted-foreground">All signed up players are already invited to this channel</p>
                       )}
                     </CardContent>
                   </Card>
@@ -350,22 +350,22 @@ export function ManageChannelsModal({ gameId, isOpen, onClose }: ManageChannelsM
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white">
+        <DialogContent className="bg-background border-border text-white">
           <DialogHeader>
             <DialogTitle className="text-red-400">Delete Channel</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <p className="text-gray-300">
+            <p className="text-muted-foreground">
               Are you sure you want to delete the channel "{channelToDelete?.channel_name}"?
             </p>
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-muted-foreground">
               This action cannot be undone. All channel data and invited users will be permanently removed.
             </p>
             <div className="flex justify-end gap-3">
               <Button
                 variant="outline"
                 onClick={() => setShowDeleteConfirm(false)}
-                className="border-gray-600 text-gray-300 hover:bg-gray-800"
+                className="border-border text-muted-foreground hover:bg-card"
               >
                 Cancel
               </Button>

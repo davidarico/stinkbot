@@ -820,175 +820,118 @@ export default function GameManagementPage() {
 
   const isDayPhase = gameData.phase === "day"
 
-  // Night / signup UI uses dark surfaces; shadcn `foreground` only flips with `.dark`.
-  // Toggle on <html> so portaled dialogs pick up the same tokens as the page.
+  // Day phase removes `.dark` so CSS tokens flip to warm light palette.
   useEffect(() => {
     const root = document.documentElement
     if (!isAuthenticated || loading || error) {
-      root.classList.remove("dark")
+      root.classList.add("dark")
       return
     }
     root.classList.toggle("dark", !isDayPhase)
     return () => {
-      root.classList.remove("dark")
+      root.classList.add("dark")
     }
   }, [isAuthenticated, loading, error, isDayPhase])
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 to-indigo-900 flex items-center justify-center">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle>Game Access Required</CardTitle>
-            <p className="text-sm text-gray-600">Enter the category ID from Discord to access this game.</p>
-          </CardHeader>
-          <CardContent className="space-y-4">
+      <div className="min-h-screen bg-background flex items-center justify-center px-4">
+        <div className="w-full max-w-sm">
+          <div className="text-center mb-8">
+            <h1 className="text-xl font-semibold text-foreground">Game Access</h1>
+            <p className="text-sm text-muted-foreground mt-1">Enter the category ID from Discord.</p>
+          </div>
+          <div className="space-y-3">
             <Input
               type="password"
-              placeholder="Enter game password (category ID)"
+              placeholder="Category ID / password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               onKeyPress={(e) => e.key === "Enter" && !loginLoading && handleLogin()}
               disabled={loginLoading}
+              className="bg-card border-border"
             />
             <Button onClick={handleLogin} className="w-full" disabled={loginLoading}>
-              {loginLoading ? "Verifying..." : "Access Game"}
+              {loginLoading ? (
+                <><span className="h-3.5 w-3.5 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin mr-2" />Verifying…</>
+              ) : "Access Game"}
             </Button>
-            {loading && <p className="text-sm text-gray-500 text-center">Loading...</p>}
-          </CardContent>
-        </Card>
+            {loading && <p className="text-xs text-muted-foreground text-center">Loading…</p>}
+          </div>
+        </div>
       </div>
     )
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 to-indigo-900 flex items-center justify-center">
-        <Card className="w-full max-w-md">
-          <CardContent className="text-center py-8">
-            <p className="text-lg">Loading game data...</p>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex items-center gap-3 text-muted-foreground">
+          <div className="h-4 w-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+          <span className="text-sm">Loading game data…</span>
+        </div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 to-indigo-900 flex items-center justify-center">
-        <Card className="w-full max-w-md">
-          <CardContent className="text-center py-8">
-            <p className="text-lg text-red-600">Error: {error}</p>
-            <Button onClick={() => window.location.reload()} className="mt-4">
-              Retry
-            </Button>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <p className="text-sm text-destructive-foreground">Error: {error}</p>
+          <Button onClick={() => window.location.reload()} variant="outline" size="sm">
+            Retry
+          </Button>
+        </div>
       </div>
     )
   }
 
   return (
-    <div
-      className={cn(
-        "min-h-screen transition-colors duration-1000",
-        isDayPhase
-          ? "bg-gradient-to-br from-yellow-100 via-orange-100 to-red-100"
-          : "bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900",
-      )}
-    >
+    <div className="min-h-screen bg-background transition-colors duration-500">
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
-        <div
-          className={cn(
-            "flex justify-between items-center mb-8 p-4 rounded-lg",
-            isDayPhase ? "bg-white/80 text-gray-900" : "bg-white/10 text-white",
-          )}
-        >
+        <div className="flex justify-between items-start mb-8 pb-6 border-b border-border/60">
           <div>
-            <h1 className="text-3xl font-bold">
-              {/*When starting a game the game counter gets incremented by 1, so we need to subtract 1 to get the correct game number*/}
-              {gameData.serverConfig?.gameName} Game {gameData.serverConfig?.gameCounter ? gameData.serverConfig.gameCounter - 1 : gameId}
+            <div className="flex items-center gap-2.5 mb-1">
+              {isDayPhase ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-primary" />}
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                {gameData.phase === "signup"
+                  ? "Sign Up Phase"
+                  : gameData.phase === "night"
+                    ? `Night ${gameData.dayNumber}`
+                    : `Day ${gameData.dayNumber}`}
+              </span>
+            </div>
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+              {gameData.serverConfig?.gameName} Game{" "}
+              {gameData.serverConfig?.gameCounter ? gameData.serverConfig.gameCounter - 1 : gameId}
             </h1>
-            <p className="text-lg flex items-center gap-2">
-              {isDayPhase ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-              {gameData.phase === "signup"
-                ? "Sign Up Phase"
-                : gameData.phase === "night"
-                  ? `Night ${gameData.dayNumber}`
-                  : `Day ${gameData.dayNumber}`}
-            </p>
-            <p className="text-sm opacity-75 mt-1">
-              Phase changes are managed by the Discord bot
-            </p>
-            <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <p className="text-xs text-muted-foreground mt-1">Phase changes are managed by the Discord bot</p>
+            <div className="flex items-center gap-2 mt-4 flex-wrap">
               {gameData.phase === "signup" && (
                 <>
-                  <Button
-                    onClick={() => setAddChannelModalOpen(true)}
-                    variant="outline"
-                    size="sm"
-                    className={cn(
-                      "flex items-center gap-2",
-                      isDayPhase ? "bg-white/90" : "bg-white/10"
-                    )}
-                  >
-                    <Plus className="w-4 h-4" />
+                  <Button onClick={() => setAddChannelModalOpen(true)} variant="outline" size="sm" className="gap-1.5 text-xs">
+                    <Plus className="w-3.5 h-3.5" />
                     Add Channel
                   </Button>
-
-                  <Button
-                    onClick={() => setManageChannelsModalOpen(true)}
-                    variant="outline"
-                    size="sm"
-                    className={cn(
-                      "flex items-center gap-2",
-                      isDayPhase ? "bg-white/90" : "bg-white/10"
-                    )}
-                  >
-                    <Users className="w-4 h-4" />
+                  <Button onClick={() => setManageChannelsModalOpen(true)} variant="outline" size="sm" className="gap-1.5 text-xs">
+                    <Users className="w-3.5 h-3.5" />
                     Manage Channels
                   </Button>
                 </>
               )}
-
-              <Button
-                onClick={() => setBreakdownBuilderModalOpen(true)}
-                variant="outline"
-                size="sm"
-                className={cn(
-                  "flex items-center gap-2",
-                  isDayPhase ? "bg-white/90" : "bg-white/10"
-                )}
-              >
-                <ClipboardList className="w-4 h-4" />
+              <Button onClick={() => setBreakdownBuilderModalOpen(true)} variant="outline" size="sm" className="gap-1.5 text-xs">
+                <ClipboardList className="w-3.5 h-3.5" />
                 Breakdown Builder
               </Button>
-
-              <Button
-                onClick={() => setSettingsModalOpen(true)}
-                variant="outline"
-                size="sm"
-                className={cn(
-                  "flex items-center gap-2",
-                  isDayPhase ? "bg-white/90" : "bg-white/10"
-                )}
-              >
-                <Settings className="w-4 h-4" />
+              <Button onClick={() => setSettingsModalOpen(true)} variant="outline" size="sm" className="gap-1.5 text-xs">
+                <Settings className="w-3.5 h-3.5" />
                 Settings
               </Button>
-
               {gameData.phase === "signup" && gameData.serverId && (
-                <Button
-                  onClick={() => setServerRolesModalOpen(true)}
-                  variant="outline"
-                  size="sm"
-                  className={cn(
-                    "flex items-center gap-2",
-                    isDayPhase ? "bg-white/90" : "bg-white/10"
-                  )}
-                >
-                  <Server className="w-4 h-4" />
+                <Button onClick={() => setServerRolesModalOpen(true)} variant="outline" size="sm" className="gap-1.5 text-xs">
+                  <Server className="w-3.5 h-3.5" />
                   Server Roles
                 </Button>
               )}
@@ -998,24 +941,18 @@ export default function GameManagementPage() {
         {gameData.phase === "signup" && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Signed Up Players */}
-            <Card className={isDayPhase ? "bg-white/90" : "bg-white/10"}>
+            <Card className="bg-card border-border">
               <CardHeader>
-                <CardTitle className={cn("flex items-center gap-2", isDayPhase ? "text-gray-900" : "text-white")}>
-                  <Users className="w-5 h-5" />
-                  Signed Up Players ({players.length})
+                <CardTitle className="flex items-center gap-2 text-foreground text-base">
+                  <Users className="w-4 h-4 text-muted-foreground" />
+                  Players ({players.length})
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {players.map((player) => (
-                    <div
-                      key={player.id}
-                      className={cn(
-                        "p-2 rounded border",
-                        isDayPhase ? "bg-white border-gray-200" : "bg-white/5 border-white/20",
-                      )}
-                    >
-                      <span className={isDayPhase ? "text-gray-900" : "text-white"}>{player.username}</span>
+                    <div key={player.id} className="px-2.5 py-1.5 rounded bg-secondary/50 border border-border/50">
+                      <span className="text-sm text-foreground">{player.username}</span>
                     </div>
                   ))}
                 </div>
@@ -1023,180 +960,92 @@ export default function GameManagementPage() {
             </Card>
 
             {/* Role Selection */}
-            <Card className={isDayPhase ? "bg-white/90" : "bg-white/10"}>
+            <Card className="bg-card border-border">
               <CardHeader>
-                <CardTitle className={cn(isDayPhase ? "text-gray-900" : "text-white")}>
+                <CardTitle className="text-foreground text-base">
                   Selected Roles ({selectedRoleSlots.length})
                 </CardTitle>
 
                 {/* Theme Settings */}
-                <div className="space-y-4 pt-4 border-t border-white/20">
-                  <div className="flex items-center space-x-4">
+                <div className="space-y-3 pt-3 border-t border-border/60">
+                  <div className="flex items-center gap-4">
                     <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="themed"
-                        checked={gameData.isThemed}
-                        onCheckedChange={toggleThemed}
-                      />
-                      <label htmlFor="themed" className={cn("text-sm font-medium", isDayPhase ? "text-gray-900" : "text-white")}>
-                        Themed
-                      </label>
+                      <Checkbox id="themed" checked={gameData.isThemed} onCheckedChange={toggleThemed} />
+                      <label htmlFor="themed" className="text-sm text-foreground">Themed</label>
                     </div>
-
                     <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="skinned"
-                        checked={gameData.isSkinned}
-                        disabled={!gameData.isThemed}
-                        onCheckedChange={toggleSkinned}
-                      />
-                      <label htmlFor="skinned" className={cn("text-sm font-medium", isDayPhase ? "text-gray-900" : "text-white", !gameData.isThemed && "opacity-50")}>
-                        Skinned
-                      </label>
+                      <Checkbox id="skinned" checked={gameData.isSkinned} disabled={!gameData.isThemed} onCheckedChange={toggleSkinned} />
+                      <label htmlFor="skinned" className={cn("text-sm text-foreground", !gameData.isThemed && "opacity-40")}>Skinned</label>
                     </div>
                   </div>
-
                   {gameData.isThemed && (
                     <div className="space-y-2">
-                      <Input
-                        placeholder="Enter theme name..."
-                        value={themeInput}
-                        onChange={(e) => setThemeInput(e.target.value)}
-                        className="text-sm"
-                      />
-                      <Button
-                        onClick={resetThemeSettings}
-                        size="sm"
-                        variant="destructive"
-                        className="w-full"
-                      >
-                        Reset Theme Settings
-                      </Button>
+                      <Input placeholder="Theme name…" value={themeInput} onChange={(e) => setThemeInput(e.target.value)} className="text-sm bg-background border-border" />
+                      <Button onClick={resetThemeSettings} size="sm" variant="destructive" className="w-full">Reset Theme</Button>
                     </div>
                   )}
                 </div>
 
-                <div className="flex gap-4 text-sm">
-                  <span className={cn("text-blue-600", isDayPhase ? "" : "text-blue-300")}>Town: {roleCount.town}</span>
-                  <span className={cn("text-red-600", isDayPhase ? "" : "text-red-300")}>Wolves: {roleCount.wolf}</span>
-                  <span className={cn("text-yellow-600", isDayPhase ? "" : "text-yellow-300")}>
-                    Neutral: {roleCount.neutral}
-                  </span>
+                <div className="flex gap-4 text-xs tabular-nums">
+                  <span className="text-blue-500 dark:text-blue-400">Town: {roleCount.town}</span>
+                  <span className="text-red-500 dark:text-red-400">Wolves: {roleCount.wolf}</span>
+                  <span className="text-amber-500 dark:text-amber-400">Neutral: {roleCount.neutral}</span>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="relative">
-                  <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                   <Input
-                    placeholder="Search roles..."
+                    placeholder="Search roles…"
                     value={roleSearch}
                     onChange={(e) => setRoleSearch(e.target.value)}
-                    className="pl-10"
+                    className="pl-9 bg-background border-border text-sm"
                   />
                 </div>
 
-                {/* Alignment Filter */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Filter className="w-4 h-4 text-gray-400" />
-                    <span className={cn("text-sm font-medium", isDayPhase ? "text-gray-700" : "text-gray-300")}>
-                      Filter by alignment:
-                    </span>
-                  </div>
-                  <div className="flex gap-2 flex-wrap">
+                <div className="flex gap-1.5 flex-wrap">
+                  {(["all", "town", "wolf", "neutral"] as const).map((a) => (
                     <Button
+                      key={a}
                       size="sm"
-                      variant={alignmentFilter === "all" ? "default" : "outline"}
-                      onClick={() => setAlignmentFilter("all")}
-                      className="text-xs"
+                      variant={alignmentFilter === a ? "default" : "outline"}
+                      onClick={() => setAlignmentFilter(a)}
+                      className="text-xs h-7 capitalize"
                     >
-                      All
+                      {a}
                     </Button>
-                    <Button
-                      size="sm"
-                      variant={alignmentFilter === "town" ? "default" : "outline"}
-                      onClick={() => setAlignmentFilter("town")}
-                      className="text-xs"
-                    >
-                      Town
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={alignmentFilter === "wolf" ? "destructive" : "outline"}
-                      onClick={() => setAlignmentFilter("wolf")}
-                      className="text-xs"
-                    >
-                      Wolf
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={alignmentFilter === "neutral" ? "secondary" : "outline"}
-                      onClick={() => setAlignmentFilter("neutral")}
-                      className="text-xs"
-                    >
-                      Neutral
-                    </Button>
-                  </div>
+                  ))}
                 </div>
 
-                <div className="space-y-2 max-h-64 overflow-y-auto">
+                <div className="space-y-1.5 max-h-64 overflow-y-auto">
                   {alignmentFilter === "all" ? (
-                    // Group by alignment when showing all
                     ["town", "wolf", "neutral"].map((alignment) => {
-                      const rolesInAlignment = filteredRoles.filter(role => role.alignment === alignment)
+                      const rolesInAlignment = filteredRoles.filter(r => r.alignment === alignment)
                       if (rolesInAlignment.length === 0) return null
-
+                      const labelClass = alignment === "town" ? "text-blue-500 dark:text-blue-400" :
+                        alignment === "wolf" ? "text-red-500 dark:text-red-400" : "text-amber-500 dark:text-amber-400"
                       return (
-                        <div key={alignment} className="space-y-2">
-                          <div className={cn("text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded",
-                            alignment === "town" ? "text-blue-600 bg-blue-100/50" :
-                              alignment === "wolf" ? "text-red-600 bg-red-100/50" :
-                                "text-yellow-600 bg-yellow-100/50",
-                            !isDayPhase && (
-                              alignment === "town" ? "text-blue-300 bg-blue-900/20" :
-                                alignment === "wolf" ? "text-red-300 bg-red-900/20" :
-                                  "text-yellow-300 bg-yellow-900/20"
-                            )
-                          )}>
+                        <div key={alignment} className="space-y-1">
+                          <p className={cn("text-[10px] font-semibold uppercase tracking-widest px-1 py-0.5", labelClass)}>
                             {alignment} ({rolesInAlignment.length})
-                          </div>
+                          </p>
                           {rolesInAlignment.map((role) => {
                             const selectedCount = selectedRoleSlots.filter((s) => s.role.id === role.id).length
                             return (
                               <div
                                 key={role.id}
                                 className={cn(
-                                  "p-2 rounded border cursor-pointer hover:bg-opacity-80 transition-colors ml-4",
-                                  isDayPhase
-                                    ? "bg-white border-gray-200 hover:bg-gray-50"
-                                    : "bg-white/5 border-white/20 hover:bg-white/10",
-                                  selectedCount > 0 && (isDayPhase ? "ring-2 ring-blue-200" : "ring-2 ring-blue-500/30")
+                                  "px-2.5 py-1.5 rounded border cursor-pointer transition-colors ml-3 text-sm",
+                                  "bg-secondary/40 border-border/50 hover:bg-secondary",
+                                  selectedCount > 0 && "ring-1 ring-primary/40 border-primary/30"
                                 )}
                                 onClick={() => addRoleToGame(role)}
                               >
-                                <div className="flex justify-between items-center">
-                                  <div className="flex items-center gap-2">
-                                    <span className={cn("font-medium", isDayPhase ? "text-gray-900" : "text-white")}>
-                                      {role.name}
-                                    </span>
-                                    <Badge
-                                      variant={
-                                        role.alignment === "town"
-                                          ? "default"
-                                          : role.alignment === "wolf"
-                                            ? "destructive"
-                                            : "secondary"
-                                      }
-                                      className="text-xs"
-                                    >
-                                      {role.alignment}
-                                    </Badge>
-                                    {selectedCount > 0 && (
-                                      <Badge variant="outline" className="text-xs bg-blue-50">
-                                        {selectedCount} selected
-                                      </Badge>
-                                    )}
-                                  </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-foreground">{role.name}</span>
+                                  {selectedCount > 0 && (
+                                    <span className="text-[10px] text-primary tabular-nums">×{selectedCount}</span>
+                                  )}
                                 </div>
                               </div>
                             )
@@ -1205,58 +1054,33 @@ export default function GameManagementPage() {
                       )
                     })
                   ) : (
-                    // Show flat list when filtering by specific alignment
                     filteredRoles.map((role) => {
                       const selectedCount = selectedRoleSlots.filter((s) => s.role.id === role.id).length
                       return (
                         <div
                           key={role.id}
                           className={cn(
-                            "p-2 rounded border cursor-pointer hover:bg-opacity-80 transition-colors",
-                            isDayPhase
-                              ? "bg-white border-gray-200 hover:bg-gray-50"
-                              : "bg-white/5 border-white/20 hover:bg-white/10",
-                            selectedCount > 0 && (isDayPhase ? "ring-2 ring-blue-200" : "ring-2 ring-blue-500/30")
+                            "px-2.5 py-1.5 rounded border cursor-pointer transition-colors text-sm",
+                            "bg-secondary/40 border-border/50 hover:bg-secondary",
+                            selectedCount > 0 && "ring-1 ring-primary/40 border-primary/30"
                           )}
                           onClick={() => addRoleToGame(role)}
                         >
-                          <div className="flex justify-between items-center">
-                            <div className="flex items-center gap-2">
-                              <span className={cn("font-medium", isDayPhase ? "text-gray-900" : "text-white")}>
-                                {role.name}
-                              </span>
-                              <Badge
-                                variant={
-                                  role.alignment === "town"
-                                    ? "default"
-                                    : role.alignment === "wolf"
-                                      ? "destructive"
-                                      : "secondary"
-                                }
-                                className="text-xs"
-                              >
-                                {role.alignment}
-                              </Badge>
-                              {selectedCount > 0 && (
-                                <Badge variant="outline" className="text-xs bg-blue-50">
-                                  {selectedCount} selected
-                                </Badge>
-                              )}
-                            </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-foreground">{role.name}</span>
+                            {selectedCount > 0 && (
+                              <span className="text-[10px] text-primary tabular-nums">×{selectedCount}</span>
+                            )}
                           </div>
                           {!role.inWolfChat && role.alignment === "wolf" && (
-                            <p className={cn("text-xs italic mt-1", isDayPhase ? "text-orange-600" : "text-orange-300")}>
-                              * Not added to wolf chat
-                            </p>
+                            <p className="text-[10px] italic mt-0.5 text-amber-500/70">* Not in wolf chat</p>
                           )}
                         </div>
                       )
                     })
                   )}
                   {filteredRoles.length === 0 && (
-                    <p className={cn("text-center py-4 text-sm", isDayPhase ? "text-gray-500" : "text-gray-300")}>
-                      No roles found matching your search criteria.
-                    </p>
+                    <p className="text-center py-4 text-xs text-muted-foreground">No roles match your search.</p>
                   )}
                 </div>
 
@@ -1285,150 +1109,64 @@ export default function GameManagementPage() {
                     return (
                     <div
                       key={roleName}
-                      className={cn(
-                        "p-2 rounded border",
-                        isDayPhase ? "bg-green-50 border-green-200" : "bg-green-900/20 border-green-700",
-                      )}
+                      className="px-2.5 py-2 rounded border bg-emerald-500/8 border-emerald-500/20"
                     >
                       <div className="flex justify-between items-center">
                         <div className="flex items-center gap-2">
-                          <span className={cn(isDayPhase ? "text-gray-900" : "text-white")}>{role.name}</span>
-                          <Badge
-                            variant={
-                              role.alignment === "town"
-                                ? "default"
-                                : role.alignment === "wolf"
-                                  ? "destructive"
-                                  : "secondary"
-                            }
-                            className="text-xs"
-                          >
-                            {role.alignment}
-                          </Badge>
+                          <span className="text-sm font-medium text-foreground">{role.name}</span>
                           {count > 1 && (
-                            <Badge variant="outline" className="text-xs">
-                              x{count}
-                            </Badge>
+                            <span className="text-[10px] text-muted-foreground tabular-nums">×{count}</span>
                           )}
                         </div>
                         <div className="flex items-center gap-1">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => addRoleToGame(role)}
-                            className="px-2 py-1 h-6"
-                          >
-                            +
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => removeRoleFromGame(indices[indices.length - 1])}
-                            className="px-2 py-1 h-6"
-                          >
-                            -
-                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => addRoleToGame(role)} className="px-2 py-0.5 h-6 text-xs">+</Button>
+                          <Button size="sm" variant="destructive" onClick={() => removeRoleFromGame(indices[indices.length - 1])} className="px-2 py-0.5 h-6 text-xs">−</Button>
                         </div>
                       </div>
-                      {/* Charge counter for roles with charges */}
                       {role.hasCharges && (
-                        <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-                          <div className="flex items-center justify-between">
-                            <span className={cn("text-xs font-medium", isDayPhase ? "text-gray-700" : "text-gray-300")}>
-                              Charges: {chargeVal}
-                            </span>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => updateRoleCharges(role.id, chargeVal + 1)}
-                                className="px-2 py-1 h-5 text-xs"
-                                disabled={chargeVal >= 10}
-                              >
-                                +
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() => updateRoleCharges(role.id, Math.max(0, chargeVal - 1))}
-                                className="px-2 py-1 h-5 text-xs"
-                                disabled={chargeVal <= 0}
-                              >
-                                -
-                              </Button>
-                            </div>
+                        <div className="mt-1.5 pt-1.5 border-t border-border/40 flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground tabular-nums">Charges: {chargeVal}</span>
+                          <div className="flex items-center gap-1">
+                            <Button size="sm" variant="outline" onClick={() => updateRoleCharges(role.id, chargeVal + 1)} className="px-2 h-5 text-xs" disabled={chargeVal >= 10}>+</Button>
+                            <Button size="sm" variant="outline" onClick={() => updateRoleCharges(role.id, Math.max(0, chargeVal - 1))} className="px-2 h-5 text-xs" disabled={chargeVal <= 0}>−</Button>
                           </div>
                         </div>
                       )}
-
-                      {/* Win by number counter for roles with win_by_number */}
                       {role.hasWinByNumber && (
-                        <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-                          <div className="flex items-center justify-between">
-                            <span className={cn("text-xs font-medium", isDayPhase ? "text-gray-700" : "text-gray-300")}>
-                              Win by number: {winVal}
-                            </span>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => updateRoleWinByNumber(role.id, winVal + 1)}
-                                className="px-2 py-1 h-5 text-xs"
-                                disabled={winVal >= 20}
-                              >
-                                +
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() => updateRoleWinByNumber(role.id, Math.max(0, winVal - 1))}
-                                className="px-2 py-1 h-5 text-xs"
-                                disabled={winVal <= 0}
-                              >
-                                -
-                              </Button>
-                            </div>
+                        <div className="mt-1.5 pt-1.5 border-t border-border/40 flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground tabular-nums">Win by: {winVal}</span>
+                          <div className="flex items-center gap-1">
+                            <Button size="sm" variant="outline" onClick={() => updateRoleWinByNumber(role.id, winVal + 1)} className="px-2 h-5 text-xs" disabled={winVal >= 20}>+</Button>
+                            <Button size="sm" variant="outline" onClick={() => updateRoleWinByNumber(role.id, Math.max(0, winVal - 1))} className="px-2 h-5 text-xs" disabled={winVal <= 0}>−</Button>
                           </div>
                         </div>
                       )}
-
                     </div>
                   )
                   })}
                   {selectedRoleSlots.length === 0 && (
-                    <p className={cn("text-center py-4", isDayPhase ? "text-gray-500" : "text-gray-300")}>
+                    <p className="text-center py-4 text-xs text-muted-foreground">
                       No roles selected. Click on roles above to add them.
                     </p>
                   )}
                 </div>
 
-                {/* Custom Role Names (when themed) — one field per selected seat */}
                 {gameData.isThemed && selectedRoleSlots.length > 0 && (
-                  <div className="pt-4 border-t border-white/20">
-                    <h4 className={cn("font-medium mb-3 text-sm", isDayPhase ? "text-gray-900" : "text-white")}>
-                      Custom Role Names
-                    </h4>
+                  <div className="pt-3 border-t border-border/60">
+                    <h4 className="text-xs font-semibold text-muted-foreground mb-2">Custom Role Names</h4>
                     <div className="space-y-2 max-h-40 overflow-y-auto">
                       {selectedRoleSlots.map((slot, index) => {
-                        const dupIndex = selectedRoleSlots
-                          .slice(0, index + 1)
-                          .filter((s) => s.role.id === slot.role.id).length
-                        const hasDupes =
-                          dupIndex > 1 ||
-                          selectedRoleSlots.some((s, i) => i > index && s.role.id === slot.role.id)
+                        const dupIndex = selectedRoleSlots.slice(0, index + 1).filter((s) => s.role.id === slot.role.id).length
+                        const hasDupes = dupIndex > 1 || selectedRoleSlots.some((s, i) => i > index && s.role.id === slot.role.id)
                         const label = hasDupes ? `${slot.role.name} (${dupIndex})` : slot.role.name
                         return (
                           <div key={`slot-${index}`} className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className={cn("text-xs font-medium", isDayPhase ? "text-gray-700" : "text-gray-300")}>
-                                {label}
-                              </span>
-                            </div>
+                            <span className="text-xs text-muted-foreground">{label}</span>
                             <Input
-                              placeholder={`Custom name for ${slot.role.name}...`}
+                              placeholder={`Custom name…`}
                               value={slot.customName}
                               onChange={(e) => updateSlotCustomName(index, e.target.value)}
-                              className="text-sm"
+                              className="text-sm bg-background border-border h-7"
                             />
                           </div>
                         )
@@ -1437,13 +1175,8 @@ export default function GameManagementPage() {
                   </div>
                 )}
 
-                {/* Save Game Roles Button */}
-                <div className="pt-4 border-t border-white/20">
-                  <Button
-                    onClick={saveGameRoles}
-                    className="w-full"
-                    disabled={selectedRoleSlots.length === 0}
-                  >
+                <div className="pt-3 border-t border-border/60">
+                  <Button onClick={saveGameRoles} className="w-full" disabled={selectedRoleSlots.length === 0}>
                     Save Role Configuration
                   </Button>
                 </div>
@@ -1451,110 +1184,64 @@ export default function GameManagementPage() {
             </Card>
 
             {/* Role Assignments */}
-            <Card className={isDayPhase ? "bg-white/90" : "bg-white/10"}>
+            <Card className="bg-card border-border">
               <CardHeader>
-                <CardTitle className={cn(isDayPhase ? "text-gray-900" : "text-white")}>Role Assignments</CardTitle>
+                <CardTitle className="text-foreground text-base">Assignments</CardTitle>
                 {players.some((p) => p.role) && (
-                  <div className="flex gap-4 text-sm">
-                    <span className={cn("text-blue-600", isDayPhase ? "" : "text-blue-300")}>
-                      Town: {assignedRoleCount.town}
-                    </span>
-                    <span className={cn("text-red-600", isDayPhase ? "" : "text-red-300")}>
-                      Wolves: {assignedRoleCount.wolf}
-                    </span>
-                    <span className={cn("text-yellow-600", isDayPhase ? "" : "text-yellow-300")}>
-                      Neutral: {assignedRoleCount.neutral}
-                    </span>
+                  <div className="flex gap-4 text-xs tabular-nums">
+                    <span className="text-blue-500 dark:text-blue-400">Town: {assignedRoleCount.town}</span>
+                    <span className="text-red-500 dark:text-red-400">Wolves: {assignedRoleCount.wolf}</span>
+                    <span className="text-amber-500 dark:text-amber-400">Neutral: {assignedRoleCount.neutral}</span>
                   </div>
                 )}
               </CardHeader>
               <CardContent>
-                <Button
-                  onClick={assignRoles}
-                  className="w-full mb-4"
-                  disabled={selectedRoleSlots.length !== players.length}
-                >
-                  <Shuffle className="w-4 h-4 mr-2" />
+                <Button onClick={assignRoles} className="w-full mb-3" disabled={selectedRoleSlots.length !== players.length}>
+                  <Shuffle className="w-3.5 h-3.5 mr-2" />
                   Assign Roles
                 </Button>
 
-                {/* Couple validation message */}
                 {getCoupleValidationMessage() && (
-                  <div className={cn(
-                    "p-3 rounded-md text-sm mb-4",
-                    isDayPhase ? "bg-orange-50 text-orange-700 border border-orange-200" : "bg-orange-900/20 text-orange-300 border border-orange-700"
-                  )}>
+                  <div className="px-2.5 py-2 rounded bg-amber-500/10 border border-amber-500/20 text-xs text-amber-400 mb-3">
                     {getCoupleValidationMessage()}
                   </div>
                 )}
 
                 {players.some((p) => p.role) && (
-                  <div className="space-y-4">
-                    {/* Town */}
+                  <div className="space-y-3">
                     {players.filter((p) => p.alignment === "town").length > 0 && (
                       <div>
-                        <h4 className={cn("font-semibold mb-2 text-blue-600", isDayPhase ? "" : "text-blue-300")}>
-                          Town ({assignedRoleCount.town})
-                        </h4>
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-blue-500 dark:text-blue-400 mb-1">Town ({assignedRoleCount.town})</p>
                         <div className="space-y-1">
-                          {players
-                            .filter((p) => p.alignment === "town")
-                            .map((player) => (
-                              <div
-                                key={player.id}
-                                className={cn("p-2 rounded text-sm", isDayPhase ? "bg-blue-50" : "bg-blue-900/20")}
-                              >
-                                <span className={cn(isDayPhase ? "text-gray-900" : "text-white")}>
-                                  {player.username} - {getDisplayRoleName(player)}
-                                </span>
-                              </div>
-                            ))}
+                          {players.filter((p) => p.alignment === "town").map((player) => (
+                            <div key={player.id} className="px-2 py-1 rounded bg-blue-500/8 text-xs text-foreground">
+                              {player.username} — {getDisplayRoleName(player)}
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}
-
-                    {/* Wolves */}
                     {players.filter((p) => p.alignment === "wolf").length > 0 && (
                       <div>
-                        <h4 className={cn("font-semibold mb-2 text-red-600", isDayPhase ? "" : "text-red-300")}>
-                          Wolves ({assignedRoleCount.wolf})
-                        </h4>
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-red-500 dark:text-red-400 mb-1">Wolves ({assignedRoleCount.wolf})</p>
                         <div className="space-y-1">
-                          {players
-                            .filter((p) => p.alignment === "wolf")
-                            .map((player) => (
-                              <div
-                                key={player.id}
-                                className={cn("p-2 rounded text-sm", isDayPhase ? "bg-red-50" : "bg-red-900/20")}
-                              >
-                                <span className={cn(isDayPhase ? "text-gray-900" : "text-white")}>
-                                  {player.username} - {getDisplayRoleName(player)}
-                                </span>
-                              </div>
-                            ))}
+                          {players.filter((p) => p.alignment === "wolf").map((player) => (
+                            <div key={player.id} className="px-2 py-1 rounded bg-red-500/8 text-xs text-foreground">
+                              {player.username} — {getDisplayRoleName(player)}
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}
-
-                    {/* Neutrals */}
                     {players.filter((p) => p.alignment === "neutral").length > 0 && (
                       <div>
-                        <h4 className={cn("font-semibold mb-2 text-yellow-600", isDayPhase ? "" : "text-yellow-300")}>
-                          Neutrals ({assignedRoleCount.neutral})
-                        </h4>
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-amber-500 dark:text-amber-400 mb-1">Neutrals ({assignedRoleCount.neutral})</p>
                         <div className="space-y-1">
-                          {players
-                            .filter((p) => p.alignment === "neutral")
-                            .map((player) => (
-                              <div
-                                key={player.id}
-                                className={cn("p-2 rounded text-sm", isDayPhase ? "bg-yellow-50" : "bg-yellow-900/20")}
-                              >
-                                <span className={cn(isDayPhase ? "text-gray-900" : "text-white")}>
-                                  {player.username} - {getDisplayRoleName(player)}
-                                </span>
-                              </div>
-                            ))}
+                          {players.filter((p) => p.alignment === "neutral").map((player) => (
+                            <div key={player.id} className="px-2 py-1 rounded bg-amber-500/8 text-xs text-foreground">
+                              {player.username} — {getDisplayRoleName(player)}
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}
@@ -1578,332 +1265,80 @@ export default function GameManagementPage() {
               {/* Players by Team */}
               <div className="lg:col-span-2 space-y-6">
                 {/* Living Players */}
-                <div className="space-y-4">
-
-                  {/* Town */}
-                  {players.filter((p) => p.alignment === "town" && p.status === "alive").length > 0 && (
-                    <Card className={isDayPhase ? "bg-white/90" : "bg-white/10"}>
-                      <CardHeader>
-                        <CardTitle className={cn("text-blue-600", isDayPhase ? "" : "text-blue-300")}>
-                          Town ({players.filter((p) => p.alignment === "town" && p.status === "alive").length})
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        {players
-                          .filter((p) => p.alignment === "town" && p.status === "alive")
-                          .map((player) => (
-                            <div
-                              key={player.id}
-                              className={cn(
-                                "p-3 rounded border",
-                                isDayPhase ? "bg-blue-50 border-blue-200" : "bg-blue-900/20 border-blue-700",
-                              )}
-                            >
-                              <div className="flex justify-between items-center mb-2">
-                                <div className="flex items-center gap-2 flex-1">
-                                  <span className={cn("font-medium", isDayPhase ? "text-gray-900" : "text-white")}>
-                                    {player.username} - {getDisplayRoleName(player)}
-                                  </span>
-                                </div>
-                                <div className="space-x-2">
-                                  <Button size="sm" variant="destructive" onClick={() => togglePlayerStatus(player.id)}>
-                                    Kill
-                                  </Button>
-                                </div>
+                <div className="space-y-3">
+                  {(["town", "wolf", "neutral"] as const).map((alignment) => {
+                    const alive = players.filter((p) => p.alignment === alignment && p.status === "alive")
+                    if (alive.length === 0) return null
+                    const labelClass = alignment === "town"
+                      ? "text-blue-500 dark:text-blue-400"
+                      : alignment === "wolf"
+                        ? "text-red-500 dark:text-red-400"
+                        : "text-amber-500 dark:text-amber-400"
+                    const rowClass = alignment === "town"
+                      ? "bg-blue-500/8 border-blue-500/20"
+                      : alignment === "wolf"
+                        ? "bg-red-500/8 border-red-500/20"
+                        : "bg-amber-500/8 border-amber-500/20"
+                    const label = alignment === "town" ? "Town" : alignment === "wolf" ? "Wolves" : "Neutrals"
+                    return (
+                      <Card key={alignment} className="bg-card border-border">
+                        <CardHeader className="pb-2">
+                          <CardTitle className={cn("text-sm", labelClass)}>
+                            {label} ({alive.length})
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-2">
+                          {alive.map((player) => (
+                            <div key={player.id} className={cn("px-3 py-2 rounded border", rowClass)}>
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm font-medium text-foreground">
+                                  {player.username} — {getDisplayRoleName(player)}
+                                </span>
+                                <Button size="sm" variant="destructive" onClick={() => togglePlayerStatus(player.id)}
+                                  className="h-6 px-2 text-xs">Kill</Button>
                               </div>
-
-                              {/* Charges for roles that have them */}
                               {roleHasCharges(player) && (
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span className={cn("text-sm font-medium", isDayPhase ? "text-gray-700" : "text-gray-300")}>
-                                    Charges:
-                                  </span>
-                                  <div className="flex items-center gap-1">
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => updatePlayerCharges(player.id, Math.max(0, (player.charges || 0) - 1))}
-                                      disabled={(player.charges || 0) <= 0}
-                                      className="px-2 py-1 h-6"
-                                    >
-                                      -
-                                    </Button>
-                                    <span className={cn("px-2 text-sm font-mono", isDayPhase ? "text-gray-900" : "text-white")}>
-                                      {player.charges || 0}
-                                    </span>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => updatePlayerCharges(player.id, (player.charges || 0) + 1)}
-                                      className="px-2 py-1 h-6"
-                                    >
-                                      +
-                                    </Button>
+                                <div className="flex items-center gap-2 mt-1.5 pt-1.5 border-t border-border/30">
+                                  <span className="text-xs text-muted-foreground tabular-nums">Charges: {player.charges || 0}</span>
+                                  <div className="flex gap-1 ml-auto">
+                                    <Button size="sm" variant="outline" onClick={() => updatePlayerCharges(player.id, Math.max(0, (player.charges || 0) - 1))} disabled={(player.charges || 0) <= 0} className="h-5 px-2 text-xs">−</Button>
+                                    <Button size="sm" variant="outline" onClick={() => updatePlayerCharges(player.id, (player.charges || 0) + 1)} className="h-5 px-2 text-xs">+</Button>
                                   </div>
                                 </div>
                               )}
-
-                              {/* Win by number for roles that have them */}
                               {roleHasWinByNumber(player) && (
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span className={cn("text-sm font-medium", isDayPhase ? "text-gray-700" : "text-gray-300")}>
-                                    Win by number:
-                                  </span>
-                                  <div className="flex items-center gap-1">
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => updatePlayerWinByNumber(player.id, Math.max(0, (player.winByNumber || 0) - 1))}
-                                      disabled={(player.winByNumber || 0) <= 0}
-                                      className="px-2 py-1 h-6"
-                                    >
-                                      -
-                                    </Button>
-                                    <span className={cn("px-2 text-sm font-mono", isDayPhase ? "text-gray-900" : "text-white")}>
-                                      {player.winByNumber || 0}
-                                    </span>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => updatePlayerWinByNumber(player.id, (player.winByNumber || 0) + 1)}
-                                      className="px-2 py-1 h-6"
-                                    >
-                                      +
-                                    </Button>
+                                <div className="flex items-center gap-2 mt-1.5 pt-1.5 border-t border-border/30">
+                                  <span className="text-xs text-muted-foreground tabular-nums">Win by: {player.winByNumber || 0}</span>
+                                  <div className="flex gap-1 ml-auto">
+                                    <Button size="sm" variant="outline" onClick={() => updatePlayerWinByNumber(player.id, Math.max(0, (player.winByNumber || 0) - 1))} disabled={(player.winByNumber || 0) <= 0} className="h-5 px-2 text-xs">−</Button>
+                                    <Button size="sm" variant="outline" onClick={() => updatePlayerWinByNumber(player.id, (player.winByNumber || 0) + 1)} className="h-5 px-2 text-xs">+</Button>
                                   </div>
                                 </div>
                               )}
                             </div>
                           ))}
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {/* Wolves */}
-                  {players.filter((p) => p.alignment === "wolf" && p.status === "alive").length > 0 && (
-                    <Card className={isDayPhase ? "bg-white/90" : "bg-white/10"}>
-                      <CardHeader>
-                        <CardTitle className={cn("text-red-600", isDayPhase ? "" : "text-red-300")}>
-                          Wolves ({players.filter((p) => p.alignment === "wolf" && p.status === "alive").length})
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        {players
-                          .filter((p) => p.alignment === "wolf" && p.status === "alive")
-                          .map((player) => (
-                            <div
-                              key={player.id}
-                              className={cn(
-                                "p-3 rounded border",
-                                isDayPhase ? "bg-red-50 border-red-200" : "bg-red-900/20 border-red-700",
-                              )}
-                            >
-                              <div className="flex justify-between items-center mb-2">
-                                <div className="flex items-center gap-2 flex-1">
-                                  <span className={cn("font-medium", isDayPhase ? "text-gray-900" : "text-white")}>
-                                    {player.username} - {getDisplayRoleName(player)}
-                                  </span>
-                                </div>
-                                <div className="space-x-2">
-                                  <Button size="sm" variant="destructive" onClick={() => togglePlayerStatus(player.id)}>
-                                    Kill
-                                  </Button>
-                                </div>
-                              </div>
-
-                              {/* Charges for roles that have them */}
-                              {roleHasCharges(player) && (
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span className={cn("text-sm font-medium", isDayPhase ? "text-gray-700" : "text-gray-300")}>
-                                    Charges:
-                                  </span>
-                                  <div className="flex items-center gap-1">
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => updatePlayerCharges(player.id, Math.max(0, (player.charges || 0) - 1))}
-                                      disabled={(player.charges || 0) <= 0}
-                                      className="px-2 py-1 h-6"
-                                    >
-                                      -
-                                    </Button>
-                                    <span className={cn("px-2 text-sm font-mono", isDayPhase ? "text-gray-900" : "text-white")}>
-                                      {player.charges || 0}
-                                    </span>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => updatePlayerCharges(player.id, (player.charges || 0) + 1)}
-                                      className="px-2 py-1 h-6"
-                                    >
-                                      +
-                                    </Button>
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Win by number for roles that have them */}
-                              {roleHasWinByNumber(player) && (
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span className={cn("text-sm font-medium", isDayPhase ? "text-gray-700" : "text-gray-300")}>
-                                    Win by number:
-                                  </span>
-                                  <div className="flex items-center gap-1">
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => updatePlayerWinByNumber(player.id, Math.max(0, (player.winByNumber || 0) - 1))}
-                                      disabled={(player.winByNumber || 0) <= 0}
-                                      className="px-2 py-1 h-6"
-                                    >
-                                      -
-                                    </Button>
-                                    <span className={cn("px-2 text-sm font-mono", isDayPhase ? "text-gray-900" : "text-white")}>
-                                      {player.winByNumber || 0}
-                                    </span>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => updatePlayerWinByNumber(player.id, (player.winByNumber || 0) + 1)}
-                                      className="px-2 py-1 h-6"
-                                    >
-                                      +
-                                    </Button>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {/* Neutrals */}
-                  {players.filter((p) => p.alignment === "neutral" && p.status === "alive").length > 0 && (
-                    <Card className={isDayPhase ? "bg-white/90" : "bg-white/10"}>
-                      <CardHeader>
-                        <CardTitle className={cn("text-yellow-600", isDayPhase ? "" : "text-yellow-300")}>
-                          Neutrals ({players.filter((p) => p.alignment === "neutral" && p.status === "alive").length})
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        {players
-                          .filter((p) => p.alignment === "neutral" && p.status === "alive")
-                          .map((player) => (
-                            <div
-                              key={player.id}
-                              className={cn(
-                                "p-3 rounded border",
-                                isDayPhase ? "bg-yellow-50 border-yellow-200" : "bg-yellow-900/20 border-yellow-700",
-                              )}
-                            >
-                              <div className="flex justify-between items-center mb-2">
-                                <div className="flex items-center gap-2 flex-1">
-                                  <span className={cn("font-medium", isDayPhase ? "text-gray-900" : "text-white")}>
-                                    {player.username} - {getDisplayRoleName(player)}
-                                  </span>
-                                </div>
-                                <div className="space-x-2">
-                                  <Button size="sm" variant="destructive" onClick={() => togglePlayerStatus(player.id)}>
-                                    Kill
-                                  </Button>
-                                </div>
-                              </div>
-
-                              {/* Charges for roles that have them */}
-                              {roleHasCharges(player) && (
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span className={cn("text-sm font-medium", isDayPhase ? "text-gray-700" : "text-gray-300")}>
-                                    Charges:
-                                  </span>
-                                  <div className="flex items-center gap-1">
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => updatePlayerCharges(player.id, Math.max(0, (player.charges || 0) - 1))}
-                                      disabled={(player.charges || 0) <= 0}
-                                      className="px-2 py-1 h-6"
-                                    >
-                                      -
-                                    </Button>
-                                    <span className={cn("px-2 text-sm font-mono", isDayPhase ? "text-gray-900" : "text-white")}>
-                                      {player.charges || 0}
-                                    </span>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => updatePlayerCharges(player.id, (player.charges || 0) + 1)}
-                                      className="px-2 py-1 h-6"
-                                    >
-                                      +
-                                    </Button>
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Win by number for roles that have them */}
-                              {roleHasWinByNumber(player) && (
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span className={cn("text-sm font-medium", isDayPhase ? "text-gray-700" : "text-gray-300")}>
-                                    Win by number:
-                                  </span>
-                                  <div className="flex items-center gap-1">
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => updatePlayerWinByNumber(player.id, Math.max(0, (player.winByNumber || 0) - 1))}
-                                      disabled={(player.winByNumber || 0) <= 0}
-                                      className="px-2 py-1 h-6"
-                                    >
-                                      -
-                                    </Button>
-                                    <span className={cn("px-2 text-sm font-mono", isDayPhase ? "text-gray-900" : "text-white")}>
-                                      {player.winByNumber || 0}
-                                    </span>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => updatePlayerWinByNumber(player.id, (player.winByNumber || 0) + 1)}
-                                      className="px-2 py-1 h-6"
-                                    >
-                                      +
-                                    </Button>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                      </CardContent>
-                    </Card>
-                  )}
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
 
                   {/* Dead Players */}
                   {players.filter((p) => p.status === "dead").length > 0 && (
-                    <Card className={isDayPhase ? "bg-white/90" : "bg-white/10"}>
-                      <CardHeader>
-                        <CardTitle className={cn("text-gray-600", isDayPhase ? "" : "text-gray-300")}>
+                    <Card className="bg-card border-border">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm text-muted-foreground">
                           Dead ({players.filter((p) => p.status === "dead").length})
                         </CardTitle>
                       </CardHeader>
-                      <CardContent className="space-y-2">
-                        {players
-                          .filter((p) => p.status === "dead")
-                          .map((player) => (
-                            <div
-                              key={player.id}
-                              className={cn(
-                                "p-2 rounded border flex justify-between items-center",
-                                isDayPhase ? "bg-gray-100 border-gray-200" : "bg-gray-800/20 border-gray-600",
-                              )}
-                            >
-                              <span className={cn("text-sm", isDayPhase ? "text-gray-700" : "text-gray-300")}>
-                                {player.username} - {getDisplayRoleName(player)}
-                              </span>
-                              <Button size="sm" variant="outline" onClick={() => togglePlayerStatus(player.id)}>
-                                Revive
-                              </Button>
-                            </div>
-                          ))}
+                      <CardContent className="space-y-1.5">
+                        {players.filter((p) => p.status === "dead").map((player) => (
+                          <div key={player.id} className="px-2.5 py-1.5 rounded border bg-muted/30 border-border/50 flex justify-between items-center">
+                            <span className="text-sm text-muted-foreground line-through">
+                              {player.username} — {getDisplayRoleName(player)}
+                            </span>
+                            <Button size="sm" variant="outline" onClick={() => togglePlayerStatus(player.id)} className="h-6 px-2 text-xs">Revive</Button>
+                          </div>
+                        ))}
                       </CardContent>
                     </Card>
                   )}
@@ -1912,50 +1347,51 @@ export default function GameManagementPage() {
 
               {/* Voting Booth (Day Phase Only) */}
               {gameData.phase === "day" && (
-                <Card className={isDayPhase ? "bg-white/90" : "bg-white/10"}>
-                  <CardHeader>
-                    <CardTitle className={cn(isDayPhase ? "text-gray-900" : "text-white")}>Voting Booth</CardTitle>
-                    <p className={cn("text-sm", isDayPhase ? "text-gray-600" : "text-gray-300")}>
-                      Votes needed to hang: {gameData.votesToHang}
+                <Card className="bg-card border-border">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base text-foreground">Voting Booth</CardTitle>
+                    <p className="text-xs text-muted-foreground tabular-nums">
+                      Votes to hang: {gameData.votesToHang}
                     </p>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                      <h4 className={cn("font-medium", isDayPhase ? "text-gray-900" : "text-white")}>Vote Count:</h4>
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Tally</p>
                       {Object.entries(voteCount).map(([target, count]) => (
                         <div
                           key={target}
                           className={cn(
-                            "flex justify-between items-center p-2 rounded",
+                            "flex justify-between items-center px-2.5 py-2 rounded border text-sm",
                             count >= gameData.votesToHang
-                              ? isDayPhase
-                                ? "bg-red-100 border border-red-300"
-                                : "bg-red-900/30 border border-red-700"
-                              : isDayPhase
-                                ? "bg-gray-50"
-                                : "bg-white/5",
+                              ? "bg-red-500/10 border-red-500/25"
+                              : "bg-secondary/40 border-border/50",
                           )}
                         >
-                          <span className={cn(isDayPhase ? "text-gray-900" : "text-white")}>{target}</span>
-                          <Badge variant={count >= gameData.votesToHang ? "destructive" : "secondary"}>
-                            {count} votes
+                          <span className="font-medium text-foreground">{target}</span>
+                          <Badge className={cn(
+                            "text-xs tabular-nums",
+                            count >= gameData.votesToHang
+                              ? "bg-red-500/15 text-red-400 border-red-500/25"
+                              : "bg-secondary text-muted-foreground border-border"
+                          )}>
+                            {count}
                           </Badge>
                         </div>
                       ))}
                     </div>
 
-                    <div className="space-y-2">
-                      <h4 className={cn("font-medium", isDayPhase ? "text-gray-900" : "text-white")}>
-                        Individual Votes:
-                      </h4>
-                      {votes.map((vote, index) => (
-                        <div key={index} className={cn("text-sm p-2 rounded", isDayPhase ? "bg-gray-50" : "bg-white/5")}>
-                          <span className={cn(isDayPhase ? "text-gray-900" : "text-white")}>
-                            {vote.voterUsername} → {vote.targetUsername}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+                    {votes.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Individual</p>
+                        {votes.map((vote, index) => (
+                          <div key={index} className="text-xs px-2.5 py-1.5 rounded bg-secondary/30 text-muted-foreground">
+                            <span className="text-foreground font-medium">{vote.voterUsername}</span>
+                            {" → "}
+                            <span className="text-foreground">{vote.targetUsername}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               )}

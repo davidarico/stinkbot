@@ -237,7 +237,7 @@ export default function ServerRolesPage() {
 
   if (isAuthenticated === null) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-white" />
       </div>
     )
@@ -249,21 +249,21 @@ export default function ServerRolesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className="min-h-screen bg-background text-white">
       <div className="container mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-4">
             <Button
               variant="outline"
               onClick={() => router.push('/admin')}
-              className="border-gray-600 text-gray-300 hover:bg-gray-700"
+              className="border-border text-muted-foreground hover:bg-secondary"
             >
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back
             </Button>
             <div>
               <h1 className="text-3xl font-bold text-white">Server-Specific Roles</h1>
-              <p className="text-gray-300 mt-2">Manage roles for specific Discord servers</p>
+              <p className="text-muted-foreground mt-2">Manage roles for specific Discord servers</p>
             </div>
           </div>
         </div>
@@ -274,16 +274,16 @@ export default function ServerRolesPage() {
           </Alert>
         )}
 
-        <Card className="bg-gray-800 border-gray-700 mb-6">
+        <Card className="bg-card border-border mb-6">
           <CardHeader>
             <CardTitle className="text-white">Select Server</CardTitle>
-            <CardDescription className="text-gray-300">
+            <CardDescription className="text-muted-foreground">
               Choose a server to manage its roles
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Select value={selectedServer || ''} onValueChange={setSelectedServer}>
-              <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+              <SelectTrigger className="bg-secondary border-border text-white">
                 <SelectValue placeholder="Select a server" />
               </SelectTrigger>
               <SelectContent>
@@ -310,10 +310,10 @@ export default function ServerRolesPage() {
                     Add Role
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="bg-gray-800 border-gray-700 text-white max-h-[90vh] overflow-y-auto">
+                <DialogContent className="bg-card border-border text-white max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle className="text-white">Create Server-Specific Role</DialogTitle>
-                    <DialogDescription className="text-gray-300">
+                    <DialogDescription className="text-muted-foreground">
                       Add a new role that will only be available on this server
                     </DialogDescription>
                   </DialogHeader>
@@ -324,14 +324,14 @@ export default function ServerRolesPage() {
                         id="name"
                         value={newRole.name}
                         onChange={(e) => setNewRole({ ...newRole, name: e.target.value })}
-                        className="bg-gray-700 border-gray-600 text-white"
+                        className="bg-secondary border-border text-white"
                         placeholder="e.g., Custom Seer"
                       />
                     </div>
                     <div>
                       <Label htmlFor="team" className="text-white">Team</Label>
                       <Select value={newRole.team} onValueChange={(value) => setNewRole({ ...newRole, team: value })}>
-                        <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                        <SelectTrigger className="bg-secondary border-border text-white">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -347,7 +347,7 @@ export default function ServerRolesPage() {
                         id="description"
                         value={newRole.description}
                         onChange={(e) => setNewRole({ ...newRole, description: e.target.value })}
-                        className="bg-gray-700 border-gray-600 text-white"
+                        className="bg-secondary border-border text-white"
                         placeholder="Role description"
                         rows={3}
                       />
@@ -358,7 +358,7 @@ export default function ServerRolesPage() {
                         id="targets"
                         value={newRole.targets}
                         onChange={(e) => setNewRole({ ...newRole, targets: e.target.value })}
-                        className="bg-gray-700 border-gray-600 text-white"
+                        className="bg-secondary border-border text-white"
                         placeholder="e.g., Players, Houses"
                       />
                     </div>
@@ -394,7 +394,7 @@ export default function ServerRolesPage() {
                           type="number"
                           value={newRole.defaultCharges}
                           onChange={(e) => setNewRole({ ...newRole, defaultCharges: parseInt(e.target.value) || 0 })}
-                          className="bg-gray-700 border-gray-600 text-white"
+                          className="bg-secondary border-border text-white"
                         />
                       </div>
                     )}
@@ -414,7 +414,7 @@ export default function ServerRolesPage() {
                           type="number"
                           value={newRole.defaultWinByNumber}
                           onChange={(e) => setNewRole({ ...newRole, defaultWinByNumber: parseInt(e.target.value) || 0 })}
-                          className="bg-gray-700 border-gray-600 text-white"
+                          className="bg-secondary border-border text-white"
                         />
                       </div>
                     )}
@@ -431,7 +431,7 @@ export default function ServerRolesPage() {
                     <Button
                       variant="outline"
                       onClick={() => setIsDialogOpen(false)}
-                      className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                      className="border-border text-muted-foreground hover:bg-secondary"
                     >
                       Cancel
                     </Button>
@@ -449,21 +449,21 @@ export default function ServerRolesPage() {
                 <Loader2 className="h-8 w-8 animate-spin text-white" />
               </div>
             ) : roles.length === 0 ? (
-              <Card className="bg-gray-800 border-gray-700">
+              <Card className="bg-card border-border">
                 <CardContent className="py-12 text-center">
                   <Server className="h-12 w-12 mx-auto text-gray-500 mb-4" />
-                  <p className="text-gray-400">No server-specific roles found. Create one to get started.</p>
+                  <p className="text-muted-foreground">No server-specific roles found. Create one to get started.</p>
                 </CardContent>
               </Card>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {roles.map((role) => (
-                  <Card key={role.id} className="bg-gray-800 border-gray-700">
+                  <Card key={role.id} className="bg-card border-border">
                     <CardHeader>
                       <div className="flex items-start justify-between">
                         <div>
                           <CardTitle className="text-white">{role.name}</CardTitle>
-                          <CardDescription className="text-gray-300 capitalize">
+                          <CardDescription className="text-muted-foreground capitalize">
                             {role.alignment || 'Unknown'}
                           </CardDescription>
                         </div>
@@ -479,7 +479,7 @@ export default function ServerRolesPage() {
                     </CardHeader>
                     <CardContent>
                       {role.description && (
-                        <p className="text-gray-300 text-sm mb-2">{role.description}</p>
+                        <p className="text-muted-foreground text-sm mb-2">{role.description}</p>
                       )}
                       <div className="flex flex-wrap gap-2 mt-4">
                         {role.moves && (

@@ -29,7 +29,7 @@ export function KanbanColumn({ id, title, color, tasks, onEditTask }: KanbanColu
   })
 
   return (
-    <Card className={`bg-gray-800 border-gray-700 min-h-[400px] ${isOver ? 'ring-2 ring-blue-500' : ''} py-0`}>
+    <Card className={`bg-card border-border min-h-[400px] ${isOver ? 'ring-2 ring-blue-500' : ''} py-0`}>
       <CardHeader className={`${color} text-white rounded-t-lg py-2`}>
         <CardTitle className="text-lg font-semibold">
           {title}
