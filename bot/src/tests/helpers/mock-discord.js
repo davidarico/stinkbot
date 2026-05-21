@@ -13,7 +13,7 @@ function createMockMessage(overrides = {}) {
             id: 'user-123',
             displayName: 'TestUser',
             roles: {
-                cache: { has: jest.fn().mockReturnValue(false) },
+                cache: { has: jest.fn().mockReturnValue(false), some: jest.fn().mockReturnValue(false) },
                 add: jest.fn().mockResolvedValue(undefined),
                 remove: jest.fn().mockResolvedValue(undefined),
             },
@@ -79,7 +79,7 @@ function createMockMember(overrides = {}) {
         displayName: 'MockMember',
         user: { id: 'user-' + Math.random().toString(36).slice(2), tag: 'MockMember#0001' },
         roles: {
-            cache: { has: jest.fn().mockReturnValue(false) },
+            cache: { has: jest.fn().mockReturnValue(false), some: jest.fn().mockReturnValue(false) },
             add: jest.fn().mockResolvedValue(undefined),
             remove: jest.fn().mockResolvedValue(undefined),
         },

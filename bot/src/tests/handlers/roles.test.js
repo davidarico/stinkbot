@@ -60,6 +60,20 @@ describe('Roles Handlers', () => {
         });
     });
 
+    describe('hasTownCouncilRole', () => {
+        it('returns true when member has Town Council role', () => {
+            const member = createMockMember();
+            member.roles.cache.some = jest.fn((fn) => fn({ name: 'Town Council' }));
+            expect(bot.hasTownCouncilRole(member)).toBe(true);
+        });
+
+        it('returns false when member does not have Town Council role', () => {
+            const member = createMockMember();
+            member.roles.cache.some = jest.fn().mockReturnValue(false);
+            expect(bot.hasTownCouncilRole(member)).toBe(false);
+        });
+    });
+
     describe('isPublicChannel', () => {
         it('returns true for a regular channel', () => {
             const msg = createMockMessage();
@@ -128,12 +142,26 @@ describe('Roles Handlers', () => {
             expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('Mod'));
         });
 
+        it('allows Town Council member to remove Mod from others', async () => {
+            bot.db.query = jest.fn().mockResolvedValue({ rows: [] }); // not super user
+            const targetMember = { id: 'other-id', toString: () => '<@other-id>' };
+            const msg = createMockMessage();
+            msg.mentions.members = { first: jest.fn().mockReturnValue(targetMember) };
+            msg.member.roles.cache.some = jest.fn().mockReturnValue(true); // has Town Council role
+            bot.removeRole = jest.fn().mockResolvedValue(undefined);
+
+            await bot.handleUnmod(msg, []);
+
+            expect(bot.removeRole).toHaveBeenCalledWith(targetMember, 'Mod');
+            expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('Mod'));
+        });
+
         it('prevents non-super-user from removing Mod from others', async () => {
             bot.db.query = jest.fn().mockResolvedValue({ rows: [] }); // not super user
             const targetMember = { id: 'other-user-id' }; // different from author
             const msg = createMockMessage();
             msg.mentions.members = { first: jest.fn().mockReturnValue(targetMember) };
-            // member.permissions.has returns false by default (no mod perms)
+            // member.permissions.has and roles.cache.some return false by default
 
             await bot.handleUnmod(msg, []);
 

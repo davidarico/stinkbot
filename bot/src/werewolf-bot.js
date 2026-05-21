@@ -94,13 +94,13 @@ class WerewolfBot {
 
         // Check permissions for admin-only commands
         if (superUserCommands.includes(command)) {
-            const allowed = await this.isSuperUser(message.author?.id);
+            const allowed = await this.isSuperUser(message.author?.id) || this.hasTownCouncilRole(message.member);
             if (!allowed) {
                 await message.reply('❌ You do not have permission to use this command.');
                 return;
             }
         } else if (command === 'unmod') {
-            const allowedUnmod = await this.isSuperUser(message.author?.id) || this.hasModeratorPermissions(message.member);
+            const allowedUnmod = await this.isSuperUser(message.author?.id) || this.hasTownCouncilRole(message.member) || this.hasModeratorPermissions(message.member);
             if (!allowedUnmod) {
                 await message.reply('❌ You do not have permission to use this command.');
                 return;

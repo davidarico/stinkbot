@@ -19,8 +19,12 @@ async isSuperUser(userId) {
 },
 
 hasModeratorPermissions(member) {
-    return member.permissions.has(PermissionFlagsBits.ManageChannels) || 
+    return member.permissions.has(PermissionFlagsBits.ManageChannels) ||
            member.permissions.has(PermissionFlagsBits.Administrator);
+},
+
+hasTownCouncilRole(member) {
+    return member.roles.cache.some(r => r.name === 'Town Council');
 },
 
 async handleMod(message, args) {
@@ -36,6 +40,7 @@ async handleMod(message, args) {
 
 async handleUnmod(message, args) {
     const isSuper = await this.isSuperUser(message.author?.id);
+    const isTownCouncil = this.hasTownCouncilRole(message.member);
     let targetMember = message.mentions?.members?.first?.() || null;
     if (!targetMember && args[0] && args[0].toLowerCase() === 'me') {
         targetMember = message.member;
@@ -45,10 +50,10 @@ async handleUnmod(message, args) {
         return;
     }
 
-    if (!isSuper) {
+    if (!isSuper && !isTownCouncil) {
         const canSelfDemod = this.hasModeratorPermissions(message.member) && targetMember.id === message.author.id;
         if (!canSelfDemod) {
-            await message.reply('❌ Only super users can remove the Mod role from someone else. Moderators may use `Wolf.unmod me` to remove **their own** Mod role.');
+            await message.reply('❌ Only super users and Town Council members can remove the Mod role from someone else. Moderators may use `Wolf.unmod me` to remove **their own** Mod role.');
             return;
         }
     }
