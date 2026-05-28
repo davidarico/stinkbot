@@ -40,7 +40,8 @@ export function ActionCalculators({ players, gameRoles, isDayPhase }: ActionCalc
   }
 
   const alivePlayers = players.filter(p => p.status === "alive")
-  
+  const sleepwalkerPlayer = players.find(p => p.role === "Sleepwalker")?.username
+
   return (
     <Card className="bg-white/10">
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -68,8 +69,9 @@ export function ActionCalculators({ players, gameRoles, isDayPhase }: ActionCalc
               />
               
               {/* Sleepwalker Calculator */}
-              <SleepwalkerCalculator 
+              <SleepwalkerCalculator
                 players={alivePlayers}
+                sleepwalkerPlayer={sleepwalkerPlayer}
               />
 
               <BloodhoundCalculator players={alivePlayers} gameRoles={gameRoles} />
