@@ -283,4 +283,143 @@ describe('Voting Handlers', () => {
             expect(reply.embeds[0].data.description).not.toContain('Bob');
         });
     });
+
+    describe('sendRoleNotificationsToJournals (wolf chat adds)', () => {
+        const GAME_ID = 1;
+        const SERVER_ID = 'guild-123';
+
+        let wolfChannel;
+        let modChannel;
+        let guild;
+
+        const game = {
+            is_skinned: false,
+            is_themed: false,
+            wolf_chat_channel_id: 'wolf-chat-id',
+            mod_chat_channel_id: 'mod-chat-id',
+        };
+
+        const wolfPlayer = (n) => ({
+            user_id: `wolf-${n}-id`,
+            username: `Wolf${n}`,
+            role_id: 10,
+            is_wolf: true,
+            role_name: 'Werewolf',
+            in_wolf_chat: true,
+            team: 'wolf',
+            custom_name: null,
+            charges_left: null,
+            win_by_number: null,
+        });
+
+        beforeEach(() => {
+            wolfChannel = {
+                id: 'wolf-chat-id',
+                permissionOverwrites: { edit: jest.fn().mockResolvedValue(undefined) },
+                send: jest.fn().mockResolvedValue({ id: 'msg-1', pin: jest.fn().mockResolvedValue(undefined) }),
+            };
+            modChannel = {
+                id: 'mod-chat-id',
+                send: jest.fn().mockResolvedValue({ id: 'msg-2' }),
+            };
+            guild = {
+                id: SERVER_ID,
+                members: {
+                    fetch: jest.fn().mockImplementation((userId) => Promise.resolve({ id: userId })),
+                },
+            };
+            bot = createTestBot({
+                guilds: {
+                    cache: new Map(),
+                    fetch: jest.fn().mockResolvedValue(guild),
+                },
+                channels: {
+                    fetch: jest.fn().mockImplementation((channelId) => {
+                        if (channelId === 'wolf-chat-id') return Promise.resolve(wolfChannel);
+                        if (channelId === 'mod-chat-id') return Promise.resolve(modChannel);
+                        return Promise.resolve(null);
+                    }),
+                },
+            });
+            bot.db.query = jest.fn()
+                .mockResolvedValueOnce({ rows: [game] }) // game info
+                .mockResolvedValueOnce({ rows: [wolfPlayer(1), wolfPlayer(2), wolfPlayer(3)] }); // players
+        });
+
+        it('adds all wolves to wolf chat using the game guild', async () => {
+            const result = await bot.sendRoleNotificationsToJournals(GAME_ID, SERVER_ID);
+
+            expect(bot.client.guilds.fetch).toHaveBeenCalledWith(SERVER_ID);
+            expect(guild.members.fetch).toHaveBeenCalledTimes(3);
+            expect(wolfChannel.permissionOverwrites.edit).toHaveBeenCalledTimes(3);
+            expect(result.wolvesAddedToChat).toBe(3);
+            expect(result.wolvesFailedToAdd).toBe(0);
+            // No failures: mods should not be pinged
+            expect(modChannel.send).not.toHaveBeenCalled();
+        });
+
+        it('still adds remaining wolves when one member fetch fails', async () => {
+            guild.members.fetch = jest.fn().mockImplementation((userId) => {
+                if (userId === 'wolf-2-id') return Promise.reject(new Error('Unknown Member'));
+                return Promise.resolve({ id: userId });
+            });
+
+            const result = await bot.sendRoleNotificationsToJournals(GAME_ID, SERVER_ID);
+
+            expect(wolfChannel.permissionOverwrites.edit).toHaveBeenCalledTimes(2);
+            expect(wolfChannel.permissionOverwrites.edit).toHaveBeenCalledWith('wolf-1-id', expect.any(Object));
+            expect(wolfChannel.permissionOverwrites.edit).toHaveBeenCalledWith('wolf-3-id', expect.any(Object));
+            expect(result.wolvesAddedToChat).toBe(2);
+            expect(result.wolvesFailedToAdd).toBe(1);
+        });
+
+        it('still adds remaining wolves when one permission edit fails', async () => {
+            wolfChannel.permissionOverwrites.edit = jest.fn().mockImplementation((userId) => {
+                if (userId === 'wolf-1-id') return Promise.reject(new Error('Missing Permissions'));
+                return Promise.resolve(undefined);
+            });
+
+            const result = await bot.sendRoleNotificationsToJournals(GAME_ID, SERVER_ID);
+
+            expect(wolfChannel.permissionOverwrites.edit).toHaveBeenCalledTimes(3);
+            expect(result.wolvesAddedToChat).toBe(2);
+            expect(result.wolvesFailedToAdd).toBe(1);
+        });
+
+        it('notifies mod chat listing exactly which players failed to be added', async () => {
+            guild.members.fetch = jest.fn().mockImplementation((userId) => {
+                if (userId === 'wolf-2-id') return Promise.reject(new Error('Unknown Member'));
+                return Promise.resolve({ id: userId });
+            });
+
+            await bot.sendRoleNotificationsToJournals(GAME_ID, SERVER_ID);
+
+            expect(bot.client.channels.fetch).toHaveBeenCalledWith('mod-chat-id');
+            expect(modChannel.send).toHaveBeenCalledTimes(1);
+            const payload = modChannel.send.mock.calls[0][0];
+            const description = payload.embeds[0].data.description;
+            expect(description).toContain('Wolf2');
+            expect(description).toContain('wolf-2-id');
+            expect(description).not.toContain('Wolf1');
+            expect(description).not.toContain('Wolf3');
+        });
+
+        it('notifies mod chat when the wolf chat channel itself cannot be fetched', async () => {
+            bot.client.channels.fetch = jest.fn().mockImplementation((channelId) => {
+                if (channelId === 'wolf-chat-id') return Promise.reject(new Error('Unknown Channel'));
+                if (channelId === 'mod-chat-id') return Promise.resolve(modChannel);
+                return Promise.resolve(null);
+            });
+
+            const result = await bot.sendRoleNotificationsToJournals(GAME_ID, SERVER_ID);
+
+            expect(result.wolvesAddedToChat).toBe(0);
+            expect(result.wolvesFailedToAdd).toBe(3);
+            expect(modChannel.send).toHaveBeenCalledTimes(1);
+            const description = modChannel.send.mock.calls[0][0].embeds[0].data.description;
+            expect(description).toContain('Wolf1');
+            expect(description).toContain('Wolf2');
+            expect(description).toContain('Wolf3');
+        });
+    });
 });

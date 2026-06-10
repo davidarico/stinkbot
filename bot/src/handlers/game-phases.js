@@ -183,7 +183,7 @@ async handleNext(message) {
     try {
         // Get all game channels for this game
         const gameChannelsResult = await this.db.query(
-            'SELECT channel_id, open_at_dawn, open_at_dusk FROM game_channels WHERE game_id = $1',
+            'SELECT channel_id, open_at_dawn, open_at_dusk, is_couple_chat FROM game_channels WHERE game_id = $1',
             [game.id]
         );
 
@@ -197,8 +197,15 @@ async handleNext(message) {
 
                 let shouldAllowSendMessages = false;
                 let shouldAllowAddReactions = false;
-                
-                if (newPhase === 'day') {
+
+                if (channelData.is_couple_chat) {
+                    // Couple chat is a night-only channel (feedback #82): always closed during
+                    // the day and open at night, regardless of the open_at_dawn/open_at_dusk
+                    // flags (which default to TRUE in the schema and aren't reliably set for
+                    // manually-created couple chats). Members keep ViewChannel either way.
+                    shouldAllowSendMessages = newPhase === 'night';
+                    shouldAllowAddReactions = newPhase === 'night';
+                } else if (newPhase === 'day') {
                     // During day phase, check open_at_dawn flag
                     shouldAllowSendMessages = channelData.open_at_dawn;
                     shouldAllowAddReactions = channelData.open_at_dawn;

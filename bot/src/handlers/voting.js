@@ -452,21 +452,39 @@ async sendRoleNotificationsToJournals(gameId, serverId) {
     let failed = 0;
     let wolvesAddedToChat = 0;
     let wolvesFailedToAdd = 0;
-    let wolfChatMessage = '';
+    const wolfChatAddFailures = [];
 
     try {
         // Get game information including theme flags
         const gameResult = await this.db.query(
-            'SELECT is_skinned, is_themed, wolf_chat_channel_id FROM games WHERE id = $1',
+            'SELECT is_skinned, is_themed, wolf_chat_channel_id, mod_chat_channel_id FROM games WHERE id = $1',
             [gameId]
         );
 
         if (!gameResult.rows.length) {
             console.error('Game not found:', gameId);
-            return { sent, failed };
+            return { sent, failed, wolvesAddedToChat, wolvesFailedToAdd };
         }
 
         const game = gameResult.rows[0];
+
+        // Resolve the game's guild and wolf chat channel once up front so a single
+        // transient fetch failure can't silently skip individual wolves below.
+        let guild = null;
+        try {
+            guild = await this.client.guilds.fetch(serverId);
+        } catch (error) {
+            console.error(`Error fetching guild ${serverId} for wolf chat adds:`, error);
+        }
+
+        let wolfChannel = null;
+        if (game.wolf_chat_channel_id) {
+            try {
+                wolfChannel = await this.client.channels.fetch(game.wolf_chat_channel_id);
+            } catch (error) {
+                console.error('Error fetching wolf chat channel:', error);
+            }
+        }
 
         // Get all players in the game with their role information
         const playersResult = await this.db.query(
@@ -533,35 +551,42 @@ async sendRoleNotificationsToJournals(gameId, serverId) {
                         winByNumber: player.win_by_number
                     });
 
-                    // Add player to wolf chat channel
-                    if (game.wolf_chat_channel_id) {
+                    // Add player to wolf chat channel. Each add is individually
+                    // try/caught so one failure never skips the remaining wolves.
+                    if (!game.wolf_chat_channel_id) {
+                        wolvesFailedToAdd++;
+                        wolfChatAddFailures.push({ username: player.username, userId: player.user_id, reason: 'wolf chat channel not configured' });
+                        console.error(`Error adding ${player.username} to wolf chat: wolf_chat_channel_id not set`);
+                    } else if (!wolfChannel) {
+                        wolvesFailedToAdd++;
+                        wolfChatAddFailures.push({ username: player.username, userId: player.user_id, reason: 'wolf chat channel not found' });
+                        console.error(`Error adding ${player.username} to wolf chat: wolf channel not found`);
+                    } else if (!guild) {
+                        wolvesFailedToAdd++;
+                        wolfChatAddFailures.push({ username: player.username, userId: player.user_id, reason: 'guild not found' });
+                        console.error(`Error adding ${player.username} to wolf chat: guild not found`);
+                    } else {
                         try {
-                            const wolfChannel = await this.client.channels.fetch(game.wolf_chat_channel_id);
-                            if (wolfChannel) {
-                                // Add the player to the wolf chat channel
-                                const member = await this.client.guilds.cache.first().members.fetch(player.user_id);
-                                if (member) {
-                                    await wolfChannel.permissionOverwrites.edit(member.id, {
-                                        ViewChannel: true,
-                                        [PIN_PERMISSION]: true
-                                    });
-                                    wolvesAddedToChat++;
-                                    console.log(`[DEBUG] Successfully added ${player.username} to wolf chat`);
-                                } else {
-                                    wolvesFailedToAdd++;
-                                    console.error(`Error adding ${player.username} to wolf chat: member not found`);
-                                }
+                            // Fetch the member from the game's guild (not the cache) so
+                            // cache misses or multi-guild bots don't break the add.
+                            const member = await guild.members.fetch(player.user_id);
+                            if (member) {
+                                await wolfChannel.permissionOverwrites.edit(member.id, {
+                                    ViewChannel: true,
+                                    [PIN_PERMISSION]: true
+                                });
+                                wolvesAddedToChat++;
+                                console.log(`[DEBUG] Successfully added ${player.username} to wolf chat`);
                             } else {
                                 wolvesFailedToAdd++;
-                                console.error(`Error adding ${player.username} to wolf chat: wolf channel not found`);
+                                wolfChatAddFailures.push({ username: player.username, userId: player.user_id, reason: 'member not found in server' });
+                                console.error(`Error adding ${player.username} to wolf chat: member not found`);
                             }
                         } catch (error) {
                             wolvesFailedToAdd++;
+                            wolfChatAddFailures.push({ username: player.username, userId: player.user_id, reason: error?.message || 'unknown error' });
                             console.error(`Error adding ${player.username} to wolf chat:`, error);
                         }
-                    } else {
-                        wolvesFailedToAdd++;
-                        console.error(`Error adding ${player.username} to wolf chat: wolf_chat_channel_id not set`);
                     }
 
                     // Skip sending role notification to journal since they're in wolf chat
@@ -653,7 +678,6 @@ async sendRoleNotificationsToJournals(gameId, serverId) {
         // Send wolf team information to wolf chat if there are wolves
         if (wolfTeam.length > 0 && game.wolf_chat_channel_id) {
             try {
-                const wolfChannel = await this.client.channels.fetch(game.wolf_chat_channel_id);
                 if (wolfChannel) {
                     // Create wolf team list message
                     const wolfTeamList = wolfTeam.map(wolf => {
@@ -715,6 +739,29 @@ async sendRoleNotificationsToJournals(gameId, serverId) {
                 }
             } catch (error) {
                 console.error('Error sending wolf team message to wolf chat:', error);
+            }
+        }
+
+        // Notify mods about any players that could not be added to wolf chat so
+        // they can add them manually.
+        if (wolfChatAddFailures.length > 0 && game.mod_chat_channel_id) {
+            try {
+                const modChannel = await this.client.channels.fetch(game.mod_chat_channel_id);
+                if (modChannel) {
+                    const failureList = wolfChatAddFailures
+                        .map(f => `• **${f.username}** (<@${f.userId}>) — ${f.reason}`)
+                        .join('\n');
+
+                    const modAlertEmbed = new EmbedBuilder()
+                        .setTitle('⚠️ Wolf Chat Add Failures')
+                        .setDescription(`The following players could **not** be added to wolf chat and need to be added manually:\n\n${failureList}`)
+                        .setColor(0xE74C3C)
+                        .setTimestamp();
+
+                    await modChannel.send({ embeds: [modAlertEmbed] });
+                }
+            } catch (error) {
+                console.error('Error notifying mod chat about wolf chat add failures:', error);
             }
         }
 

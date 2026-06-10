@@ -58,6 +58,48 @@ describe('Utility Methods', () => {
             const result = await bot.generateFunnyResponse('unknowncmd', 'TestUser');
             expect(result).toBeNull();
         });
+
+        it('instructs the model never to use the word "lynch"', async () => {
+            const create = jest.fn().mockResolvedValue({
+                choices: [{ message: { content: 'ok' } }],
+            });
+            bot.openai = { chat: { completions: { create } } };
+            await bot.generateFunnyResponse('ln', 'TestUser');
+            const userPrompt = create.mock.calls[0][0].messages
+                .find((m) => m.role === 'user').content;
+            expect(userPrompt).toMatch(/never uses the word "lynch"/i);
+        });
+
+        it('never returns the word "lynch" even if the model uses it (Wolf.ln reply, feedback 84/85)', async () => {
+            bot.openai = {
+                chat: {
+                    completions: {
+                        create: jest.fn().mockResolvedValue({
+                            choices: [{ message: { content: 'Time to lynch somebody! The town loves a good lynching, and nobody ever gets Lynched by accident.' } }],
+                        }),
+                    },
+                },
+            };
+            const result = await bot.generateFunnyResponse('ln', 'TestUser');
+            expect(result.toLowerCase()).not.toContain('lynch');
+            expect(result).toBe('Time to hang somebody! The town loves a good hanging, and nobody ever gets Hanged by accident.');
+        });
+    });
+
+    describe('removeBannedWords', () => {
+        it('replaces all variants of "lynch" with hang-based terms', () => {
+            expect(bot.removeBannedWords('lynch lynched lynching lynches lynchings'))
+                .toBe('hang hanged hanging hangs hangings');
+        });
+
+        it('preserves capitalization', () => {
+            expect(bot.removeBannedWords('Lynch the LYNCHING')).toBe('Hang the HANGING');
+        });
+
+        it('leaves clean text untouched and handles empty input', () => {
+            expect(bot.removeBannedWords('vote them out')).toBe('vote them out');
+            expect(bot.removeBannedWords(null)).toBeNull();
+        });
     });
 
     describe('handleHelp', () => {

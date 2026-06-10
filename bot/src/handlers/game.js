@@ -430,6 +430,11 @@ async handleSignUp(message) {
     const serverId = message.guild.id;
     const user = message.author;
 
+    // Check if user is suspended (has the "Suspended" role)
+    if (message.member?.roles?.cache?.some(r => r.name === 'Suspended')) {
+        return message.reply('❌ Suspended players cannot sign up for games.');
+    }
+
     // Check if user is banned
     const bannedUser = await this.db.query(
         'SELECT * FROM banned_users WHERE user_id = $1',

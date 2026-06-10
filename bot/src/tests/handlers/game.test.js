@@ -169,6 +169,48 @@ describe('Game Handlers', () => {
             );
         });
 
+        it('refuses signup and does not insert player when member has the Suspended role', async () => {
+            bot.db.query = jest.fn();
+
+            const msg = createMockMessage();
+            msg.member.roles.cache.some = jest.fn().mockImplementation((predicate) => predicate({ name: 'Suspended' }));
+            msg.react = jest.fn().mockResolvedValue(undefined);
+
+            await bot.handleSignUp(msg);
+
+            expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('Suspended players cannot sign up'));
+            expect(bot.db.query).not.toHaveBeenCalledWith(
+                expect.stringContaining('INSERT INTO players'),
+                expect.any(Array)
+            );
+            expect(msg.react).not.toHaveBeenCalled();
+        });
+
+        it('signs up a member whose roles do not include Suspended', async () => {
+            const game = { id: 1, signups_closed: false };
+            bot.db.query = jest.fn()
+                .mockResolvedValueOnce({ rows: [] })              // not banned
+                .mockResolvedValueOnce({ rows: [game] })          // active signup game
+                .mockResolvedValueOnce({ rows: [] })              // not already signed up
+                .mockResolvedValueOnce({ rows: [], rowCount: 1 }); // INSERT player
+
+            bot.ensureUserHasJournal = jest.fn();
+            bot.updateSignupMessage = jest.fn().mockResolvedValue(undefined);
+
+            const msg = createMockMessage();
+            // default mock: member has no roles (Suspended check returns false)
+            msg.react = jest.fn().mockResolvedValue(undefined);
+
+            await bot.handleSignUp(msg);
+
+            expect(msg.reply).not.toHaveBeenCalled();
+            expect(msg.react).toHaveBeenCalledWith('✅');
+            expect(bot.db.query).toHaveBeenCalledWith(
+                expect.stringContaining('INSERT INTO players'),
+                expect.any(Array)
+            );
+        });
+
         it('replies with error when no active signup game', async () => {
             bot.db.query = jest.fn()
                 .mockResolvedValueOnce({ rows: [] })  // not banned

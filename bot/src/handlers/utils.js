@@ -6,7 +6,38 @@ const moment = require('moment-timezone');
 // https://discord.com/developers/docs/topics/permissions
 const PIN_PERMISSION = 0x0008000000000000;
 
+// The word "lynch" must never appear in user-facing bot output (feedback IDs 84/85).
+// Replacements match the game's existing terminology (e.g. the votes_to_hang setting
+// and "vote them out" in the default day message). Longer forms are listed first so
+// they are replaced before the bare word.
+const BANNED_WORD_REPLACEMENTS = [
+    [/lynchings/gi, 'hangings'],
+    [/lynching/gi, 'hanging'],
+    [/lynched/gi, 'hanged'],
+    [/lynches/gi, 'hangs'],
+    [/lynch/gi, 'hang']
+];
+
+function matchCase(replacement, original) {
+    if (original === original.toUpperCase()) {
+        return replacement.toUpperCase();
+    }
+    if (original[0] === original[0].toUpperCase()) {
+        return replacement[0].toUpperCase() + replacement.slice(1);
+    }
+    return replacement;
+}
+
 module.exports = {
+
+removeBannedWords(text) {
+    if (!text) return text;
+    let result = text;
+    for (const [pattern, replacement] of BANNED_WORD_REPLACEMENTS) {
+        result = result.replace(pattern, (match) => matchCase(replacement, match));
+    }
+    return result;
+},
 
 async generateFunnyResponse(command, username) {
     if (!this.openai) {
@@ -21,6 +52,7 @@ async generateFunnyResponse(command, username) {
             - Keeps the tone light and entertaining
             - Doesn't exceed 2 sentences
             - Crass and vulgar language is allowed
+            - Never uses the word "lynch" or any variation of it; say "vote out" or "hang" instead
 
             Do not allude to the fact that the command is unknown.
         `;
@@ -56,8 +88,9 @@ async generateFunnyResponse(command, username) {
         while (cleanedContent.endsWith('"') || cleanedContent.endsWith('"') || cleanedContent.endsWith("'") || cleanedContent.endsWith("'")) {
             cleanedContent = cleanedContent.slice(0, -1);
         }
-        
-        return cleanedContent;
+
+        // Never let banned words (e.g. "lynch") reach users, even if the model ignores the prompt
+        return this.removeBannedWords(cleanedContent);
     } catch (error) {
         console.error('Error generating OpenAI response:', error);
         return null;

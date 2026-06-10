@@ -257,8 +257,56 @@ async killPlayer(message) {
 
     if (await this.removeRole(targetMember, 'Alive')) {
         await this.assignRole(targetMember, 'Dead');
+        // Dead couple members keep read access to their couple chat (feedback #31)
+        await this.preserveCoupleChatAccess(message.guild, targetMember.id);
     } else {
         return message.reply(`🪦 That user is not Alive in this game!`);
+    }
+},
+
+// When a couple member dies they should still be able to READ the couple chat,
+// but no longer talk in it. Their member-level overwrite only grants ViewChannel,
+// so re-assert it (and explicitly deny SendMessages) when they die so nothing can
+// strip their access along with the Alive role. (feedback #31)
+async preserveCoupleChatAccess(guild, userId) {
+    try {
+        const gameResult = await this.db.query(
+            'SELECT id FROM games WHERE server_id = $1 AND status = $2 ORDER BY id DESC LIMIT 1',
+            [guild.id, 'active']
+        );
+
+        if (!gameResult.rows.length) {
+            return;
+        }
+
+        const coupleChatsResult = await this.db.query(
+            'SELECT channel_id, channel_name, invited_users FROM game_channels WHERE game_id = $1 AND is_couple_chat = true AND channel_id IS NOT NULL',
+            [gameResult.rows[0].id]
+        );
+
+        for (const coupleChat of coupleChatsResult.rows) {
+            const invitedUsers = Array.isArray(coupleChat.invited_users) ? coupleChat.invited_users : [];
+            if (!invitedUsers.includes(userId)) {
+                continue;
+            }
+
+            try {
+                const channel = await this.client.channels.fetch(coupleChat.channel_id);
+                if (!channel) {
+                    continue;
+                }
+
+                await channel.permissionOverwrites.edit(userId, {
+                    ViewChannel: true,
+                    SendMessages: false
+                });
+                console.log(`Preserved couple chat view access for dead player ${userId} in ${coupleChat.channel_name}`);
+            } catch (error) {
+                console.error(`Error preserving couple chat access for ${userId} in ${coupleChat.channel_name}:`, error);
+            }
+        }
+    } catch (error) {
+        console.error('Error preserving couple chat access:', error);
     }
 },
 
