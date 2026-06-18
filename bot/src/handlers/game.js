@@ -77,7 +77,7 @@ async handleSetup(message, args) {
             .setColor(0x00AE86);
 
         await message.reply({ embeds: [embed] });
-        await message.reply('To reconfigure, please use the setup command with new parameters.');
+        await message.reply('To reconfigure, respond to the setup prompt below with: `prefix startNumber [gameName]` (e.g., `g 534`). This will overwrite the current configuration.');
     }
 
     const embed = new EmbedBuilder()
