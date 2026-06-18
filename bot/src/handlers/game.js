@@ -89,7 +89,7 @@ async handleSetup(message, args) {
             { name: '3. Game Name (Optional)', value: 'What should the games be called? (e.g., "Origins")', inline: false }
         )
         .setColor(0x3498DB)
-        .setFooter({ text: 'Please respond with: prefix startNumber [gameName]' });
+        .setFooter({ text: 'Please respond with: prefix startNumber [gameName] — or type "cancel" to stop' });
 
     await message.reply({ embeds: [embed] });
 
@@ -100,7 +100,13 @@ async handleSetup(message, args) {
         return message.reply('⏰ Setup timed out. Please try again.');
     }
 
-    const response = collected.first().content.trim().split(/ +/);
+    const rawResponse = collected.first().content.trim();
+
+    if (rawResponse.toLowerCase() === 'cancel') {
+        return message.reply('✋ Setup cancelled. No changes were made.');
+    }
+
+    const response = rawResponse.split(/ +/);
     const prefix = response[0];
     const startNumber = parseInt(response[1]);
     const gameName = response.slice(2).join(' ') || null;
