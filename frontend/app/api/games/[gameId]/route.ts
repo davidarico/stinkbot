@@ -1,5 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/database"
+import { hasValidGameSession, setGameSession, verifyPasswordHash } from "@/lib/game-auth"
+import { timingSafeEqual } from "crypto"
 
 interface RouteParams {
   params: Promise<{ gameId: string }>
@@ -7,6 +9,9 @@ interface RouteParams {
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const { gameId } = await params
+  if (!hasValidGameSession(request, gameId)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
 
   try {
     const game = await db.getGame(gameId)
@@ -24,7 +29,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       dayNumber: game.day_number,
       votesToHang: game.votes_to_hang,
       gameName: game.game_name,
-      categoryId: game.category_id,
       isThemed: game.is_themed,
       isSkinned: game.is_skinned,
       themeName: game.theme_name,
@@ -55,14 +59,33 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         if (!password) {
           return NextResponse.json({ error: "Password required" }, { status: 400 })
         }
-        const isValid = await db.verifyGamePassword(gameId, password)
-        return NextResponse.json({ valid: isValid })
+        const credentials = await db.getGamePasswordCredentials(gameId)
+        if (!credentials) return NextResponse.json({ valid: false })
+
+        let isValid = credentials.passwordHash
+          ? verifyPasswordHash(password, credentials.passwordHash)
+          : false
+
+        // Temporary compatibility for games created before the password migration.
+        if (!credentials.passwordHash && credentials.legacyCategoryId) {
+          const supplied = Buffer.from(password)
+          const expected = Buffer.from(credentials.legacyCategoryId)
+          isValid = supplied.length === expected.length && timingSafeEqual(supplied, expected)
+        }
+
+        const response = NextResponse.json({ valid: isValid })
+        if (isValid && !setGameSession(response, gameId)) {
+          return NextResponse.json({ error: "Game sessions are not configured" }, { status: 500 })
+        }
+        return response
 
       case "updateTheme":
+        if (!hasValidGameSession(request, gameId)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
         const result = await db.updateGameTheme(gameId, isThemed, isSkinned, themeName)
         return NextResponse.json(result)
 
       case "updateSettings":
+        if (!hasValidGameSession(request, gameId)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
         const settingsResult = await db.updateGameSettings(gameId, settings)
         return NextResponse.json(settingsResult)
 

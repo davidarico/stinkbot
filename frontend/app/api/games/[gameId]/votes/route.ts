@@ -1,12 +1,14 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/database"
+import { hasValidGameSession } from "@/lib/game-auth"
 
 interface RouteParams {
-  params: { gameId: string }
+  params: Promise<{ gameId: string }>
 }
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const { gameId } = await params
+  if (!hasValidGameSession(request, gameId)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const { searchParams } = new URL(request.url)
   const dayNumber = parseInt(searchParams.get("dayNumber") || "1")
 
@@ -24,6 +26,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
 export async function POST(request: NextRequest, { params }: RouteParams) {
   const { gameId } = await params
+  if (!hasValidGameSession(request, gameId)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const body = await request.json()
   const { voterUserId, targetUserId, dayNumber } = body
 

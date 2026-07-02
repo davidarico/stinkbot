@@ -144,15 +144,15 @@ export default function GameManagementPage() {
   const [serverRolesModalOpen, setServerRolesModalOpen] = useState(false);
 
   useEffect(() => {
-    // Check if user is already authenticated for this game
-    const authCookie = document.cookie.split("; ").find((row) => row.startsWith(`game_${gameId}_auth=`))
-
-    if (authCookie) {
+    // The server validates the HTTP-only session cookie.
+    fetch(`/api/games/${gameId}`, { credentials: "same-origin" }).then((response) => {
+      if (response.ok) {
       setIsAuthenticated(true)
       loadGameData()
-    } else {
+      } else {
       setLoading(false)
-    }
+      }
+    }).catch(() => setLoading(false))
   }, [gameId])
 
   const loadGameData = async () => {
@@ -291,13 +291,11 @@ export default function GameManagementPage() {
 
       if (result.valid) {
         setIsAuthenticated(true)
-        // Set cookie for this game
-        document.cookie = `game_${gameId}_auth=true; path=/; max-age=86400`
         await loadGameData()
       } else {
         toast({
           title: "Authentication Failed",
-          description: "Incorrect password. Please use the category ID from Discord.",
+          description: "Incorrect dashboard password.",
           variant: "destructive",
         })
       }
@@ -839,12 +837,12 @@ export default function GameManagementPage() {
         <div className="w-full max-w-sm">
           <div className="text-center mb-8">
             <h1 className="text-xl font-semibold text-foreground">Game Access</h1>
-            <p className="text-sm text-muted-foreground mt-1">Enter the category ID from Discord.</p>
+            <p className="text-sm text-muted-foreground mt-1">Enter the dashboard password from Discord.</p>
           </div>
           <div className="space-y-3">
             <Input
               type="password"
-              placeholder="Category ID / password"
+              placeholder="Dashboard password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               onKeyPress={(e) => e.key === "Enter" && !loginLoading && handleLogin()}

@@ -46,7 +46,10 @@ describe('Recovery Handlers', () => {
                 Promise.resolve(textAnswers[awaitTextCallCount++] ?? '')
             );
 
-            bot.saveRecoveryData = jest.fn().mockResolvedValue(42);
+            bot.saveRecoveryData = jest.fn().mockResolvedValue({
+                gameId: 42,
+                dashboardPassword: 'test-dashboard-password',
+            });
 
             bot.db.query = jest.fn()
                 .mockResolvedValue({ rows: [config] }); // server config
@@ -140,9 +143,10 @@ describe('Recovery Handlers', () => {
                 .mockResolvedValueOnce({ rows: [] })            // INSERT player Alice
                 .mockResolvedValueOnce({ rows: [] });           // INSERT player Bob
 
-            const gameId = await bot.saveRecoveryData(serverId, config, recoveryData);
+            const { gameId, dashboardPassword } = await bot.saveRecoveryData(serverId, config, recoveryData);
 
             expect(gameId).toBe(99);
+            expect(dashboardPassword).toHaveLength(24);
             expect(bot.db.query).toHaveBeenCalledWith(
                 expect.stringContaining('UPDATE games SET status'),
                 expect.arrayContaining(['ended', serverId])

@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/database"
+import { hasValidGameSession } from "@/lib/game-auth"
 
 interface RouteParams {
   params: Promise<{ gameId: string }>
@@ -7,6 +8,7 @@ interface RouteParams {
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const { gameId } = await params
+  if (!hasValidGameSession(request, gameId)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   try {
     const game = await db.getGame(gameId)

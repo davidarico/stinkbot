@@ -325,7 +325,7 @@ async handleRecovery(message) {
         }
 
         // Step 8: Save to database
-        const gameId = await this.saveRecoveryData(serverId, config, {
+        const { gameId, dashboardPassword } = await this.saveRecoveryData(serverId, config, {
             category_id: category.id,
             game_status: gameStatus,
             day_phase: dayPhase,
@@ -348,6 +348,7 @@ async handleRecovery(message) {
             .setTitle('✅ Recovery Complete!')
             .setDescription('All data has been successfully saved to the database. The bot is now ready to manage your game.')
             .addFields(
+                { name: '🔑 Dashboard Password', value: `\`${dashboardPassword}\``, inline: false },
                 { name: 'What\'s Next?', value: '• The bot will now track your game state\n• You can use normal bot commands\n• Game data is synchronized with Discord roles' + (gameStatus === 'active' && dayPhase === 'day' ? '\n• Voting message has been posted to the voting booth' : ''), inline: false }
             )
             .setColor(0x00AE86);
@@ -395,6 +396,9 @@ async awaitTextResponse(message, timeout = 30000) {
 
 async saveRecoveryData(serverId, config, recoveryData) {
     try {
+        const { generateGamePassword, hashGamePassword } = require('../utils/game-password');
+        const dashboardPassword = generateGamePassword();
+        const dashboardPasswordHash = hashGamePassword(dashboardPassword);
         // First, check if there's already an active game and end it
         await this.db.query(
             'UPDATE games SET status = $1 WHERE server_id = $2 AND status IN ($3, $4)',
@@ -406,8 +410,8 @@ async saveRecoveryData(serverId, config, recoveryData) {
             `INSERT INTO games (
                 server_id, game_number, game_name, category_id, status, day_phase, day_number,
                 signup_channel_id, town_square_channel_id, wolf_chat_channel_id, 
-                memos_channel_id, results_channel_id, voting_booth_channel_id
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) 
+                memos_channel_id, results_channel_id, voting_booth_channel_id, dashboard_password_hash
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             RETURNING id`,
             [
                 serverId,
@@ -422,7 +426,8 @@ async saveRecoveryData(serverId, config, recoveryData) {
                 recoveryData.channels.wolf_chat_channel_id || null,
                 recoveryData.channels.memos_channel_id || null,
                 recoveryData.channels.results_channel_id || null,
-                recoveryData.channels.voting_booth_channel_id || null
+                recoveryData.channels.voting_booth_channel_id || null,
+                dashboardPasswordHash
             ]
         );
 
@@ -447,7 +452,7 @@ async saveRecoveryData(serverId, config, recoveryData) {
         }
 
         console.log(`Recovery completed for server ${serverId}, game ID ${gameId}`);
-        return gameId; // Return the game ID
+        return { gameId, dashboardPassword };
     } catch (error) {
         console.error('Error saving recovery data:', error);
         throw error;

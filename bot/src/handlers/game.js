@@ -269,11 +269,16 @@ async handleCreate(message) {
         ]
     });
 
+    // Generate a credential that is independent from Discord identifiers.
+    const { generateGamePassword, hashGamePassword } = require('../utils/game-password');
+    const dashboardPassword = generateGamePassword();
+    const dashboardPasswordHash = hashGamePassword(dashboardPassword);
+
     // Save game to database first and get the game ID
     const gameResult = await this.db.query(
-        `INSERT INTO games (server_id, game_number, game_name, signup_channel_id, category_id, mod_chat_channel_id)
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-        [serverId, config.game_counter, config.game_name, signupChannel.id, category.id, modChat.id]
+        `INSERT INTO games (server_id, game_number, game_name, signup_channel_id, category_id, mod_chat_channel_id, dashboard_password_hash)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+        [serverId, config.game_counter, config.game_name, signupChannel.id, category.id, modChat.id, dashboardPasswordHash]
     );
     
     const gameId = gameResult.rows[0].id;
@@ -288,7 +293,7 @@ async handleCreate(message) {
     const websiteUrl = process.env.WEBSITE_URL;
     let managementUrl = 'Not configured (WEBSITE_URL env variable missing)';
     if (websiteUrl) {
-        managementUrl = `${websiteUrl}/game/${gameId}?p=${category.id}`;
+        managementUrl = `${websiteUrl}/game/${gameId}`;
     }
 
     const embed = new EmbedBuilder()
@@ -298,7 +303,7 @@ async handleCreate(message) {
             { name: 'Category', value: categoryName, inline: true },
             { name: 'Signup Channel', value: `<#${signupChannel.id}>`, inline: true },
             { name: '🌐 Management URL', value: `${managementUrl}`, inline: false },
-            { name: '🔑 Password', value: `\`${category.id}\``, inline: true },
+            { name: '🔑 Password', value: 'Posted in the private mod chat.', inline: true },
             { name: '🆔 Game ID', value: `\`${gameId}\``, inline: true }
         )
         .setColor(0x00AE86);
@@ -311,7 +316,7 @@ async handleCreate(message) {
         .setDescription('Use this information to manage the game through the website.')
         .addFields(
             { name: '🌐 Management URL', value: managementUrl, inline: false },
-            { name: '🔑 Password', value: `\`${category.id}\``, inline: true },
+            { name: '🔑 Password', value: `\`${dashboardPassword}\``, inline: true },
             { name: '🆔 Game ID', value: `\`${gameId}\``, inline: true },
             { name: '📊 Game Number', value: `\`${config.game_counter}\``, inline: true }
         )

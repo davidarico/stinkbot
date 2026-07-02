@@ -138,8 +138,7 @@ npm start
 1. Navigate to `[SITE_URL]/game/[GAME_ID]`
    - SITE_URL defaults to localhost:3000
    - GAME_ID can be found in mod-chat embed after starting a game
-2. Enter the game password (category ID from the database)
-   - Should be automatically inserted as `?p=<id>` if clicked from admin embed
+2. Enter the generated dashboard password from the pinned mod-chat message.
 3. Use the management interface to:
    - Assign roles to players
    - Track game phases
@@ -148,13 +147,19 @@ npm start
 
 ### Game Authentication
 
-Each game is protected by a password system where the password is the category ID stored in the games table. This ensures only authorized moderators can access game management features.
+Each new game receives a cryptographically random dashboard password. Only its
+scrypt hash is stored in the database. Successful login creates a signed,
+HTTP-only session that is required by every game-management API endpoint.
+
+Set `GAME_TOKEN_SECRET` to a stable random value in every frontend deployment.
+Existing games without a generated password temporarily accept their category ID
+so they remain accessible during migration.
 
 ## API Endpoints
 
 ### Games
-- `GET /api/games/[gameId]` - Retrieve game information
-- `POST /api/games/[gameId]` - Verify game password
+- `GET /api/games/[gameId]` - Retrieve game information (authenticated)
+- `POST /api/games/[gameId]` - Verify password or perform an authenticated update
 
 ### Players
 - `GET /api/games/[gameId]/players` - Get players for a game

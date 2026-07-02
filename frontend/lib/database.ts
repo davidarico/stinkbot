@@ -15,6 +15,7 @@ interface Game {
   day_number: number
   votes_to_hang: number
   category_id?: string
+  dashboard_password_hash?: string
   is_skinned: boolean
   is_themed: boolean
   theme_name?: string
@@ -391,21 +392,24 @@ export class DatabaseService {
     }
   }
 
-  async verifyGamePassword(gameId: string, password: string): Promise<boolean> {
+  async getGamePasswordCredentials(gameId: string): Promise<{ passwordHash: string | null; legacyCategoryId: string | null } | null> {
     try {
       const result = await this.pool.query(
-        'SELECT category_id FROM games WHERE id = $1',
+        'SELECT dashboard_password_hash, category_id FROM games WHERE id = $1',
         [parseInt(gameId)]
       )
       
       if (result.rows.length === 0) {
-        return false
+        return null
       }
-      
-      return result.rows[0].category_id === password
+
+      return {
+        passwordHash: result.rows[0].dashboard_password_hash,
+        legacyCategoryId: result.rows[0].category_id,
+      }
     } catch (error) {
-      console.error('Error verifying game password:', error)
-      return false
+      console.error('Error fetching game password credentials:', error)
+      return null
     }
   }
 
