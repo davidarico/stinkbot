@@ -138,7 +138,9 @@ npm start
 1. Navigate to `[SITE_URL]/game/[GAME_ID]`
    - SITE_URL defaults to localhost:3000
    - GAME_ID can be found in mod-chat embed after starting a game
-2. Enter the generated dashboard password from the pinned mod-chat message.
+2. Open the link in the pinned mod-chat message. It pre-fills the generated
+   dashboard password through the `p` query parameter, or the password can be
+   entered manually.
 3. Use the management interface to:
    - Assign roles to players
    - Track game phases

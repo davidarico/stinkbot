@@ -292,8 +292,10 @@ async handleCreate(message) {
     // Build website management URL if WEBSITE_URL is configured
     const websiteUrl = process.env.WEBSITE_URL;
     let managementUrl = 'Not configured (WEBSITE_URL env variable missing)';
+    let modManagementUrl = managementUrl;
     if (websiteUrl) {
         managementUrl = `${websiteUrl}/game/${gameId}`;
+        modManagementUrl = `${managementUrl}?p=${encodeURIComponent(dashboardPassword)}`;
     }
 
     const embed = new EmbedBuilder()
@@ -315,7 +317,7 @@ async handleCreate(message) {
         .setTitle('🌐 Game Management Information')
         .setDescription('Use this information to manage the game through the website.')
         .addFields(
-            { name: '🌐 Management URL', value: managementUrl, inline: false },
+            { name: '🌐 Management URL', value: modManagementUrl, inline: false },
             { name: '🔑 Password', value: `\`${dashboardPassword}\``, inline: true },
             { name: '🆔 Game ID', value: `\`${gameId}\``, inline: true },
             { name: '📊 Game Number', value: `\`${config.game_counter}\``, inline: true }
