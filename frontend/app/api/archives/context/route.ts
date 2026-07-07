@@ -18,15 +18,15 @@ export async function GET(request: NextRequest) {
     const messages = await db.getArchiveContext(channelId, timestamp, limit)
 
     // Enrich with display names and profile pictures
-    const userIds = [...new Set(messages.map((m: any) => m._source.userId))]
+    const userIds = [...new Set(messages.map((m: any) => m.userId))]
     if (userIds.length > 0) {
       const serverUsers = await db.getServerUsersByUserIds(userIds)
       const userMap = new Map(serverUsers.map(u => [u.user_id, { displayName: u.display_name, profilePictureLink: u.profile_picture_link }]))
-      messages.forEach((hit: any) => {
-        const userInfo = userMap.get(hit._source.userId)
+      messages.forEach((message: any) => {
+        const userInfo = userMap.get(message.userId)
         if (userInfo) {
-          hit._source.displayName = userInfo.displayName
-          hit._source.profilePictureLink = userInfo.profilePictureLink
+          message.displayName = userInfo.displayName
+          message.profilePictureLink = userInfo.profilePictureLink
         }
       })
     }

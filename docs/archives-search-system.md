@@ -2,7 +2,9 @@
 
 ## Overview
 
-The archives search system allows users to search through Discord messages stored in OpenSearch. It provides full-text search, filtering by game/channel/user, pagination, and a "jump to message" feature for navigating to specific messages (like reply threads).
+The archives search system allows users to search through Discord messages stored in Postgres (the `archive_messages` table). It provides full-text search, filtering by game/channel/user, pagination, inline reply previews, and a "jump to message" feature for navigating to specific messages (like reply threads).
+
+> Historical note: this system originally ran on OpenSearch. It was migrated to Postgres full-text search, and the OpenSearch client, indexing scripts, and response shapes have been removed.
 
 ## Architecture
 
@@ -19,18 +21,16 @@ The archives search system allows users to search through Discord messages store
 │  /api/archives/search/route.ts          │
 │                                         │
 │  - Parse query parameters               │
-│  - Build OpenSearch query               │
-│  - Execute search                       │
-│  - Calculate pagination (if jumping)    │
-│  - Enrich with user data from Postgres  │
+│  - Delegate to db.searchArchiveMessages │
+│  - Calculate target page (if jumping)   │
+│  - Enrich with current user data        │
 └──────┬──────────────────────────────────┘
        │
-       ├─────────────┬─────────────┐
-       │             │             │
-┌──────▼────┐  ┌─────▼─────┐  ┌───▼────────┐
-│ OpenSearch│  │ Postgres  │  │ OpenSearch │
-│  (search) │  │ (users)   │  │  (count)   │
-└───────────┘  └───────────┘  └────────────┘
+┌──────▼──────────────────────────────────┐
+│  Postgres                               │
+│  - archive_messages (search + count)    │
+│  - server_users (display name/avatar)   │
+└─────────────────────────────────────────┘
 ```
 
 ## Core Components
@@ -41,15 +41,16 @@ The React component that provides the user interface for searching messages.
 
 **Key Features:**
 - Search filters (query, game, channel, user)
+- Debounced free-text input (300 ms) so a search fires per pause, not per keystroke
 - Pagination controls
 - "Jump to Message" functionality for navigating to replies
-- Reply preview fetching
+- Reply previews rendered from data already included in search results
 - Auto-scroll to target messages
 
 **State Management:**
 ```typescript
 filters: {
-  query: string,      // Full-text search
+  query: string,      // Full-text search (debounced from the input field)
   game: string,       // Category filter
   channel: string,    // Channel name filter
   user: string,       // Display name filter
@@ -59,7 +60,16 @@ filters: {
 
 ### 2. Backend API (`frontend/app/api/archives/search/route.ts`)
 
-The Next.js API route that handles search requests and interacts with OpenSearch.
+Thin Next.js API route. All query construction lives in `db.searchArchiveMessages` (`frontend/lib/database.ts`).
+
+### 3. Supporting routes
+
+| Route | Purpose |
+|-------|---------|
+| `/api/archives/aggregations` | Filter dropdown options (games, channels, users with counts). Loaded once on page mount. |
+| `/api/archives/message/[messageId]` | Fetch a single message by Discord message ID (used when jumping to a reply parent that isn't on the current page). |
+| `/api/archives/context` | Messages within ±5 minutes of a timestamp in a channel. |
+| `/api/archives/health` | Connectivity check and total message count. |
 
 ## How Search Works
 
@@ -69,7 +79,7 @@ The API accepts these query parameters:
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `query` | string | Full-text search across content, username, displayName |
+| `query` | string | Full-text search across message content |
 | `game` | string | Filter by game category |
 | `channel` | string | Filter by channel name |
 | `user` | string | Filter by user display name |
@@ -77,126 +87,50 @@ The API accepts these query parameters:
 | `size` | number | Results per page (default: 20) |
 | `jumpToMessageId` | string | Discord message ID to jump to |
 
-### Step 2: Building the OpenSearch Query
+### Step 2: Building the SQL Query
 
-The API constructs a boolean query with multiple "must" clauses:
+`searchArchiveMessages` builds a WHERE clause from the provided filters:
 
-```javascript
-const must = []
+```sql
+-- Full-text search uses the GIN index defined in the migration
+to_tsvector('english', coalesce(m.content, '')) @@ plainto_tsquery('english', $1)
 
-// Full-text search (if provided)
-if (query) {
-  must.push({
-    multi_match: {
-      query,
-      fields: ['content', 'username', 'displayName'],
-      type: 'best_fields',
-      fuzziness: 'AUTO'  // Allows typos
-    }
-  })
-}
+-- Game / channel are simple equality filters
+m.category = $2
+m.channel_name = $3
 
-// Filter by game category
-if (game) {
-  must.push({ term: { category: game } })
-}
-
-// Filter by channel name
-if (channel) {
-  must.push({ term: { channelName: channel } })
-}
-
-// Filter by user
-if (user) {
-  // Look up user IDs from Postgres first
-  const serverUsers = await db.getServerUsersByDisplayName(user)
-  must.push({ terms: { userId: userIds } })
-}
+-- User filter resolves display name -> user IDs via server_users first,
+-- falling back to the display name archived on the message
+m.user_id = ANY($4)
 ```
 
-### Step 3: Sort Order
+The data query LEFT JOINs each message's reply parent so reply previews arrive with the page — no follow-up requests:
 
-Sort order depends on whether we're jumping to a specific message:
-
-- **Normal browsing**: `desc` (newest messages first)
-- **Jump to message**: `asc` (oldest messages first, for chronological reading)
-
-```javascript
-const sortOrder = jumpToMessageId ? 'asc' : 'desc'
+```sql
+SELECT m.*,
+       r.message_id   AS reply_message_id,
+       r.content      AS reply_content,
+       r.username     AS reply_username,
+       r.display_name AS reply_display_name,
+       r.user_id      AS reply_user_id
+FROM archive_messages m
+LEFT JOIN archive_messages r ON r.message_id = m.reply_to_message_id
+WHERE ...
+ORDER BY m.timestamp DESC
+LIMIT $n OFFSET $n+1
 ```
 
-### Step 4: Execute Main Search
+The count query and the data query run in parallel.
 
-```javascript
-const searchBody = {
-  query: { bool: { must } },
-  sort: [{ timestamp: { order: sortOrder } }],
-  from: (page - 1) * size,
-  size: size,
-  aggs: {
-    games: { terms: { field: 'category', size: 100 } },
-    channels: { terms: { field: 'channelName', size: 100 } },
-    users: { terms: { field: 'displayName.keyword', size: 100 } }
-  }
-}
+### Step 3: Jump to Message Calculation (Optional)
 
-const response = await openSearchClient.search({
-  index: 'messages',
-  body: searchBody
-})
+If `jumpToMessageId` is provided, the API counts how many messages sort before the target under the same filters, then derives the page:
+
+```sql
+SELECT count(*) FROM archive_messages m
+WHERE <same filters>
+  AND m.timestamp > (SELECT timestamp FROM archive_messages WHERE message_id = $n)
 ```
-
-### Step 5: Jump to Message Calculation (Optional)
-
-If `jumpToMessageId` is provided, the API calculates which page the message is on:
-
-#### 5a. Find the Target Message
-
-```javascript
-const targetSearchResponse = await openSearchClient.search({
-  index: 'messages',
-  body: {
-    query: { term: { messageId: jumpToMessageId } },
-    size: 1
-  }
-})
-
-const targetTimestamp = targetMessage._source.timestamp
-```
-
-#### 5b. Count Messages Before Target
-
-The key is to count messages that come **before** the target in the current sort order:
-
-```javascript
-// For ASC (chronological): count messages with timestamp < target
-// For DESC (newest first): count messages with timestamp > target
-const countQuery = {
-  query: {
-    bool: {
-      must: [
-        ...must,  // Apply same filters
-        { 
-          range: { 
-            timestamp: sortOrder === 'asc' 
-              ? { lt: targetTimestamp }  // Less than for ascending
-              : { gt: targetTimestamp }  // Greater than for descending
-          } 
-        }
-      ]
-    }
-  }
-}
-
-const countResponse = await openSearchClient.search({
-  index: 'messages',
-  body: countQuery
-})
-
-const messagesBeforeTarget = countResponse.body.hits.total.value
-```
-
-#### 5c. Calculate Page Number
 
 ```javascript
 targetPage = Math.floor(messagesBeforeTarget / size) + 1
@@ -208,136 +142,85 @@ targetPage = Math.floor(messagesBeforeTarget / size) + 1
 - Calculation: `Math.floor(45 / 20) + 1 = 3`
 - Target is on page 3
 
-### Step 6: Enrich Results with User Data
+### Step 4: Enrich Results with User Data
 
-Messages are indexed with user IDs, but user display names and profile pictures can change. The API fetches current user data from Postgres:
+Messages are archived with the display name at send time, but names and avatars change. The route batches one `server_users` lookup covering both message authors and reply-preview authors, then overwrites `displayName` / `profilePictureLink` with current values.
 
-```javascript
-const userIds = [...new Set(hits.map(hit => hit._source.userId))]
-const serverUsers = await db.getServerUsersByUserIds(userIds)
+### Step 5: Response Shape
 
-// Update display names and profile pictures
-hits.forEach(hit => {
-  const userInfo = userMap.get(hit._source.userId)
-  if (userInfo) {
-    hit._source.displayName = userInfo.displayName
-    hit._source.profilePictureLink = userInfo.profilePictureLink
-  }
-})
+```json
+{
+  "messages": [
+    {
+      "id": "123",
+      "messageId": "1378164866073886761",
+      "content": "Message text content",
+      "userId": "123456789",
+      "username": "user123",
+      "displayName": "Cool User",
+      "profilePictureLink": "https://cdn.discord.com/avatars/...",
+      "timestamp": "2025-05-31T00:15:09.137Z",
+      "channelId": "987654321",
+      "channelName": "deadchat",
+      "category": "Game 42",
+      "categoryId": "111111111",
+      "replyToMessageId": "1373823440389279774",
+      "replyPreview": {
+        "content": "First 100 chars of the parent message…",
+        "userId": "987654321",
+        "displayName": "Parent Author"
+      },
+      "attachments": [],
+      "embeds": [],
+      "reactions": []
+    }
+  ],
+  "total": 1234,
+  "targetPage": null
+}
 ```
 
-### Step 7: Return Response
-
-```javascript
-return NextResponse.json({
-  hits: response.body.hits,
-  aggregations: response.body.aggregations,
-  targetPage: jumpToMessageId ? targetPage : null
-})
-```
+`replyPreview` is only present on messages that are replies. If the parent message was never archived, it contains `"[Original message not found]"`.
 
 ## Frontend Flow: Jump to Message
 
 ### Scenario: User clicks "Jump to Original" on a reply
 
-```javascript
-handleViewOriginal(message)
-  ↓
-handleJumpToMessage(message)
-  ↓
-┌────────────────────────────────────┐
-│ Check if filters need to change    │
-│ - Current channel vs target channel│
-│ - Current filters vs clean state   │
-└─────────────┬──────────────────────┘
-              │
-     ┌────────┴─────────┐
-     │                  │
-  YES│               NO │
-     │                  │
-     ▼                  ▼
-┌─────────────┐   ┌──────────────┐
-│ Make API    │   │ Just scroll  │
-│ request with│   │ to message   │
-│ jumpToMsgId │   │ in current   │
-│             │   │ results      │
-└──────┬──────┘   └──────────────┘
-       │
-       ▼
-┌──────────────────────┐
-│ API calculates page  │
-│ where message exists │
-└──────┬───────────────┘
-       │
-       ▼
-┌──────────────────────┐
-│ Update filters with  │
-│ calculated page      │
-└──────┬───────────────┘
-       │
-       ▼
-┌──────────────────────┐
-│ useEffect triggers   │
-│ new search request   │
-└──────┬───────────────┘
-       │
-       ▼
-┌──────────────────────┐
-│ Results load with    │
-│ target message       │
-└──────┬───────────────┘
-       │
-       ▼
-┌──────────────────────┐
-│ Auto-scroll to msg   │
-│ Add highlight ring   │
-└──────────────────────┘
-```
+1. If the target message is already in the current results, scroll to it and flash a highlight ring.
+2. Otherwise, fetch the parent via `/api/archives/message/[messageId]`, then re-search its channel with `jumpToMessageId` set.
+3. The API returns `targetPage`; the frontend sets filters to that channel/page, which triggers the search effect and renders the page containing the target.
 
 ## Key Design Decisions
 
-### 1. Why Two Different Sort Orders?
+### 1. Why Postgres instead of OpenSearch?
 
-- **DESC (normal)**: Users expect to see newest messages first when browsing
-- **ASC (jumping)**: When jumping to a message (like a reply), chronological order makes more sense for reading context
+The archive already lives in Postgres, and `to_tsvector`/`plainto_tsquery` with a GIN index covers the search needs at this scale. Removing OpenSearch eliminates a service dependency, an indexing pipeline, and a second copy of the data.
 
-### 2. Why Calculate Page Server-Side?
+### 2. Why join reply previews into the search query?
+
+Previously the frontend fetched each reply's parent one request at a time (up to 20 sequential round trips per page). A self-join returns the preview in the same query at negligible cost.
+
+### 3. Why Calculate Page Server-Side?
 
 The server has the full dataset and can efficiently count messages. Doing this client-side would require fetching all messages.
 
-### 3. Why Use Discord Message ID Instead of OpenSearch ID?
+### 4. Why Use Discord Message ID Instead of Row ID?
 
 - Discord message IDs are stable and consistent
-- OpenSearch document IDs (_id) are internal to OpenSearch
 - Reply relationships use Discord message IDs
 
-### 4. Why Enrich with Database User Data?
+### 5. Why Enrich with Current User Data?
 
 - User display names and avatars change over time
-- Messages are indexed at send-time with the display name at that moment
+- Messages are archived at send-time with the display name at that moment
 - Showing current display names provides better UX
 
-## Message Schema in OpenSearch
+## Indexes (`database/migrations/20260316T000000_add_archive_messages_table.sql`)
 
-```json
-{
-  "messageId": "1378164866073886761",
-  "content": "Message text content",
-  "userId": "123456789",
-  "username": "user123",
-  "displayName": "Cool User",
-  "profilePictureLink": "https://cdn.discord.com/avatars/...",
-  "timestamp": "2025-05-31T00:15:09.137Z",
-  "channelId": "987654321",
-  "channelName": "deadchat",
-  "category": "Game 42",
-  "categoryId": "111111111",
-  "replyToMessageId": "1373823440389279774",
-  "attachments": [],
-  "embeds": [],
-  "reactions": []
-}
-```
+- `gin(to_tsvector('english', coalesce(content, '')))` — full-text search
+- `category`, `channel_name`, `user_id` — filter columns
+- `timestamp DESC` — sort order
+- `(channel_id, timestamp)` — context window queries
 
 ## Common Queries
 
@@ -369,25 +252,23 @@ This returns `targetPage` in the response, which the frontend uses to navigate.
 
 ## Performance Considerations
 
-1. **Indexing**: All searchable fields are indexed in OpenSearch for fast querying
-2. **Aggregations**: Run alongside the main query to populate filter dropdowns
-3. **Pagination**: Only fetches the current page of results, not all matches
-4. **User enrichment**: Batches user lookups to minimize database queries
-5. **Caching**: Browser caches results; navigating back/forward reuses cached data
+1. **Debounce**: The query input waits 300 ms after the last keystroke before searching
+2. **Parallel queries**: Count and data page run concurrently
+3. **Reply previews**: Included via self-join, not per-message requests
+4. **Aggregations**: Computed only by `/api/archives/aggregations` on page load, not on every search
+5. **User enrichment**: One batched `server_users` lookup per search
 
 ## Error Handling
 
 - **Message not found**: Returns page 1 as fallback
-- **OpenSearch connection error**: Returns 500 with error message
+- **Database error**: Returns 500 with error message
 - **Invalid parameters**: Ignored (default values used)
-- **Missing reply messages**: Frontend shows "Original message not found"
+- **Missing reply parents**: `replyPreview.content` is `"[Original message not found]"`
 
 ## Future Improvements
 
-1. **Caching**: Add Redis caching for frequently accessed pages
-2. **Highlighting**: Show search term matches highlighted in results
+1. **URL state**: Reflect filters/page in the URL for shareable searches and back-button support
+2. **Highlighting**: Show search term matches highlighted in results (`ts_headline`)
 3. **Date filters**: Add ability to filter by date range
-4. **Export**: Allow exporting search results
-5. **Advanced search**: Boolean operators, exact phrases, regex
-6. **Search within results**: Narrow down results without losing context
-
+4. **Keyset pagination**: Replace OFFSET if the archive grows large enough for deep pages to slow down
+5. **Advanced search**: Boolean operators, exact phrases (`websearch_to_tsquery`)

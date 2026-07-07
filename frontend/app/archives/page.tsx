@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -14,25 +14,28 @@ import { extractMediaFromContent } from '@/lib/media-utils'
 import { MediaDisplay } from '@/components/MediaDisplay'
 import Link from 'next/link'
 
-interface SearchResult {
-  _id: string
-  _source: {
-    messageId: string
+interface ArchiveMessage {
+  id: string
+  messageId: string
+  content: string
+  userId: string
+  username: string
+  displayName: string
+  profilePictureLink?: string
+  timestamp: string
+  channelId: string
+  channelName: string
+  category: string
+  categoryId: string
+  replyToMessageId?: string
+  replyPreview?: {
     content: string
-    userId: string
-    username: string
+    userId: string | null
     displayName: string
-    profilePictureLink?: string
-    timestamp: string
-    channelId: string
-    channelName: string
-    category: string
-    categoryId: string
-    replyToMessageId?: string
-    attachments: any[]
-    embeds: any[]
-    reactions: any[]
   }
+  attachments: any[]
+  embeds: any[]
+  reactions: any[]
 }
 
 interface SearchFilters {
@@ -44,17 +47,12 @@ interface SearchFilters {
 }
 
 interface SearchResponse {
-  hits: {
-    total: { value: number }
-    hits: SearchResult[]
-  }
-  aggregations?: {
-    games?: { buckets: Array<{ key: string; doc_count: number }> }
-    channels?: { buckets: Array<{ key: string; doc_count: number }> }
-    users?: { buckets: Array<{ key: string; doc_count: number }> }
-  }
+  messages: ArchiveMessage[]
+  total: number
   targetPage?: number | null
 }
+
+const SEARCH_DEBOUNCE_MS = 300
 
 export default function ArchivesPage() {
   const [filters, setFilters] = useState<SearchFilters>({
@@ -64,18 +62,16 @@ export default function ArchivesPage() {
     user: 'all',
     page: 1
   })
+  const [queryInput, setQueryInput] = useState('')
 
   const areFiltersSet = () => filters.query !== '' && filters.user !== 'all'
 
-  const [results, setResults] = useState<SearchResult[]>([])
+  const [results, setResults] = useState<ArchiveMessage[]>([])
   const [totalHits, setTotalHits] = useState(0)
   const [loading, setLoading] = useState(false)
   const [games, setGames] = useState<Array<{ key: string; count: number }>>([])
   const [channels, setChannels] = useState<Array<{ key: string; count: number }>>([])
   const [users, setUsers] = useState<Array<{ key: string; count: number }>>([])
-  const [jumpToMessage, setJumpToMessage] = useState<SearchResult | null>(null)
-  const jumpToMessageRef = useRef<SearchResult | null>(null)
-  const [replyPreviews, setReplyPreviews] = useState<Map<string, { content: string; username: string }>>(new Map())
   const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set())
 
   const ITEMS_PER_PAGE = 20
@@ -83,15 +79,21 @@ export default function ArchivesPage() {
   useEffect(() => { loadAggregations() }, [])
   useEffect(() => { searchMessages() }, [filters])
 
+  // Debounce free-text query so we don't search on every keystroke
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setFilters(prev => prev.query === queryInput ? prev : { ...prev, query: queryInput, page: 1 })
+    }, SEARCH_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [queryInput])
+
   const loadAggregations = async () => {
     try {
       const response = await fetch('/api/archives/aggregations')
       const data = await response.json()
-      if (data.aggregations) {
-        setGames(data.aggregations.games?.buckets || [])
-        setChannels(data.aggregations.channels?.buckets || [])
-        setUsers(data.aggregations.users?.buckets || [])
-      }
+      setGames(data.games || [])
+      setChannels(data.channels || [])
+      setUsers(data.users || [])
     } catch (error) {
       console.error('Error loading aggregations:', error)
     }
@@ -108,14 +110,10 @@ export default function ArchivesPage() {
         page: filters.page.toString(),
         size: ITEMS_PER_PAGE.toString()
       })
-      if (jumpToMessageRef.current) {
-        params.append('jumpToMessageId', jumpToMessageRef.current._source.messageId)
-      }
       const response = await fetch(`/api/archives/search?${params}`)
       const data: SearchResponse = await response.json()
-      setResults(data.hits.hits)
-      setTotalHits(data.hits.total.value)
-      await fetchReplyPreviews(data.hits.hits)
+      setResults(data.messages)
+      setTotalHits(data.total)
     } catch (error) {
       console.error('Error searching messages:', error)
     } finally {
@@ -123,36 +121,11 @@ export default function ArchivesPage() {
     }
   }
 
-  const fetchReplyPreviews = async (messages: SearchResult[]) => {
-    const newPreviews = new Map<string, { content: string; username: string }>()
-    for (const message of messages) {
-      if (message._source.replyToMessageId) {
-        try {
-          const response = await fetch(`/api/archives/message/${message._source.replyToMessageId}`)
-          const data = await response.json()
-          if (data.message) {
-            const originalContent = data.message._source.content
-            const preview = originalContent
-              ? originalContent.length > 100 ? originalContent.substring(0, 100) + '…' : originalContent
-              : '[No text content]'
-            newPreviews.set(message._id, {
-              content: preview,
-              username: data.message._source.displayName || data.message._source.username
-            })
-          }
-        } catch {
-          newPreviews.set(message._id, { content: '[Original message not found]', username: 'Unknown' })
-        }
-      }
-    }
-    setReplyPreviews(newPreviews)
-  }
-
-  const handleJumpToRepliedMessage = async (message: SearchResult) => {
-    const targetIndex = results.findIndex(r => r._source.messageId === message._source.replyToMessageId)
+  const handleJumpToRepliedMessage = async (message: ArchiveMessage) => {
+    const targetIndex = results.findIndex(r => r.messageId === message.replyToMessageId)
     if (targetIndex !== -1) {
       setTimeout(() => {
-        const el = document.getElementById(`message-${message._source.replyToMessageId}`)
+        const el = document.getElementById(`message-${message.replyToMessageId}`)
         if (el) {
           el.scrollIntoView({ behavior: 'smooth', block: 'center' })
           el.classList.add('ring-2', 'ring-primary', 'ring-opacity-50')
@@ -160,30 +133,31 @@ export default function ArchivesPage() {
         }
       }, 100)
     } else {
-      const response = await fetch(`/api/archives/message/${message._source.replyToMessageId}`)
+      const response = await fetch(`/api/archives/message/${message.replyToMessageId}`)
       const data = await response.json()
       if (data.message) await handleJumpToMessage(data.message)
     }
   }
 
-  const handleJumpToMessage = async (message: SearchResult) => {
+  const handleJumpToMessage = async (message: ArchiveMessage) => {
     try {
       const params = new URLSearchParams({
-        query: '', game: '', channel: message._source.channelName, user: '',
+        query: '', game: '', channel: message.channelName, user: '',
         page: '1', size: ITEMS_PER_PAGE.toString(),
-        jumpToMessageId: message._source.messageId
+        jumpToMessageId: message.messageId
       })
       const response = await fetch(`/api/archives/search?${params}`)
       const data: SearchResponse = await response.json()
-      setFilters({ query: '', game: 'all', channel: message._source.channelName, user: 'all', page: data.targetPage || 1 })
+      setQueryInput('')
+      setFilters({ query: '', game: 'all', channel: message.channelName, user: 'all', page: data.targetPage || 1 })
     } catch {
-      setFilters({ query: '', game: 'all', channel: message._source.channelName, user: 'all', page: 1 })
+      setQueryInput('')
+      setFilters({ query: '', game: 'all', channel: message.channelName, user: 'all', page: 1 })
     }
   }
 
   const handleFilterChange = (key: keyof SearchFilters, value: string) => {
     setFilters(prev => ({ ...prev, [key]: value, page: 1 }))
-    setReplyPreviews(new Map())
   }
 
   const handlePageChange = (newPage: number) => setFilters(prev => ({ ...prev, page: newPage }))
@@ -229,8 +203,8 @@ export default function ArchivesPage() {
                 <Input
                   id="query"
                   placeholder="Search content…"
-                  value={filters.query}
-                  onChange={(e) => handleFilterChange('query', e.target.value)}
+                  value={queryInput}
+                  onChange={(e) => setQueryInput(e.target.value)}
                   className="bg-background border-border text-foreground placeholder:text-muted-foreground h-8 text-sm"
                 />
               </div>
@@ -310,25 +284,25 @@ export default function ArchivesPage() {
             )}
 
             <div className="space-y-2">
-              {results.map((result) => (
+              {results.map((message) => (
                 <Card
-                  key={result._id}
-                  id={`message-${result._source.messageId}`}
+                  key={message.id}
+                  id={`message-${message.messageId}`}
                   className="bg-card border-border hover:border-border/80 transition-colors"
                 >
                   <CardContent className="p-4">
                     <div className="flex items-start gap-3">
                       <Avatar className="h-7 w-7 shrink-0">
-                        {result._source.profilePictureLink && !brokenImages.has(result._source.userId) ? (
+                        {message.profilePictureLink && !brokenImages.has(message.userId) ? (
                           <img
-                            src={result._source.profilePictureLink}
+                            src={message.profilePictureLink}
                             alt=""
                             className="h-7 w-7 rounded-full object-cover"
-                            onError={() => setBrokenImages(prev => new Set(prev).add(result._source.userId))}
+                            onError={() => setBrokenImages(prev => new Set(prev).add(message.userId))}
                           />
                         ) : (
                           <AvatarFallback className="bg-secondary text-foreground text-xs">
-                            {result._source.displayName?.charAt(0) || '?'}
+                            {message.displayName?.charAt(0) || '?'}
                           </AvatarFallback>
                         )}
                       </Avatar>
@@ -336,12 +310,12 @@ export default function ArchivesPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <span className="text-sm font-medium text-foreground">
-                            {result._source.displayName || result._source.username}
+                            {message.displayName || message.username}
                           </span>
                           <span className="text-xs text-muted-foreground tabular-nums">
-                            {format(new Date(result._source.timestamp), 'MMM d, yyyy HH:mm')}
+                            {format(new Date(message.timestamp), 'MMM d, yyyy HH:mm')}
                           </span>
-                          {result._source.replyToMessageId && (
+                          {message.replyToMessageId && (
                             <Badge className="text-[10px] px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
                               <Reply className="h-2 w-2 mr-0.5" />
                               Reply
@@ -349,30 +323,30 @@ export default function ArchivesPage() {
                           )}
                         </div>
 
-                        {result._source.replyToMessageId && (
+                        {message.replyToMessageId && message.replyPreview && (
                           <div className="mb-2 px-2.5 py-1.5 bg-secondary/60 border-l-2 border-emerald-500/50 rounded-r text-xs text-muted-foreground">
                             <span className="text-emerald-400 font-medium">
-                              {replyPreviews.get(result._id)?.username || '…'}
+                              {message.replyPreview.displayName}
                             </span>
                             <span className="ml-1">
-                              {replyPreviews.get(result._id)?.content || 'Loading…'}
+                              {message.replyPreview.content}
                             </span>
                           </div>
                         )}
 
                         <div className="flex items-center gap-1.5 mb-2">
                           <Hash className="h-3 w-3 text-muted-foreground/60 shrink-0" />
-                          <span className="text-xs text-muted-foreground">{result._source.channelName}</span>
-                          {result._source.category && (
+                          <span className="text-xs text-muted-foreground">{message.channelName}</span>
+                          {message.category && (
                             <Badge className="text-[10px] px-1.5 py-0.5 bg-secondary text-muted-foreground border-border">
-                              {result._source.category}
+                              {message.category}
                             </Badge>
                           )}
                         </div>
 
-                        <div className="text-sm text-foreground/80 leading-relaxed mb-2">
-                          {result._source.content || (
-                            result._source.attachments?.some((a: any) => {
+                        <div className="text-[0.9375rem] text-foreground/95 leading-relaxed mb-2">
+                          {message.content || (
+                            message.attachments?.some((a: any) => {
                               const ext = a.url?.split('.').pop()?.toLowerCase()
                               return ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext || '')
                             }) ? null : (
@@ -381,13 +355,13 @@ export default function ArchivesPage() {
                           )}
                         </div>
 
-                        {result._source.content && extractMediaFromContent(result._source.content).length > 0 && (
-                          <MediaDisplay media={extractMediaFromContent(result._source.content)} className="mt-2" />
+                        {message.content && extractMediaFromContent(message.content).length > 0 && (
+                          <MediaDisplay media={extractMediaFromContent(message.content)} className="mt-2" />
                         )}
 
-                        {result._source.attachments?.length > 0 && (
+                        {message.attachments?.length > 0 && (
                           <div className="mt-2 space-y-2">
-                            {result._source.attachments
+                            {message.attachments
                               .filter((a: any) => {
                                 const ext = a.url?.split('.').pop()?.toLowerCase()
                                 return ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext || '')
@@ -414,15 +388,15 @@ export default function ArchivesPage() {
                         {areFiltersSet() && (
                           <button
                             className="text-xs text-primary hover:text-primary/80 transition-colors font-medium"
-                            onClick={() => handleJumpToMessage(result)}
+                            onClick={() => handleJumpToMessage(message)}
                           >
                             Jump to original
                           </button>
                         )}
-                        {result._source.replyToMessageId && (
+                        {message.replyToMessageId && (
                           <button
                             className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors font-medium flex items-center gap-1"
-                            onClick={() => handleJumpToRepliedMessage(result)}
+                            onClick={() => handleJumpToRepliedMessage(message)}
                           >
                             <Reply className="h-3 w-3" />
                             Jump to reply

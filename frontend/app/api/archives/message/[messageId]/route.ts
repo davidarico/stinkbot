@@ -25,15 +25,10 @@ export async function GET(
     }
 
     // Enrich with current display name and profile picture
-    const userIds = [message._source.userId]
-    if (userIds.length > 0) {
-      const serverUsers = await db.getServerUsersByUserIds(userIds)
-      const userMap = new Map(serverUsers.map(u => [u.user_id, { displayName: u.display_name, profilePictureLink: u.profile_picture_link }]))
-      const userInfo = userMap.get(message._source.userId)
-      if (userInfo) {
-        message._source.displayName = userInfo.displayName
-        message._source.profilePictureLink = userInfo.profilePictureLink
-      }
+    const serverUsers = await db.getServerUsersByUserIds([message.userId])
+    if (serverUsers.length > 0) {
+      message.displayName = serverUsers[0].display_name
+      message.profilePictureLink = serverUsers[0].profile_picture_link
     }
 
     return NextResponse.json({ message })

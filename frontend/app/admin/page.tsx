@@ -71,7 +71,7 @@ export default function AdminPage() {
         <div
           className="pointer-events-none fixed inset-0 -z-10"
           style={{
-            background: "radial-gradient(ellipse 60% 40% at 50% -5%, oklch(0.62 0.22 285 / 0.09) 0%, transparent 70%)",
+            background: "radial-gradient(ellipse 60% 40% at 50% -5%, oklch(0.80 0.09 235 / 0.11) 0%, transparent 70%)",
           }}
         />
         <div className="w-full max-w-sm">
@@ -133,7 +133,7 @@ export default function AdminPage() {
       <div
         className="pointer-events-none fixed inset-0 -z-10"
         style={{
-          background: "radial-gradient(ellipse 60% 35% at 50% -5%, oklch(0.62 0.22 285 / 0.08) 0%, transparent 70%)",
+          background: "radial-gradient(ellipse 60% 35% at 50% -5%, oklch(0.80 0.09 235 / 0.10) 0%, transparent 70%)",
         }}
       />
       <header className="border-b border-border/60 px-8 h-14 flex items-center justify-between">

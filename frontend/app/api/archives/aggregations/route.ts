@@ -1,17 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { db } from '@/lib/database'
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const aggregations = await db.getArchiveAggregations()
-
-    return NextResponse.json({
-      aggregations: {
-        games: aggregations.games,
-        channels: aggregations.channels,
-        users: aggregations.users
-      }
-    })
+    const { games, channels, users } = await db.getArchiveAggregations()
+    return NextResponse.json({ games, channels, users })
   } catch (error) {
     console.error('Archive aggregations error:', error)
     return NextResponse.json(

@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     const jumpToMessageId = searchParams.get('jumpToMessageId') || ''
     const from = (page - 1) * size
 
-    const response = await db.searchArchiveMessages({
+    const { messages, total, targetPage } = await db.searchArchiveMessages({
       query: query || undefined,
       game: game || undefined,
       channel: channel || undefined,
@@ -23,27 +23,28 @@ export async function GET(request: NextRequest) {
       jumpToMessageId: jumpToMessageId || undefined
     })
 
-    // Enrich hits with current display names and profile pictures from server_users
-    const hits = response.hits.hits
-    const userIds: string[] = [...new Set<string>(hits.map((hit: any) => hit._source.userId as string))]
+    // Enrich with current display names and profile pictures from server_users
+    const userIds: string[] = [...new Set<string>(
+      messages.flatMap((m: any) => [m.userId, m.replyPreview?.userId].filter(Boolean))
+    )]
 
     if (userIds.length > 0) {
       const serverUsers = await db.getServerUsersByUserIds(userIds)
       const userMap = new Map(serverUsers.map(u => [u.user_id, { displayName: u.display_name, profilePictureLink: u.profile_picture_link }]))
-      hits.forEach((hit: any) => {
-        const userInfo = userMap.get(hit._source.userId)
+      messages.forEach((message: any) => {
+        const userInfo = userMap.get(message.userId)
         if (userInfo) {
-          hit._source.displayName = userInfo.displayName
-          hit._source.profilePictureLink = userInfo.profilePictureLink
+          message.displayName = userInfo.displayName
+          message.profilePictureLink = userInfo.profilePictureLink
+        }
+        const replyUserInfo = message.replyPreview?.userId ? userMap.get(message.replyPreview.userId) : undefined
+        if (replyUserInfo) {
+          message.replyPreview.displayName = replyUserInfo.displayName
         }
       })
     }
 
-    return NextResponse.json({
-      hits: response.hits,
-      aggregations: response.aggregations,
-      targetPage: response.targetPage
-    })
+    return NextResponse.json({ messages, total, targetPage })
   } catch (error) {
     console.error('Archive search error:', error)
     return NextResponse.json(
