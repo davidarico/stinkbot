@@ -81,6 +81,11 @@ interface Role {
 }
 
 // PostgreSQL database service
+// category_id for "The front office" — a fake baseball server's category that got
+// archived alongside the Werewolf game categories. Kept out of the main archive
+// browser and surfaced only at /archives/baseball.
+const BASEBALL_SERVER_CATEGORY_ID = '991056744056754206'
+
 export class DatabaseService {
   private pool: Pool
 
@@ -1350,6 +1355,7 @@ export class DatabaseService {
     from: number
     size: number
     jumpToMessageId?: string
+    onlyBaseballServer?: boolean
   }): Promise<{
     messages: any[]
     total: number
@@ -1358,6 +1364,16 @@ export class DatabaseService {
     const conditions: string[] = []
     const values: any[] = []
     let paramIndex = 1
+
+    if (params.onlyBaseballServer) {
+      conditions.push(`m.category_id = $${paramIndex}`)
+      values.push(BASEBALL_SERVER_CATEGORY_ID)
+      paramIndex++
+    } else {
+      conditions.push(`m.category_id != $${paramIndex}`)
+      values.push(BASEBALL_SERVER_CATEGORY_ID)
+      paramIndex++
+    }
 
     if (params.query && params.query.trim()) {
       conditions.push(`to_tsvector('english', coalesce(m.content,'')) @@ plainto_tsquery('english', $${paramIndex})`)
@@ -1452,15 +1468,16 @@ export class DatabaseService {
     }
   }
 
-  async getArchiveAggregations(): Promise<{
+  async getArchiveAggregations(onlyBaseballServer = false): Promise<{
     games: Array<{ key: string; count: number }>
     channels: Array<{ key: string; count: number }>
     users: Array<{ key: string; count: number }>
   }> {
+    const categoryOp = onlyBaseballServer ? '=' : '!='
     const [gamesRes, channelsRes, usersRes] = await Promise.all([
-      this.pool.query(`SELECT category as key, count(*)::int as count FROM archive_messages GROUP BY category ORDER BY count DESC LIMIT 100`),
-      this.pool.query(`SELECT channel_name as key, count(*)::int as count FROM archive_messages GROUP BY channel_name ORDER BY count DESC LIMIT 100`),
-      this.pool.query(`SELECT user_id as key, count(*)::int as count FROM archive_messages GROUP BY user_id ORDER BY count DESC LIMIT 100`)
+      this.pool.query(`SELECT category as key, count(*)::int as count FROM archive_messages WHERE category_id ${categoryOp} $1 GROUP BY category ORDER BY count DESC LIMIT 100`, [BASEBALL_SERVER_CATEGORY_ID]),
+      this.pool.query(`SELECT channel_name as key, count(*)::int as count FROM archive_messages WHERE category_id ${categoryOp} $1 GROUP BY channel_name ORDER BY count DESC LIMIT 100`, [BASEBALL_SERVER_CATEGORY_ID]),
+      this.pool.query(`SELECT user_id as key, count(*)::int as count FROM archive_messages WHERE category_id ${categoryOp} $1 GROUP BY user_id ORDER BY count DESC LIMIT 100`, [BASEBALL_SERVER_CATEGORY_ID])
     ])
     const userIds = usersRes.rows.map((r: any) => r.key)
     let userDisplayNames: Record<string, string> = {}

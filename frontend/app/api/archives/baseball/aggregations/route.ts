@@ -1,5 +1,5 @@
 import { handleArchiveAggregations } from '@/lib/archive-search'
 
 export async function GET() {
-  return handleArchiveAggregations(false)
+  return handleArchiveAggregations(true)
 }
