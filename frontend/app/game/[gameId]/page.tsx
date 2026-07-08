@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Search, Users, Shuffle, Moon, Sun, Filter, Check, Settings, Plus, ClipboardList, Server } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn, shuffleArray } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { SettingsModal } from "@/components/settings-modal"
 import { AddChannelModal } from "@/components/add-channel-modal"
@@ -81,16 +81,6 @@ interface GameRole {
 interface Vote {
   voterUsername: string
   targetUsername: string
-}
-
-/** Uniform random permutation (Fisher–Yates). Does not mutate the input. */
-function shuffleArray<T>(items: T[]): T[] {
-  const a = [...items]
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[a[i], a[j]] = [a[j], a[i]]
-  }
-  return a
 }
 
 function sortSlotsByAlignmentAndName(slots: SelectedRoleSlot[]): SelectedRoleSlot[] {

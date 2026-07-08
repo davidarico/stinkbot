@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { ChevronDown, ChevronRight, Wine, Copy, RotateCcw } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn, shuffleArray } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 
 interface Player {
@@ -248,7 +248,7 @@ export function BartenderCalculator({ players, gameRoles }: BartenderCalculatorP
     }
 
     // Shuffle the results so the true role isn't always first
-    resultRoles = resultRoles.sort(() => Math.random() - 0.5)
+    resultRoles = shuffleArray(resultRoles)
     
     // Update the state with the final result
     setResultRoles(resultRoles)

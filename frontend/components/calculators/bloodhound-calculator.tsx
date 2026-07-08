@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { shuffleArray } from "@/lib/utils"
 
 interface Player {
   username: string
@@ -50,7 +51,7 @@ export function BloodhoundCalculator({ players, gameRoles }: BloodhoundCalculato
       setOutput("Need at least one alive player and a town role to search for.")
       return
     }
-    const shuffled = [...alive].sort(() => Math.random() - 0.5)
+    const shuffled = shuffleArray(alive)
     const hits = shuffled.slice(0, Math.min(3, shuffled.length)).map((p) => p.username)
     const miss = Math.random() < 0.25
     if (miss) {
