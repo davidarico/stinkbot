@@ -1174,112 +1174,6 @@ export class DatabaseService {
     }
   }
 
-  // Kanban task methods
-  async getKanbanTasks() {
-    try {
-      const result = await this.pool.query(
-        'SELECT * FROM kanban_tasks ORDER BY status, position, created_at'
-      )
-      return result.rows
-    } catch (error) {
-      console.error('Error fetching kanban tasks:', error)
-      throw error
-    }
-  }
-
-  async createKanbanTask(title: string, description?: string, status: string = 'todo') {
-    try {
-      // Get the next position for this status
-      const positionResult = await this.pool.query(
-        'SELECT COALESCE(MAX(position), 0) + 1 as next_position FROM kanban_tasks WHERE status = $1',
-        [status]
-      )
-      const nextPosition = positionResult.rows[0].next_position
-
-      const result = await this.pool.query(
-        'INSERT INTO kanban_tasks (title, description, status, position) VALUES ($1, $2, $3, $4) RETURNING *',
-        [title, description || null, status, nextPosition]
-      )
-      return { success: true, task: result.rows[0] }
-    } catch (error) {
-      console.error('Error creating kanban task:', error)
-      throw error
-    }
-  }
-
-  async updateKanbanTask(id: number, updates: {
-    title?: string
-    description?: string
-    status?: string
-    position?: number
-  }) {
-    try {
-      const updateFields = []
-      const values = []
-      let paramCount = 1
-
-      if (updates.title !== undefined) {
-        updateFields.push(`title = $${paramCount}`)
-        values.push(updates.title)
-        paramCount++
-      }
-      if (updates.description !== undefined) {
-        updateFields.push(`description = $${paramCount}`)
-        values.push(updates.description)
-        paramCount++
-      }
-      if (updates.status !== undefined) {
-        updateFields.push(`status = $${paramCount}`)
-        values.push(updates.status)
-        paramCount++
-      }
-      if (updates.position !== undefined) {
-        updateFields.push(`position = $${paramCount}`)
-        values.push(updates.position)
-        paramCount++
-      }
-
-      if (updateFields.length === 0) {
-        return { success: false, message: 'No updates provided' }
-      }
-
-      updateFields.push(`updated_at = CURRENT_TIMESTAMP`)
-      values.push(id)
-
-      const result = await this.pool.query(
-        `UPDATE kanban_tasks SET ${updateFields.join(', ')} WHERE id = $${paramCount} RETURNING *`,
-        values
-      )
-
-      if (result.rows.length === 0) {
-        return { success: false, message: 'Task not found' }
-      }
-
-      return { success: true, task: result.rows[0] }
-    } catch (error) {
-      console.error('Error updating kanban task:', error)
-      throw error
-    }
-  }
-
-  async deleteKanbanTask(id: number) {
-    try {
-      const result = await this.pool.query(
-        'DELETE FROM kanban_tasks WHERE id = $1 RETURNING *',
-        [id]
-      )
-
-      if (result.rows.length === 0) {
-        return { success: false, message: 'Task not found' }
-      }
-
-      return { success: true, task: result.rows[0] }
-    } catch (error) {
-      console.error('Error deleting kanban task:', error)
-      throw error
-    }
-  }
-
   // Feedback methods
   async getFeedback() {
     try {
@@ -1351,6 +1245,7 @@ export class DatabaseService {
     query?: string
     game?: string
     channel?: string
+    channelId?: string
     user?: string
     from: number
     size: number
@@ -1388,6 +1283,11 @@ export class DatabaseService {
     if (params.channel) {
       conditions.push(`m.channel_name = $${paramIndex}`)
       values.push(params.channel)
+      paramIndex++
+    }
+    if (params.channelId) {
+      conditions.push(`m.channel_id = $${paramIndex}`)
+      values.push(params.channelId)
       paramIndex++
     }
     if (params.user) {
@@ -1468,43 +1368,46 @@ export class DatabaseService {
     }
   }
 
-  async getArchiveAggregations(onlyBaseballServer = false): Promise<{
-    games: Array<{ key: string; count: number }>
-    channels: Array<{ key: string; count: number }>
-    users: Array<{ key: string; count: number }>
-  }> {
+  // Categories with their channels for Discord-style navigation. There is no
+  // stored created_at for categories, but Discord IDs are snowflakes (creation
+  // time lives in the high bits), so sorting by category_id yields
+  // newest-created categories first.
+  async getArchiveNavigation(onlyBaseballServer = false): Promise<Array<{
+    categoryId: string
+    category: string
+    channels: Array<{ channelId: string; channelName: string; messageCount: number }>
+  }>> {
     const categoryOp = onlyBaseballServer ? '=' : '!='
-    const [gamesRes, channelsRes, usersRes] = await Promise.all([
-      this.pool.query(`SELECT category as key, count(*)::int as count FROM archive_messages WHERE category_id ${categoryOp} $1 GROUP BY category ORDER BY count DESC LIMIT 100`, [BASEBALL_SERVER_CATEGORY_ID]),
-      this.pool.query(`SELECT channel_name as key, count(*)::int as count FROM archive_messages WHERE category_id ${categoryOp} $1 GROUP BY channel_name ORDER BY count DESC LIMIT 100`, [BASEBALL_SERVER_CATEGORY_ID]),
-      this.pool.query(`SELECT user_id as key, count(*)::int as count FROM archive_messages WHERE category_id ${categoryOp} $1 GROUP BY user_id ORDER BY count DESC LIMIT 100`, [BASEBALL_SERVER_CATEGORY_ID])
-    ])
-    const userIds = usersRes.rows.map((r: any) => r.key)
-    let userDisplayNames: Record<string, string> = {}
-    const usernameMap: Record<string, string> = {}
-    if (userIds.length > 0) {
-      const [serverUsers, archivedNames] = await Promise.all([
-        this.getServerUsersByUserIds(userIds),
-        this.pool.query(
-          `SELECT DISTINCT ON (user_id) user_id, username FROM archive_messages WHERE user_id = ANY($1)`,
-          [userIds]
-        )
-      ])
-      userDisplayNames = Object.fromEntries(serverUsers.map((u: any) => [u.user_id, u.display_name]))
-      for (const row of archivedNames.rows) {
-        usernameMap[row.user_id] = row.username
-      }
-    }
-    const users = usersRes.rows.map((r: any) => ({
-      key: userDisplayNames[r.key] || usernameMap[r.key] || `User ${r.key}`,
-      count: r.count
-    })).sort((a: any, b: any) => a.key.localeCompare(b.key, undefined, { numeric: true, sensitivity: 'base' }))
+    // max() collapses mid-archive renames to a single row per id
+    const result = await this.pool.query(
+      `SELECT category_id, max(category) as category, channel_id, max(channel_name) as channel_name, count(*)::int as message_count
+       FROM archive_messages
+       WHERE category_id ${categoryOp} $1
+       GROUP BY category_id, channel_id`,
+      [BASEBALL_SERVER_CATEGORY_ID]
+    )
 
-    return {
-      games: gamesRes.rows,
-      channels: channelsRes.rows,
-      users
+    const byCategory = new Map<string, {
+      categoryId: string
+      category: string
+      channels: Array<{ channelId: string; channelName: string; messageCount: number }>
+    }>()
+    for (const row of result.rows) {
+      let cat = byCategory.get(row.category_id)
+      if (!cat) {
+        cat = { categoryId: row.category_id, category: row.category, channels: [] }
+        byCategory.set(row.category_id, cat)
+      }
+      cat.channels.push({ channelId: row.channel_id, channelName: row.channel_name, messageCount: row.message_count })
     }
+
+    const snowflake = (id: string) => { try { return BigInt(id) } catch { return BigInt(0) } }
+    const categories = [...byCategory.values()]
+    categories.sort((a, b) => (snowflake(b.categoryId) > snowflake(a.categoryId) ? 1 : -1))
+    for (const cat of categories) {
+      cat.channels.sort((a, b) => a.channelName.localeCompare(b.channelName, undefined, { numeric: true, sensitivity: 'base' }))
+    }
+    return categories
   }
 
   async getArchiveMessageByMessageId(messageId: string): Promise<any | null> {

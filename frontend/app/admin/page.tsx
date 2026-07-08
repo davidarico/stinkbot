@@ -112,11 +112,6 @@ export default function AdminPage() {
 
   const sections = [
     {
-      title: 'Development Kanban',
-      description: 'Manage development tasks and project progress',
-      href: '/admin/kanban',
-    },
-    {
       title: 'User Feedback',
       description: 'Review and manage user feedback from Discord',
       href: '/admin/feedback',

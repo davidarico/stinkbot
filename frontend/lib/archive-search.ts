@@ -7,6 +7,7 @@ export async function handleArchiveSearch(request: NextRequest, onlyBaseballServ
     const query = searchParams.get('query') || ''
     const game = searchParams.get('game') || ''
     const channel = searchParams.get('channel') || ''
+    const channelId = searchParams.get('channelId') || ''
     const user = searchParams.get('user') || ''
     const page = parseInt(searchParams.get('page') || '1')
     const size = parseInt(searchParams.get('size') || '20')
@@ -17,6 +18,7 @@ export async function handleArchiveSearch(request: NextRequest, onlyBaseballServ
       query: query || undefined,
       game: game || undefined,
       channel: channel || undefined,
+      channelId: channelId || undefined,
       user: user || undefined,
       from,
       size,
@@ -55,14 +57,14 @@ export async function handleArchiveSearch(request: NextRequest, onlyBaseballServ
   }
 }
 
-export async function handleArchiveAggregations(onlyBaseballServer: boolean) {
+export async function handleArchiveNavigation(onlyBaseballServer: boolean) {
   try {
-    const { games, channels, users } = await db.getArchiveAggregations(onlyBaseballServer)
-    return NextResponse.json({ games, channels, users })
+    const categories = await db.getArchiveNavigation(onlyBaseballServer)
+    return NextResponse.json({ categories })
   } catch (error) {
-    console.error('Archive aggregations error:', error)
+    console.error('Archive navigation error:', error)
     return NextResponse.json(
-      { error: 'Failed to get aggregations' },
+      { error: 'Failed to get navigation' },
       { status: 500 }
     )
   }
