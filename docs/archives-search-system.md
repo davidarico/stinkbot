@@ -104,7 +104,7 @@ m.channel_name = $3
 m.user_id = ANY($4)
 ```
 
-The data query LEFT JOINs each message's reply parent so reply previews arrive with the page — no follow-up requests:
+The data query LEFT JOINs each message's reply parent so reply previews arrive with the page - no follow-up requests:
 
 ```sql
 SELECT m.*,
@@ -217,10 +217,10 @@ The server has the full dataset and can efficiently count messages. Doing this c
 
 ## Indexes (`database/migrations/20260316T000000_add_archive_messages_table.sql`)
 
-- `gin(to_tsvector('english', coalesce(content, '')))` — full-text search
-- `category`, `channel_name`, `user_id` — filter columns
-- `timestamp DESC` — sort order
-- `(channel_id, timestamp)` — context window queries
+- `gin(to_tsvector('english', coalesce(content, '')))` - full-text search
+- `category`, `channel_name`, `user_id` - filter columns
+- `timestamp DESC` - sort order
+- `(channel_id, timestamp)` - context window queries
 
 ## Common Queries
 

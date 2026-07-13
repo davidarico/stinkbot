@@ -81,7 +81,7 @@ interface Role {
 }
 
 // PostgreSQL database service
-// category_id for "The front office" — a fake baseball server's category that got
+// category_id for "The front office" - a fake baseball server's category that got
 // archived alongside the Werewolf game categories. Kept out of the main archive
 // browser and surfaced only at /archives/baseball.
 const BASEBALL_SERVER_CATEGORY_ID = '991056744056754206'

@@ -278,7 +278,7 @@ describe('Voting Handlers', () => {
 
             const reply = msg.reply.mock.calls[0][0];
             expect(reply).toMatchObject({ embeds: expect.any(Array) });
-            // Alice hasn't voted, Bob has — only Alice should appear
+            // Alice hasn't voted, Bob has - only Alice should appear
             expect(reply.embeds[0].data.description).toContain('Alice');
             expect(reply.embeds[0].data.description).not.toContain('Bob');
         });

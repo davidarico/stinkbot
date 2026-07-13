@@ -1203,7 +1203,7 @@ export default function GameManagementPage() {
                         <div className="space-y-1">
                           {players.filter((p) => p.alignment === "town").map((player) => (
                             <div key={player.id} className="px-2 py-1 rounded bg-blue-500/8 text-xs text-foreground">
-                              {player.username} — {getDisplayRoleName(player)}
+                              {player.username} - {getDisplayRoleName(player)}
                             </div>
                           ))}
                         </div>
@@ -1215,7 +1215,7 @@ export default function GameManagementPage() {
                         <div className="space-y-1">
                           {players.filter((p) => p.alignment === "wolf").map((player) => (
                             <div key={player.id} className="px-2 py-1 rounded bg-red-500/8 text-xs text-foreground">
-                              {player.username} — {getDisplayRoleName(player)}
+                              {player.username} - {getDisplayRoleName(player)}
                             </div>
                           ))}
                         </div>
@@ -1227,7 +1227,7 @@ export default function GameManagementPage() {
                         <div className="space-y-1">
                           {players.filter((p) => p.alignment === "neutral").map((player) => (
                             <div key={player.id} className="px-2 py-1 rounded bg-amber-500/8 text-xs text-foreground">
-                              {player.username} — {getDisplayRoleName(player)}
+                              {player.username} - {getDisplayRoleName(player)}
                             </div>
                           ))}
                         </div>
@@ -1280,7 +1280,7 @@ export default function GameManagementPage() {
                             <div key={player.id} className={cn("px-3 py-2 rounded border", rowClass)}>
                               <div className="flex justify-between items-center">
                                 <span className="text-sm font-medium text-foreground">
-                                  {player.username} — {getDisplayRoleName(player)}
+                                  {player.username} - {getDisplayRoleName(player)}
                                 </span>
                                 <Button size="sm" variant="destructive" onClick={() => togglePlayerStatus(player.id)}
                                   className="h-6 px-2 text-xs">Kill</Button>
@@ -1322,7 +1322,7 @@ export default function GameManagementPage() {
                         {players.filter((p) => p.status === "dead").map((player) => (
                           <div key={player.id} className="px-2.5 py-1.5 rounded border bg-muted/30 border-border/50 flex justify-between items-center">
                             <span className="text-sm text-muted-foreground line-through">
-                              {player.username} — {getDisplayRoleName(player)}
+                              {player.username} - {getDisplayRoleName(player)}
                             </span>
                             <Button size="sm" variant="outline" onClick={() => togglePlayerStatus(player.id)} className="h-6 px-2 text-xs">Revive</Button>
                           </div>

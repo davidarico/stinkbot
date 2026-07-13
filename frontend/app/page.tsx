@@ -38,7 +38,7 @@ export default function HomePage() {
             Game Master<br />Console
           </h1>
           <p className="text-lg text-muted-foreground mb-10 max-w-lg mx-auto leading-relaxed">
-            Role assignment, live vote tracking, and phase management for Werewolf games — integrated directly with Discord.
+            Role assignment, live vote tracking, and phase management for Werewolf games - integrated directly with Discord.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link href="/roles">

@@ -4,7 +4,7 @@ import { db } from '@/lib/database'
 
 const TOKEN_SECRET = process.env.ADMIN_TOKEN_SECRET
 if (!TOKEN_SECRET) {
-  console.warn('ADMIN_TOKEN_SECRET is not set — admin sessions will not survive restarts and are less secure.')
+  console.warn('ADMIN_TOKEN_SECRET is not set - admin sessions will not survive restarts and are less secure.')
 }
 
 export function signToken(timestamp: number, nonce: string): string {

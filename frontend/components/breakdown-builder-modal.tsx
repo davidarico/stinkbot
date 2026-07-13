@@ -208,7 +208,7 @@ export function BreakdownBuilderModal({
       await navigator.clipboard.writeText(breakdownText)
       if (manualNotOnSheet.length > 0) {
         toast({
-          title: "Copied — verify manual roles",
+          title: "Copied - verify manual roles",
           description: `Breakdown copied. Roles not on the assigned sheet: ${manualNotOnSheet.map((r) => r.name).join(", ")}.`,
         })
       } else {

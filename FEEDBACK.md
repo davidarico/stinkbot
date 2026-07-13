@@ -6,25 +6,25 @@ This section is maintained by hand. Everything below the marker line is regenera
 
 ## Recently shipped
 
-- **`Wolf.lssv` — longest standing second vote** (feedback #75, shipped 2026-07-13). Included a new append-only `vote_history` table (`database/migrations/20260713T154002_*`) that logs every vote/retract, because `Wolf.next` wipes the live `votes` table at phase change. Reuse `vote_history` for anything needing past-day vote data.
+- **`Wolf.lssv` - longest standing second vote** (feedback #75, shipped 2026-07-13). Included a new append-only `vote_history` table (`database/migrations/20260713T154002_*`) that logs every vote/retract, because `Wolf.next` wipes the live `votes` table at phase change. Reuse `vote_history` for anything needing past-day vote data.
 
 - **Auto-pin phase-start messages** (feedback #81, #89, shipped 2026-07-13). `Wolf.next` now pins the new day/night embed in town square and unpins the previous phase pin. Added `games.last_phase_pin_message_id` (`database/migrations/20260713T162846_*`) to track the current pin; logic lives in `handleNext`'s `mainChannelPromises` block in `bot/src/handlers/game-phases.js`.
 
-- **`Wolf.remove_signup` — mod command to remove a player from signups** (feedback #90, shipped 2026-07-13). Removes the player row for the signup-phase game, removes the Signed Up role, restores Spectator, updates the signup message. Accepts an @mention or a raw user ID (for users who left the server). Added as `handleRemoveSignup` in `bot/src/handlers/game.js`; mod-gated automatically since it's not in `playerCommands` (`bot/src/werewolf-bot.js`).
+- **`Wolf.remove_signup` - mod command to remove a player from signups** (feedback #90, shipped 2026-07-13). Removes the player row for the signup-phase game, removes the Signed Up role, restores Spectator, updates the signup message. Accepts an @mention or a raw user ID (for users who left the server). Added as `handleRemoveSignup` in `bot/src/handlers/game.js`; mod-gated automatically since it's not in `playerCommands` (`bot/src/werewolf-bot.js`).
 
 ## New commands
 
-1. **`Wolf.assign` — manual role assignment** (feedback #86). Mods currently assign roles via the frontend dashboard only. A bot command `Wolf.assign @user <role name>` that sets `players.role_id` (+ `is_wolf` when appropriate, matching how the frontend writes assignments — see `frontend/lib/database.ts` for the write shape and `bot/src/handlers/roles.js` `handleRolesList` for the read shape). Validate the role exists in the game's configured role list (`game_role`). Medium.
+1. **`Wolf.assign` - manual role assignment** (feedback #86). Mods currently assign roles via the frontend dashboard only. A bot command `Wolf.assign @user <role name>` that sets `players.role_id` (+ `is_wolf` when appropriate, matching how the frontend writes assignments - see `frontend/lib/database.ts` for the write shape and `bot/src/handlers/roles.js` `handleRolesList` for the read shape). Validate the role exists in the game's configured role list (`game_role`). Medium.
 
-2. **`Wolf.silent` — alive players with zero messages today** (feedback #26). Needs the activity-tracking foundation (item 7) OR a slower interim version that paginates town-square history since `game.phase_change_at` like `handleSpeedCheck` does (`bot/src/handlers/speed-vote.js`). Prefer building item 7 first. Medium.
+2. **`Wolf.silent` - alive players with zero messages today** (feedback #26). Needs the activity-tracking foundation (item 7) OR a slower interim version that paginates town-square history since `game.phase_change_at` like `handleSpeedCheck` does (`bot/src/handlers/speed-vote.js`). Prefer building item 7 first. Medium.
 
-3. **`Wolf.remind` — nudge non-voters in their journals** (feedback #24). Reuses `handleNotVoted`'s query (`voting.js`) to find alive players without a vote, then posts a reminder in each player's journal channel (`player_journals` table maps user → channel) instead of cluttering town square. Medium-small.
+3. **`Wolf.remind` - nudge non-voters in their journals** (feedback #24). Reuses `handleNotVoted`'s query (`voting.js`) to find alive players without a vote, then posts a reminder in each player's journal channel (`player_journals` table maps user → channel) instead of cluttering town square. Medium-small.
 
-4. **Rollback command** (feedback #63). Scope tightly: undo the **last** `Wolf.next` only. Restore `day_phase`/`day_number`/`phase_change_at` on `games`, and restore that day's standing votes into `votes` by replaying `vote_history` (each voter's last action for the day; skip voters whose last action was a retract — same reconstruction as `handleLssv`'s past-day path in `voting.js`). Announce the rollback in town square. Medium.
+4. **Rollback command** (feedback #63). Scope tightly: undo the **last** `Wolf.next` only. Restore `day_phase`/`day_number`/`phase_change_at` on `games`, and restore that day's standing votes into `votes` by replaying `vote_history` (each voter's last action for the day; skip voters whose last action was a retract - same reconstruction as `handleLssv`'s past-day path in `voting.js`). Announce the rollback in town square. Medium.
 
 5. **Wolf-team dead channel** (feedback #46). Optional channel where eliminated wolves keep chatting. Fits the existing `game_channels` machinery (see `is_couple_chat` for the pattern of a flagged special channel with custom phase behavior in `channels.js` and `game-phases.js`). Grant view+send to dead wolves at death time (hook `killPlayer` in `players.js`, like `preserveCoupleChatAccess`). Medium.
 
-6. **`Wolf.perms_audit` — permission drift checker** (feedback #30-class; recurring bug theme). Generalize `handleFixJournals` (`journal.js`): compare every game channel's actual Discord permission overwrites against the expected matrix (town square, booth, memos, couple chats, dead chat, custom channels with `open_at_dawn`/`open_at_dusk`) and report mismatches, with a `fix` argument to repair. The expected matrix already exists implicitly in `channels.js` phase-change logic — extract it so audit and enforcement share one source of truth. Medium-large, high leverage: permission drift is the most recurring bug class in this codebase's history.
+6. **`Wolf.perms_audit` - permission drift checker** (feedback #30-class; recurring bug theme). Generalize `handleFixJournals` (`journal.js`): compare every game channel's actual Discord permission overwrites against the expected matrix (town square, booth, memos, couple chats, dead chat, custom channels with `open_at_dawn`/`open_at_dusk`) and report mismatches, with a `fix` argument to repair. The expected matrix already exists implicitly in `channels.js` phase-change logic - extract it so audit and enforcement share one source of truth. Medium-large, high leverage: permission drift is the most recurring bug class in this codebase's history.
 
 ## Foundations (unlock multiple items)
 
@@ -32,21 +32,21 @@ This section is maintained by hand. Everything below the marker line is regenera
 
 8. **Message activity tracking** (feedback #26, #27, #49, #67). `Wolf.ia` and `Wolf.speed_check` paginate the Discord API at query time (slow, rate-limited). The bot already receives every message (`messageCreate` in `index.js`). Add a counter table (`game_id`, `user_id`, `channel_id`, `day_number`, `message_count`, unique on the first four) incremented on each message in game channels, then: `Wolf.ia` reads it instantly, `Wolf.ia_history` shows per-day totals for the whole game (#27, #67), `Wolf.silent` (item 2) becomes a trivial query, and the IA window start becomes a per-server setting instead of the hardcoded 9:30 AM EST cutoff in `utils.js` (#49). Large-ish but the single highest-leverage bot change.
 
-9. **Journal categories: active game vs. archive** (feedback #88). Journals of players in the active game live in one category; the rest live in "Journal Archives" categories; players get moved back on signup. All journal category logic is in `bot/src/handlers/journal.js` (balancing system, ~1900 lines — read its category-splitting logic first). Large; touches the most complex handler.
+9. **Journal categories: active game vs. archive** (feedback #88). Journals of players in the active game live in one category; the rest live in "Journal Archives" categories; players get moved back on signup. All journal category logic is in `bot/src/handlers/journal.js` (balancing system, ~1900 lines - read its category-splitting logic first). Large; touches the most complex handler.
 
 ## Frontend
 
 10. **Bloodhound calculator** (feedback #87). Add alongside the existing bartender/sleepwalker calculators in `frontend/components/calculators/`. Follow the existing calculator component pattern. Small-medium.
 
-11. **Role shorthand + acronym glossary** (feedback #36, #33 — requested twice). Show common abbreviations on `/roles` (data may need a `shorthand` column on `roles` — migration + admin UI) plus a general glossary section. Small-medium.
+11. **Role shorthand + acronym glossary** (feedback #36, #33 - requested twice). Show common abbreviations on `/roles` (data may need a `shorthand` column on `roles` - migration + admin UI) plus a general glossary section. Small-medium.
 
 12. **Action priority / order-of-operations reference** (feedback #32). A section on `/roles` explaining night-action resolution order. Source material: `engine-generator/RULES.md` and `rules.json` (`orderOfOperations`). Content work more than code. Small.
 
-13. **Rename channels pre-game from the dashboard** (feedback #43). Let mods edit game channel names on the game page before `Wolf.start`; bot reads names at channel creation (`handleStart` in `game.js` builds names from prefix + fixed suffixes — would need to read overrides from `game_channels` or a new column). Medium.
+13. **Rename channels pre-game from the dashboard** (feedback #43). Let mods edit game channel names on the game page before `Wolf.start`; bot reads names at channel creation (`handleStart` in `game.js` builds names from prefix + fixed suffixes - would need to read overrides from `game_channels` or a new column). Medium.
 
-14. **Per-slot villager themes** (feedback #53). When a role list has Villager x4, allow naming each slot (Baker, Farmer...). The data model already supports per-player thematic names (`players.thematic_custom_name`, `game_role.custom_name` — see the query in `sendRoleNotificationsToJournals`, `voting.js`); this is a frontend role-config UI feature. Medium.
+14. **Per-slot villager themes** (feedback #53). When a role list has Villager x4, allow naming each slot (Baker, Farmer...). The data model already supports per-player thematic names (`players.thematic_custom_name`, `game_role.custom_name` - see the query in `sendRoleNotificationsToJournals`, `voting.js`); this is a frontend role-config UI feature. Medium.
 
-<!-- REGENERATED SNAPSHOT BELOW — do not edit below this line; scripts/regenerate-feedback-md.py overwrites everything under this marker. -->
+<!-- REGENERATED SNAPSHOT BELOW - do not edit below this line; scripts/regenerate-feedback-md.py overwrites everything under this marker. -->
 
 # Feedback
 
@@ -56,7 +56,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #22 — 2025-09-27T23:07:36.951854+00:00
+## #22 - 2025-09-27T23:07:36.951854+00:00
 
 - **Display name:** ElevatorClassic 🐪
 - **User ID:** `1248024419201450075`
@@ -68,7 +68,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #24 — 2025-09-29T17:00:56.565043+00:00
+## #24 - 2025-09-29T17:00:56.565043+00:00
 
 - **Display name:** Fletch 🏆🐪
 - **User ID:** `238822260645953537`
@@ -80,7 +80,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #26 — 2025-10-05T21:48:46.83244+00:00
+## #26 - 2025-10-05T21:48:46.83244+00:00
 
 - **Display name:** SortaCreativeDanny
 - **User ID:** `117857003145134081`
@@ -92,7 +92,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #27 — 2025-10-05T21:49:22.221522+00:00
+## #27 - 2025-10-05T21:49:22.221522+00:00
 
 - **Display name:** SlightlyChurnedMitch
 - **User ID:** `376604325973196821`
@@ -104,7 +104,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #30 — 2025-10-09T01:45:13.768412+00:00
+## #30 - 2025-10-09T01:45:13.768412+00:00
 
 - **Display name:** Stinky 🐪
 - **User ID:** `162675596772638720`
@@ -116,7 +116,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #31 — 2025-10-10T13:58:29.733432+00:00
+## #31 - 2025-10-10T13:58:29.733432+00:00
 
 - **Display name:** Fletch 🏆🐪
 - **User ID:** `238822260645953537`
@@ -128,7 +128,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #32 — 2025-10-10T21:19:55.874203+00:00
+## #32 - 2025-10-10T21:19:55.874203+00:00
 
 - **Display name:** Hibiscus🌺
 - **User ID:** `149748909965574144`
@@ -140,7 +140,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #33 — 2025-10-11T00:05:11.715066+00:00
+## #33 - 2025-10-11T00:05:11.715066+00:00
 
 - **Display name:** tuck
 - **User ID:** `243876219429322753`
@@ -152,7 +152,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #35 — 2025-10-17T13:52:49.229907+00:00
+## #35 - 2025-10-17T13:52:49.229907+00:00
 
 - **Display name:** Stinky 🐪
 - **User ID:** `162675596772638720`
@@ -164,7 +164,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #36 — 2025-10-18T01:19:15.782046+00:00
+## #36 - 2025-10-18T01:19:15.782046+00:00
 
 - **Display name:** tuck
 - **User ID:** `243876219429322753`
@@ -178,7 +178,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #43 — 2025-12-17T22:56:06.267532+00:00
+## #43 - 2025-12-17T22:56:06.267532+00:00
 
 - **Display name:** Stinky
 - **User ID:** `162675596772638720`
@@ -190,7 +190,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #46 — 2026-01-03T22:37:14.457753+00:00
+## #46 - 2026-01-03T22:37:14.457753+00:00
 
 - **Display name:** Elevator
 - **User ID:** `1248024419201450075`
@@ -202,7 +202,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #49 — 2026-01-09T18:00:09.790594+00:00
+## #49 - 2026-01-09T18:00:09.790594+00:00
 
 - **Display name:** 500 Games of Mully
 - **User ID:** `156069627972026368`
@@ -216,7 +216,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #53 — 2026-01-16T01:43:35.041247+00:00
+## #53 - 2026-01-16T01:43:35.041247+00:00
 
 - **Display name:** SemiCharmedMike
 - **User ID:** `193883917055557642`
@@ -228,7 +228,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #57 — 2026-02-03T02:06:15.433796+00:00
+## #57 - 2026-02-03T02:06:15.433796+00:00
 
 - **Display name:** ElevatorClassic 👻🐪🐪
 - **User ID:** `1248024419201450075`
@@ -240,7 +240,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #63 — 2026-03-18T00:21:04.783847+00:00
+## #63 - 2026-03-18T00:21:04.783847+00:00
 
 - **Display name:** Stinky
 - **User ID:** `162675596772638720`
@@ -252,7 +252,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #66 — 2026-03-27T13:50:38.253524+00:00
+## #66 - 2026-03-27T13:50:38.253524+00:00
 
 - **Display name:** Elevator Elevator
 - **User ID:** `1248024419201450075`
@@ -264,7 +264,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #67 — 2026-03-29T18:10:00.358975+00:00
+## #67 - 2026-03-29T18:10:00.358975+00:00
 
 - **Display name:** Hannibad Mulligan
 - **User ID:** `156069627972026368`
@@ -276,7 +276,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #69 — 2026-03-31T23:08:19.226653+00:00
+## #69 - 2026-03-31T23:08:19.226653+00:00
 
 - **Display name:** Dragon
 - **User ID:** `238869345734754305`
@@ -288,7 +288,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #75 — 2026-04-12T01:32:34.819139+00:00
+## #75 - 2026-04-12T01:32:34.819139+00:00
 
 - **Display name:** SemiCharmedMike
 - **User ID:** `193883917055557642`
@@ -300,7 +300,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #76 — 2026-04-13T00:24:31.26748+00:00
+## #76 - 2026-04-13T00:24:31.26748+00:00
 
 - **Display name:** 18+vator
 - **User ID:** `1248024419201450075`
@@ -312,7 +312,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #77 — 2026-04-17T01:36:03.52644+00:00
+## #77 - 2026-04-17T01:36:03.52644+00:00
 
 - **Display name:** Roxy 🏆🏆
 - **User ID:** `393594178061336576`
@@ -324,7 +324,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #78 — 2026-04-17T02:59:36.136679+00:00
+## #78 - 2026-04-17T02:59:36.136679+00:00
 
 - **Display name:** Dragon
 - **User ID:** `238869345734754305`
@@ -336,7 +336,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #79 — 2026-04-20T18:40:54.727809+00:00
+## #79 - 2026-04-20T18:40:54.727809+00:00
 
 - **Display name:** Roxy 🏆🏆
 - **User ID:** `393594178061336576`
@@ -348,7 +348,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #80 — 2026-04-27T22:18:51.773853+00:00
+## #80 - 2026-04-27T22:18:51.773853+00:00
 
 - **Display name:** Dragonversary
 - **User ID:** `238869345734754305`
@@ -360,7 +360,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #82 — 2026-05-04T20:32:44.851122+00:00
+## #82 - 2026-05-04T20:32:44.851122+00:00
 
 - **Display name:** Roxy 🏆🐪
 - **User ID:** `393594178061336576`
@@ -372,7 +372,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #83 — 2026-05-06T19:06:58.480068+00:00
+## #83 - 2026-05-06T19:06:58.480068+00:00
 
 - **Display name:** Raf👑 👑 🏆🏆🏆🏆
 - **User ID:** `410499132755542018`
@@ -384,7 +384,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #84 — 2026-05-25T16:28:38.042744+00:00
+## #84 - 2026-05-25T16:28:38.042744+00:00
 
 - **Display name:** Roxy 🏆🏆🐪
 - **User ID:** `393594178061336576`
@@ -396,7 +396,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #85 — 2026-06-08T17:41:21.667104+00:00
+## #85 - 2026-06-08T17:41:21.667104+00:00
 
 - **Display name:** Roxy 🏆🏆🏆🐪🐪
 - **User ID:** `393594178061336576`
@@ -408,7 +408,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #86 — 2026-06-12T00:18:22.034903+00:00
+## #86 - 2026-06-12T00:18:22.034903+00:00
 
 - **Display name:** Alex is a Mod
 - **User ID:** `376604325973196821`
@@ -420,7 +420,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #87 — 2026-06-15T19:15:42.291082+00:00
+## #87 - 2026-06-15T19:15:42.291082+00:00
 
 - **Display name:** Everlasting Dragon
 - **User ID:** `238869345734754305`
@@ -432,7 +432,7 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #88 — 2026-06-25T13:59:24.427355+00:00
+## #88 - 2026-06-25T13:59:24.427355+00:00
 
 - **Display name:** Oryx the African Antelope 🏆🏆
 - **User ID:** `393594178061336576`

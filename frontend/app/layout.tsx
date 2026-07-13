@@ -15,8 +15,8 @@ const spaceGrotesk = Space_Grotesk({
 })
 
 export const metadata: Metadata = {
-  title: "Stinkwolf — Werewolf Game Console",
-  description: "Discord-integrated game management for Werewolf — role assignment, vote tracking, and phase control.",
+  title: "Stinkwolf - Werewolf Game Console",
+  description: "Discord-integrated game management for Werewolf - role assignment, vote tracking, and phase control.",
 }
 
 export default function RootLayout({

@@ -5,7 +5,7 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-/** Uniform random permutation (Fisher–Yates). Does not mutate the input. */
+/** Uniform random permutation (Fisher-Yates). Does not mutate the input. */
 export function shuffleArray<T>(items: T[]): T[] {
   const a = [...items]
   for (let i = a.length - 1; i > 0; i--) {

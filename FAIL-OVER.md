@@ -11,7 +11,7 @@
                                │
                                ▼
 ┌──────────────────────────────────────────────────────────┐
-│  Supabase (Database — PostgreSQL)                         │
+│  Supabase (Database - PostgreSQL)                         │
 │  Primary database for all components                      │
 │  Tables: games, players, roles, votes, server_users,      │
 │          feedback, banned_users, admin_settings, etc.     │
@@ -26,24 +26,24 @@
 └──────────────────────────────────────────────────────────┘
 
 External integrations (optional, unchanged by this plan):
-  - OpenSearch  — message archive index
-  - AWS S3      — stinkwolf-images bucket
-  - OpenAI      — AI features
-  - SQLite      — local alive-mention tracking (bot/data/alive_mentions.db)
+  - OpenSearch  - message archive index
+  - AWS S3      - stinkwolf-images bucket
+  - OpenAI      - AI features
+  - SQLite      - local alive-mention tracking (bot/data/alive_mentions.db)
 ```
 
 ## Target Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  Vercel (Frontend — unchanged)                            │
+│  Vercel (Frontend - unchanged)                            │
 │  Connects to Supabase (still internet-accessible)         │
 │  Only critical page: role assignment (game-running only)  │
 └──────────────────────────────┬───────────────────────────┘
                                │  read
                                ▼
 ┌──────────────────────────────────────────────────────────┐
-│  Supabase (Database — near-real-time sync replica)        │
+│  Supabase (Database - near-real-time sync replica)        │
 │  Game-critical tables synced every ~1 min from Pi        │
 │  Non-critical tables (server_users, feedback, etc.) sync  │
 │  nightly. No archive tables. Read target for Vercel.      │
@@ -72,12 +72,12 @@ External integrations (optional, unchanged by this plan):
 
 - **Pi is primary:** Local PostgreSQL is the source of truth. Bot writes go there first.
 - **Supabase is a near-real-time sync replica:** Game-critical tables (games, players, votes, game_meta, game_speed, game_role, game_channels, roles) sync every ~1 minute so failover picks up almost exactly where the Pi left off. Non-critical tables sync nightly. Archive tables are excluded entirely.
-- **Oracle VM is passive:** It does not run the bot unless the Pi is unreachable. When it does, it points at Supabase — which is at most ~1 minute behind, making game continuity seamless.
+- **Oracle VM is passive:** It does not run the bot unless the Pi is unreachable. When it does, it points at Supabase - which is at most ~1 minute behind, making game continuity seamless.
 - **Frontend is game-running only:** The only Vercel page that matters during an active game is role assignment. Admin, kanban, and other features can tolerate nightly-synced data.
 - **Bot runs via Docker on Pi:** Consistent with Oracle VM. CI already produces `linux/arm64` images. Managed by systemd.
 - **SSH key needed:** Oracle VM does not currently have a key trusted by the Pi. This must be set up before the heartbeat service can work.
 - **Single Supabase credential:** The sync script reuses the same `DATABASE_URL` the bot currently uses. No separate service role key needed.
-- **No dual-write complexity:** One clear primary (Pi). The failover mode is read-from-Supabase only — no writes race back.
+- **No dual-write complexity:** One clear primary (Pi). The failover mode is read-from-Supabase only - no writes race back.
 - **SQLite stays local:** The `alive_mentions.db` file is local to whichever bot instance is active. This is ephemeral rate-limiting state, not critical data.
 
 ### Tables Excluded from Sync
@@ -96,7 +96,7 @@ All other PostgreSQL tables (games, players, roles, game_role, game_channels, ga
 
 ## Tasks
 
-### Phase 1 — Raspberry Pi: Local PostgreSQL Setup
+### Phase 1 - Raspberry Pi: Local PostgreSQL Setup
 
 - [ ] **1.1** SSH into Pi (`ssh dp`) and install PostgreSQL (e.g. `apt install postgresql`).
 - [ ] **1.2** Create a database and user for the bot (e.g. `stinkbot` / `stinkbot`). Note the local `DATABASE_URL`.
@@ -104,7 +104,7 @@ All other PostgreSQL tables (games, players, roles, game_role, game_channels, ga
 - [ ] **1.4** Create `database/.env` on the Pi pointing at the local PG instance and run `npm run migrate --workspace=database` to apply all migrations.
 - [ ] **1.5** Verify schema is correct by running `npm run migrate:status --workspace=database`.
 
-### Phase 2 — Raspberry Pi: Bot Service (Docker via systemd)
+### Phase 2 - Raspberry Pi: Bot Service (Docker via systemd)
 
 - [ ] **2.1** Install Docker on the Pi if not already present.
 - [ ] **2.2** Authenticate to GitHub Container Registry on the Pi: `docker login ghcr.io` (use a GitHub PAT with `read:packages` scope).
@@ -136,14 +136,14 @@ All other PostgreSQL tables (games, players, roles, game_role, game_channels, ga
 - [ ] **2.7** Confirm bot connects to Discord and local PG (`systemctl status stinkbot`, `docker logs stinkbot`).
 - [ ] **2.8** Stop the bot on the Oracle VM once Pi bot is confirmed healthy.
 
-### Phase 3 — Sync Script (Pi → Supabase)
+### Phase 3 - Sync Script (Pi → Supabase)
 
 The sync is split into two tiers based on criticality:
 
-**Tier 1 — Game-critical tables** (sync every ~1 minute):
+**Tier 1 - Game-critical tables** (sync every ~1 minute):
 `games`, `players`, `roles`, `game_role`, `game_channels`, `game_meta`, `game_speed`, `votes`
 
-**Tier 2 — Non-critical tables** (sync nightly):
+**Tier 2 - Non-critical tables** (sync nightly):
 `server_users`, `feedback`, `banned_users`, `admin_settings`, `schema_migrations`
 
 **Excluded entirely:** OpenSearch indices, S3 objects, any future `message_archives` PG table.
@@ -155,22 +155,22 @@ The sync is split into two tiers based on criticality:
 - [ ] **3.2** Test the sync script manually for both tiers: `node scripts/sync-to-supabase.js --tier game` and `node scripts/sync-to-supabase.js --tier all`.
 - [ ] **3.3** Add two cron entries on the Pi:
   ```
-  # Game-critical sync — every minute
+  # Game-critical sync - every minute
   * * * * * cd /path/to/stinkbot && node scripts/sync-to-supabase.js --tier game >> /var/log/stinkbot-sync-game.log 2>&1
 
-  # Full sync — nightly at 3:30 AM UTC (before member-sync at 4 AM)
+  # Full sync - nightly at 3:30 AM UTC (before member-sync at 4 AM)
   30 3 * * * cd /path/to/stinkbot && node scripts/sync-to-supabase.js --tier all >> /var/log/stinkbot-sync-full.log 2>&1
   ```
 - [ ] **3.4** Add log rotation for both sync log files (e.g. `logrotate` config or truncate weekly) so they don't grow unbounded.
 - [ ] **3.5** Confirm game-critical Supabase data is updating within ~1 minute of a local write. Verify the frontend role assignment page still works.
 
-### Phase 4 — SSH Key Setup (prerequisite for heartbeat)
+### Phase 4 - SSH Key Setup (prerequisite for heartbeat)
 
 - [ ] **4.1** On the Oracle VM, generate a dedicated key pair for the heartbeat service if one doesn't exist: `ssh-keygen -t ed25519 -f ~/.ssh/stinkbot_heartbeat -N ""`.
 - [ ] **4.2** Copy the public key to the Pi's `authorized_keys`: `ssh-copy-id -i ~/.ssh/stinkbot_heartbeat.pub dp` (run this once manually while logged into the Oracle VM).
-- [ ] **4.3** Verify the keyless check works: `ssh -i ~/.ssh/stinkbot_heartbeat -o ConnectTimeout=10 -o BatchMode=yes dp exit` — should return exit code 0 with no password prompt.
+- [ ] **4.3** Verify the keyless check works: `ssh -i ~/.ssh/stinkbot_heartbeat -o ConnectTimeout=10 -o BatchMode=yes dp exit` - should return exit code 0 with no password prompt.
 
-### Phase 5 — Oracle VM: Heartbeat & Passive Failover
+### Phase 5 - Oracle VM: Heartbeat & Passive Failover
 
 - [ ] **5.1** Create `scripts/heartbeat.sh` on the Oracle VM. Logic:
   - Ping the Pi via SSH (non-interactive, short timeout): `ssh -i ~/.ssh/stinkbot_heartbeat -o ConnectTimeout=10 -o BatchMode=yes dp exit`.
@@ -178,8 +178,8 @@ The sync is split into two tiers based on criticality:
   - After N=3 consecutive failures (~5 min at 90s interval): start the failover bot via `systemctl start stinkbot-failover`.
   - When Pi is reachable again and failover bot is running: `systemctl stop stinkbot-failover` and reset the failure counter.
   - Log all state transitions with timestamps to `/var/log/stinkbot-heartbeat.log`.
-- [ ] **5.2** Create `bot/.env.failover` on the Oracle VM. Same as the existing bot `.env` (which already points at Supabase — this is unchanged from the current Oracle VM setup) plus `FAILOVER_MODE=true`.
-- [ ] **5.3** Write a systemd unit `/etc/systemd/system/stinkbot-failover.service` on the Oracle VM (Docker-based, same as current Oracle VM bot setup, but using `.env.failover`). Do **not** enable it on boot — the heartbeat manages it.
+- [ ] **5.2** Create `bot/.env.failover` on the Oracle VM. Same as the existing bot `.env` (which already points at Supabase - this is unchanged from the current Oracle VM setup) plus `FAILOVER_MODE=true`.
+- [ ] **5.3** Write a systemd unit `/etc/systemd/system/stinkbot-failover.service` on the Oracle VM (Docker-based, same as current Oracle VM bot setup, but using `.env.failover`). Do **not** enable it on boot - the heartbeat manages it.
 - [ ] **5.4** Write a systemd timer pair on the Oracle VM to run the heartbeat every 90 seconds:
   ```ini
   # /etc/systemd/system/stinkbot-heartbeat.service
@@ -205,14 +205,14 @@ The sync is split into two tiers based on criticality:
 - [ ] **5.6** Test the failover path end-to-end:
   - Stop the Pi bot (`sudo systemctl stop stinkbot` on Pi) or block the SSH port temporarily.
   - Confirm heartbeat detects the outage after 3 checks (~5 min) and starts the Oracle VM bot.
-  - With game-critical sync running every minute, Supabase should be at most ~1 min stale — game state should be nearly seamless.
+  - With game-critical sync running every minute, Supabase should be at most ~1 min stale - game state should be nearly seamless.
   - Restart the Pi bot; confirm heartbeat stops Oracle VM bot within one check cycle.
 
-### Phase 6 — Hardening & Observability
+### Phase 6 - Hardening & Observability
 
-- [ ] **6.1** Add a Discord webhook notification in `heartbeat.sh` when failover state changes: post "⚠️ Pi bot unreachable — Oracle VM taking over" on failover start, and "✅ Pi bot recovered — Oracle VM stepping down" on recovery.
+- [ ] **6.1** Add a Discord webhook notification in `heartbeat.sh` when failover state changes: post "⚠️ Pi bot unreachable - Oracle VM taking over" on failover start, and "✅ Pi bot recovered - Oracle VM stepping down" on recovery.
 - [ ] **6.2** Update the GitHub Actions workflow (`.github/workflows/bot.yml`) so the Pi pulls the new image on deploy. Options: (a) add a deploy step that SSHes into the Pi and runs `docker pull && systemctl restart stinkbot`, or (b) document a manual pull process. The Oracle VM should also be updated at the same time.
-- [ ] **6.3** Review PostgreSQL `max_connections` on the Pi — default is 100, which is fine for the bot pool (max 20) plus the sync script connections. Confirm after setup.
+- [ ] **6.3** Review PostgreSQL `max_connections` on the Pi - default is 100, which is fine for the bot pool (max 20) plus the sync script connections. Confirm after setup.
 - [ ] **6.4** Set up basic PostgreSQL backups on the Pi (`pg_dump` cron to a local file or S3) so a Pi hardware failure doesn't lose the window between syncs. Even a daily `pg_dump` to S3 is a sufficient safety net given the ~1 min Supabase sync.
 
 ---

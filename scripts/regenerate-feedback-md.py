@@ -110,7 +110,7 @@ def main() -> int:
     for r in rows:
         cid = r["id"]
         ts = r["created_at"]
-        lines.append(f"## #{cid} — {ts}")
+        lines.append(f"## #{cid} - {ts}")
         lines.append("")
         lines.append(f"- **Display name:** {_as_text(r.get('display_name'))}")
         lines.append(f"- **User ID:** `{_as_text(r.get('user_id'))}`")

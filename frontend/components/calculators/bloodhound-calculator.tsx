@@ -31,7 +31,7 @@ interface BloodhoundCalculatorProps {
 
 /**
  * Lightweight "generator" for Bloodhound-style night lines (feedback #17).
- * Does not implement full rules — picks among alive players for flavor text.
+ * Does not implement full rules - picks among alive players for flavor text.
  */
 export function BloodhoundCalculator({ players, gameRoles }: BloodhoundCalculatorProps) {
   const alive = useMemo(() => players.filter((p) => p.status === "alive"), [players])
@@ -58,7 +58,7 @@ export function BloodhoundCalculator({ players, gameRoles }: BloodhoundCalculato
       setOutput(`Bloodhound searched for **${role.name}** and found **no one** among the sampled houses tonight.`)
     } else {
       setOutput(
-        `Bloodhound searched for **${role.name}** and found: **${hits.join("**, **")}** (randomized sample for table use — verify against your actual night info).`
+        `Bloodhound searched for **${role.name}** and found: **${hits.join("**, **")}** (randomized sample for table use - verify against your actual night info).`
       )
     }
   }

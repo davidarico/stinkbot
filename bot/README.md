@@ -212,7 +212,7 @@ To add a command: add a `case` in `werewolf-bot.js` and implement the handler in
 ### Testing
 
 ```bash
-npm run test:unit           # Jest suite (src/tests), uses mocks — run this
+npm run test:unit           # Jest suite (src/tests), uses mocks - run this
 npm run test:unit:coverage
 npm test                    # legacy live check against real Discord/Postgres
 ```

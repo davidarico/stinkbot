@@ -2,7 +2,7 @@
 Bartender 🍺
 Targets: Players
 Moves: Yes 
-Function: The Bartender visits one player per night. They receive three roles that were in the game at the beginning — the targeted player’s true role and two lies. One role must be town. One role must be wolf. The final role must either be town or neutral.
+Function: The Bartender visits one player per night. They receive three roles that were in the game at the beginning - the targeted player’s true role and two lies. One role must be town. One role must be wolf. The final role must either be town or neutral.
 Framer Interaction: If the Bartender's target is framed, the Bartender will receive three lies.
 Special Properties: Roles that cannot be targeted (such as Sleepwalker or Orphan) cannot appear in Bartender information. Roles that appear as other roles in info (such as Heir or Rivals) cannot appear in Bartender information. The Bartender will fail if their target is untargetable at home (UTAH). If the Bartender visits a player they have already visited, the information received will be rerandomized.
 --- 

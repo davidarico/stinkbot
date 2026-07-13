@@ -6,7 +6,7 @@
       "team": "Town",
       "targets": "Players",
       "moves": true,
-      "description": "The Bartender visits one player per night. They receive three roles that were in the game at the beginning — the targeted player's true role and two lies. One role must be town. One role must be wolf. The final role must either be town or neutral.",
+      "description": "The Bartender visits one player per night. They receive three roles that were in the game at the beginning - the targeted player's true role and two lies. One role must be town. One role must be wolf. The final role must either be town or neutral.",
       "framerInteraction": "If the Bartender's target is framed, the Bartender will receive three lies.",
       "specialProperties": [
         "Roles that cannot be targeted (such as Sleepwalker or Orphan) cannot appear in Bartender information",

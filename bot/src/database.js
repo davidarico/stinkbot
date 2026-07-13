@@ -43,12 +43,12 @@ function postgresSslOption() {
         return undefined;
     }
     if (relaxed) {
-        console.warn('⚠️ Postgres TLS: DATABASE_SSL_REJECT_UNAUTHORIZED=false — certificate chain is not verified.');
+        console.warn('⚠️ Postgres TLS: DATABASE_SSL_REJECT_UNAUTHORIZED=false - certificate chain is not verified.');
         return { rejectUnauthorized: false };
     }
     if (!isProd && looksLikeSupabase) {
         console.warn(
-            '⚠️ Postgres TLS (dev): Supabase URL detected — using relaxed SSL (rejectUnauthorized: false). ' +
+            '⚠️ Postgres TLS (dev): Supabase URL detected - using relaxed SSL (rejectUnauthorized: false). ' +
                 'Set DATABASE_SSL_REJECT_UNAUTHORIZED=true to enforce verification, or false to keep relaxed in production-like NODE_ENV.'
         );
         return { rejectUnauthorized: false };

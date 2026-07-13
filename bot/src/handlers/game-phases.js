@@ -98,7 +98,7 @@ async handleNext(message) {
                 const sentMessage = await channel.send({ embeds: [embed] });
 
                 // Auto-pin the phase-start message in town square, unpinning the previous one
-                // (feedback #81, #89 — requested twice)
+                // (feedback #81, #89 - requested twice)
                 if (channelId === game.town_square_channel_id) {
                     if (game.last_phase_pin_message_id) {
                         try {

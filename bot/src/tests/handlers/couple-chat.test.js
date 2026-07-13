@@ -18,7 +18,7 @@ describe('Couple Chat Permissions', () => {
         };
     }
 
-    describe('handleNext phase permissions (feedback #82 — couple chat is night-only)', () => {
+    describe('handleNext phase permissions (feedback #82 - couple chat is night-only)', () => {
         it('revokes couple chat send permission at day start even when open_at_dawn is true', async () => {
             const game = {
                 id: 1, day_phase: 'night', day_number: 1, game_number: 1,
@@ -33,7 +33,7 @@ describe('Couple Chat Permissions', () => {
                 .mockResolvedValueOnce({ rows: [] })      // UPDATE games phase
                 .mockResolvedValueOnce({ rows: [] })      // SELECT game_channels (phase messages)
                 .mockResolvedValueOnce({ rows: [        // SELECT game_channels (permissions)
-                    // open_at_dawn defaults to TRUE in the schema — couple chat must be
+                    // open_at_dawn defaults to TRUE in the schema - couple chat must be
                     // forced shut during the day regardless of the flag.
                     { channel_id: 'couple-id', open_at_dawn: true, open_at_dusk: true, is_couple_chat: true },
                     { channel_id: 'memes-id', open_at_dawn: true, open_at_dusk: true, is_couple_chat: false },
@@ -117,7 +117,7 @@ describe('Couple Chat Permissions', () => {
         });
     });
 
-    describe('killPlayer couple chat access (feedback #31 — dead can still see couple chat)', () => {
+    describe('killPlayer couple chat access (feedback #31 - dead can still see couple chat)', () => {
         function setupKill(bot, msg, { invitedUsers, userId = 'couple-user-id' }) {
             const aliveRole = { id: 'alive-id', name: 'Alive' };
             const deadRole = { id: 'dead-id', name: 'Dead' };

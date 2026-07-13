@@ -75,7 +75,7 @@ describe('LSSV Handler', () => {
             expect(lines[1]).toContain('Bob');
             expect(lines[2]).toContain('Carol');
 
-            // Dave has 2 standing votes; his second landed at 10:05 — LSSV holder
+            // Dave has 2 standing votes; his second landed at 10:05 - LSSV holder
             const lssvField = embed.data.fields[1].value;
             expect(lssvField).toContain('Dave');
             expect(lssvField).toContain('2 votes');

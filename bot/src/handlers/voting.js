@@ -216,9 +216,9 @@ async handleVoteCount(message) {
                 .join('\n');
         }
         const embed = new EmbedBuilder()
-            .setTitle(`🗳️ Vote totals — Day ${game.day_number}`)
+            .setTitle(`🗳️ Vote totals - Day ${game.day_number}`)
             .setDescription(`Hang threshold: **${game.votes_to_hang}** votes\n\n${lines}`)
-            .setFooter({ text: 'Who voted for whom is hidden here on purpose — ask a mod if you need the full breakdown.' })
+            .setFooter({ text: 'Who voted for whom is hidden here on purpose - ask a mod if you need the full breakdown.' })
             .setColor(0x3498DB)
             .setTimestamp();
         await message.reply({ embeds: [embed] });
@@ -258,7 +258,7 @@ async handleRatio(message) {
         }
         const total = town + wolf + neutral;
         await message.reply(
-            `📊 **Role list ratio** (game ${game.game_number}): **${town}-${wolf}-${neutral}** (Town-Wolf-Neutral) — ${total} seats in setup.`
+            `📊 **Role list ratio** (game ${game.game_number}): **${town}-${wolf}-${neutral}** (Town-Wolf-Neutral) - ${total} seats in setup.`
         );
     } catch (error) {
         console.error('Error in handleRatio:', error);
@@ -325,7 +325,7 @@ async handleAddIn(message, args) {
     }
     const game = gameResult.rows[0];
     if (game.signups_closed) {
-        return message.reply('❌ Signups are closed — cannot add players.');
+        return message.reply('❌ Signups are closed - cannot add players.');
     }
     const bannedUser = await this.db.query('SELECT * FROM banned_users WHERE user_id = $1', [targetMember.id]);
     if (bannedUser.rows.length > 0) {
@@ -392,7 +392,7 @@ async handleNotVoted(message) {
         notVoted.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
         const body = notVoted.length ? notVoted.map((n, i) => `${i + 1}. ${n}`).join('\n') : 'Everyone alive has cast a vote today (or no alive players).';
         const embed = new EmbedBuilder()
-            .setTitle(`🤐 Alive with no vote — Day ${game.day_number}`)
+            .setTitle(`🤐 Alive with no vote - Day ${game.day_number}`)
             .setDescription(body)
             .setColor(0xe67e22)
             .setTimestamp();
@@ -439,7 +439,7 @@ async handleLssv(message, args) {
     try {
         // Standing votes with the time each was cast, earliest first.
         // Current day: the live votes table is exactly the standing set.
-        // Past days: reconstruct from vote_history (votes are wiped at phase change) —
+        // Past days: reconstruct from vote_history (votes are wiped at phase change) -
         // each voter's last action for that day stands, unless it was a retract.
         let standing;
         if (day === game.day_number) {
@@ -480,7 +480,7 @@ async handleLssv(message, args) {
         const castOrder = standing
             .map((v, i) => {
                 const unix = Math.floor(new Date(v.cast_at).getTime() / 1000);
-                return `${i + 1}. **${nameOf(v.voter_user_id)}** → **${nameOf(v.target_user_id)}** — <t:${unix}:t> (<t:${unix}:R>)`;
+                return `${i + 1}. **${nameOf(v.voter_user_id)}** → **${nameOf(v.target_user_id)}** - <t:${unix}:t> (<t:${unix}:R>)`;
             })
             .join('\n');
 
@@ -506,14 +506,14 @@ async handleLssv(message, args) {
                 .map((s, i) => {
                     const unix = Math.floor(new Date(s.secondAt).getTime() / 1000);
                     const marker = i === 0 ? ' 🏆' : '';
-                    return `${i + 1}. **${nameOf(s.targetId)}** (${s.voteCount} votes) — second vote at <t:${unix}:t> (<t:${unix}:R>)${marker}`;
+                    return `${i + 1}. **${nameOf(s.targetId)}** (${s.voteCount} votes) - second vote at <t:${unix}:t> (<t:${unix}:R>)${marker}`;
                 })
                 .join('\n')
             : 'No player has two or more standing votes.';
 
         const embed = new EmbedBuilder()
-            .setTitle(`🗳️ LSSV — Day ${day}`)
-            .setDescription('Longest standing second vote. Standing votes only — retracted and changed votes count from when the current vote was cast.')
+            .setTitle(`🗳️ LSSV - Day ${day}`)
+            .setDescription('Longest standing second vote. Standing votes only - retracted and changed votes count from when the current vote was cast.')
             .addFields(
                 { name: 'Final votes in cast order', value: castOrder, inline: false },
                 { name: 'Second votes (earliest first)', value: lssvLines, inline: false }
@@ -560,7 +560,7 @@ async sendPlayerListToDeadChat(gameId, deadChatChannel) {
     const playerList = playersResult.rows.map((player) => `• ${player.username}`).join('\n');
 
     const embed = new EmbedBuilder()
-        .setTitle(`👥 Player List — ${factionTitle}`)
+        .setTitle(`👥 Player List - ${factionTitle}`)
         .setDescription(`Here are all the players in this game:\n\n${playerList}`)
         .setColor(0x9B59B6);
 
@@ -874,7 +874,7 @@ async sendRoleNotificationsToJournals(gameId, serverId) {
                 const modChannel = await this.client.channels.fetch(game.mod_chat_channel_id);
                 if (modChannel) {
                     const failureList = wolfChatAddFailures
-                        .map(f => `• **${f.username}** (<@${f.userId}>) — ${f.reason}`)
+                        .map(f => `• **${f.username}** (<@${f.userId}>) - ${f.reason}`)
                         .join('\n');
 
                     const modAlertEmbed = new EmbedBuilder()

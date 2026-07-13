@@ -89,7 +89,7 @@ async handleSetup(message, args) {
             { name: '3. Game Name (Optional)', value: 'What should the games be called? (e.g., "Origins")', inline: false }
         )
         .setColor(0x3498DB)
-        .setFooter({ text: 'Please respond with: prefix startNumber [gameName] — or type "cancel" to stop' });
+        .setFooter({ text: 'Please respond with: prefix startNumber [gameName] - or type "cancel" to stop' });
 
     await message.reply({ embeds: [embed] });
 
