@@ -152,6 +152,7 @@ async handleHelp(message) {
                     '`Wolf.settings` - View/change game and channel settings (votes_to_hang, messages)\n' +
                     '`Wolf.channel_config` - View additional channel settings\n' +
                     '`Wolf.signups [open|close]` - Open or close signups\n' +
+                    '`Wolf.remove_signup <@user or user ID>` - Remove a player from signups (suspended, left server, over capacity, etc.)\n' +
                     '`Wolf.next` - Move to the next phase (day/night)\n' +
                     '`Wolf.end` - End the current game (requires confirmation)\n' +
                     '`Wolf.scuff` - Rewind an active game back to signup (requires confirmation)', 

@@ -262,6 +262,88 @@ describe('Game Handlers', () => {
         });
     });
 
+    describe('handleRemoveSignup', () => {
+        it('replies with usage error when no target is given', async () => {
+            bot.db.query = jest.fn();
+            const msg = createMockMessage();
+            await bot.handleRemoveSignup(msg, []);
+            expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('Usage'));
+            expect(bot.db.query).not.toHaveBeenCalled();
+        });
+
+        it('removes a mentioned user from signups and restores Spectator', async () => {
+            const game = { id: 1, signups_closed: false };
+            bot.db.query = jest.fn()
+                .mockResolvedValueOnce({ rows: [game] })                                   // SELECT games
+                .mockResolvedValueOnce({ rows: [{ username: 'Target' }], rowCount: 1 });   // DELETE player
+
+            bot.updateSignupMessage = jest.fn().mockResolvedValue(undefined);
+            bot.removeRole = jest.fn().mockResolvedValue(undefined);
+            bot.assignRole = jest.fn().mockResolvedValue(undefined);
+
+            const msg = createMockMessage();
+            msg.mentions.users.first = jest.fn().mockReturnValue({ id: 'target-user-id' });
+            msg.guild.members.fetch = jest.fn().mockResolvedValue({ id: 'target-user-id' });
+            msg.react = jest.fn().mockResolvedValue(undefined);
+
+            await bot.handleRemoveSignup(msg, ['<@target-user-id>']);
+
+            expect(bot.db.query).toHaveBeenCalledWith(
+                expect.stringContaining('DELETE FROM players'),
+                [game.id, 'target-user-id']
+            );
+            expect(bot.removeRole).toHaveBeenCalledWith(expect.objectContaining({ id: 'target-user-id' }), 'Signed Up');
+            expect(bot.assignRole).toHaveBeenCalledWith(expect.objectContaining({ id: 'target-user-id' }), 'Spectator');
+            expect(msg.react).toHaveBeenCalledWith('✅');
+            expect(bot.updateSignupMessage).toHaveBeenCalledWith(game);
+        });
+
+        it('accepts a raw user ID and still removes the player if the member cannot be fetched (left the server)', async () => {
+            const game = { id: 1, signups_closed: false };
+            bot.db.query = jest.fn()
+                .mockResolvedValueOnce({ rows: [game] })
+                .mockResolvedValueOnce({ rows: [{ username: 'Ghost' }], rowCount: 1 });
+
+            bot.updateSignupMessage = jest.fn().mockResolvedValue(undefined);
+
+            const msg = createMockMessage();
+            msg.guild.members.fetch = jest.fn().mockRejectedValue(new Error('Unknown Member'));
+            msg.react = jest.fn().mockResolvedValue(undefined);
+
+            await bot.handleRemoveSignup(msg, ['999888777']);
+
+            expect(bot.db.query).toHaveBeenCalledWith(
+                expect.stringContaining('DELETE FROM players'),
+                [game.id, '999888777']
+            );
+            expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('Removed **Ghost**'));
+        });
+
+        it('replies with error when the target is not signed up', async () => {
+            const game = { id: 1, signups_closed: false };
+            bot.db.query = jest.fn()
+                .mockResolvedValueOnce({ rows: [game] })
+                .mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+            const msg = createMockMessage();
+            msg.mentions.users.first = jest.fn().mockReturnValue({ id: 'target-user-id' });
+
+            await bot.handleRemoveSignup(msg, ['<@target-user-id>']);
+
+            expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('not signed up'));
+        });
+
+        it('replies with error when no active signup game', async () => {
+            bot.db.query = jest.fn().mockResolvedValueOnce({ rows: [] });
+            const msg = createMockMessage();
+            msg.mentions.users.first = jest.fn().mockReturnValue({ id: 'target-user-id' });
+
+            await bot.handleRemoveSignup(msg, ['<@target-user-id>']);
+
+            expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('No active game'));
+        });
+    });
+
     describe('handleStart', () => {
         it('replies with error when no signup-phase game exists', async () => {
             bot.db.query = jest.fn().mockResolvedValue({ rows: [] });

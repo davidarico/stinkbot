@@ -135,6 +135,9 @@ class WerewolfBot {
                 case 'out':
                     await this.handleSignOut(message);
                     break;
+                case 'remove_signup':
+                    await this.handleRemoveSignup(message, args);
+                    break;
                 case 'start':
                     await this.handleStart(message, args);
                     break;

@@ -8,49 +8,43 @@ This section is maintained by hand. Everything below the marker line is regenera
 
 - **`Wolf.lssv` — longest standing second vote** (feedback #75, shipped 2026-07-13). Included a new append-only `vote_history` table (`database/migrations/20260713T154002_*`) that logs every vote/retract, because `Wolf.next` wipes the live `votes` table at phase change. Reuse `vote_history` for anything needing past-day vote data.
 
-## Bugs and quick wins
+- **Auto-pin phase-start messages** (feedback #81, #89, shipped 2026-07-13). `Wolf.next` now pins the new day/night embed in town square and unpins the previous phase pin. Added `games.last_phase_pin_message_id` (`database/migrations/20260713T162846_*`) to track the current pin; logic lives in `handleNext`'s `mainChannelPromises` block in `bot/src/handlers/game-phases.js`.
 
-1. **Auto-pin phase-start messages** (feedback #81, #89 — requested twice by different users). When `Wolf.next` posts the day/night embed, pin it in town square and unpin the previous phase pin. The embed send is in `bot/src/handlers/game-phases.js` (`handleNext`, the `mainChannelPromises` block); a pin pattern to copy exists in `game.js` (signup message, `.pin()` after send). Store the last pinned message ID (a column on `games` or reuse an existing pattern) so the old pin can be removed. Small.
-
-2. **Mod command to remove a player from signups** (feedback #90). `Wolf.remove_signup @user` (or `Wolf.out @user` for mods): removes the player row for the signup-phase game, removes the Signed Up role, updates the signup message. Handles the cases in the feedback: suspended players, users who left the server (accept a raw user ID, not just a mention, since they may be unfetchable), over-capacity games. Signup logic lives in `bot/src/handlers/game.js` (`handleSignUp`/`handleSignOut`); mirror `handleSignOut` but target another user. Small.
-
-3. **Hammer announcement** (from code review, no feedback ID). When a vote pushes a player to `votes_to_hang`, nothing happens until a mod runs `Wolf.next`. In `handleVote` (`bot/src/handlers/voting.js`), after inserting the vote, count the target's votes; if it reached `game.votes_to_hang`, announce in the voting booth and ping mod-chat (`game.mod_chat_channel_id`). Optionally add a `Wolf.settings` toggle for locking the booth on hammer. Medium-small.
-
-4. **Confirmation prompt on `Wolf.next`** (from code review). It irreversibly wipes the `votes` table, yet `end`/`scuff`/`refresh` all require confirmation and `next` does not. Copy the confirm pattern from `handleEnd` in `game-phases.js` (awaitMessages-based). Keep it fast for mods: a simple yes within ~15s. Small.
+- **`Wolf.remove_signup` — mod command to remove a player from signups** (feedback #90, shipped 2026-07-13). Removes the player row for the signup-phase game, removes the Signed Up role, restores Spectator, updates the signup message. Accepts an @mention or a raw user ID (for users who left the server). Added as `handleRemoveSignup` in `bot/src/handlers/game.js`; mod-gated automatically since it's not in `playerCommands` (`bot/src/werewolf-bot.js`).
 
 ## New commands
 
-5. **`Wolf.assign` — manual role assignment** (feedback #86). Mods currently assign roles via the frontend dashboard only. A bot command `Wolf.assign @user <role name>` that sets `players.role_id` (+ `is_wolf` when appropriate, matching how the frontend writes assignments — see `frontend/lib/database.ts` for the write shape and `bot/src/handlers/roles.js` `handleRolesList` for the read shape). Validate the role exists in the game's configured role list (`game_role`). Medium.
+1. **`Wolf.assign` — manual role assignment** (feedback #86). Mods currently assign roles via the frontend dashboard only. A bot command `Wolf.assign @user <role name>` that sets `players.role_id` (+ `is_wolf` when appropriate, matching how the frontend writes assignments — see `frontend/lib/database.ts` for the write shape and `bot/src/handlers/roles.js` `handleRolesList` for the read shape). Validate the role exists in the game's configured role list (`game_role`). Medium.
 
-6. **`Wolf.silent` — alive players with zero messages today** (feedback #26). Needs the activity-tracking foundation (item 12) OR a slower interim version that paginates town-square history since `game.phase_change_at` like `handleSpeedCheck` does (`bot/src/handlers/speed-vote.js`). Prefer building item 12 first. Medium.
+2. **`Wolf.silent` — alive players with zero messages today** (feedback #26). Needs the activity-tracking foundation (item 7) OR a slower interim version that paginates town-square history since `game.phase_change_at` like `handleSpeedCheck` does (`bot/src/handlers/speed-vote.js`). Prefer building item 7 first. Medium.
 
-7. **`Wolf.remind` — nudge non-voters in their journals** (feedback #24). Reuses `handleNotVoted`'s query (`voting.js`) to find alive players without a vote, then posts a reminder in each player's journal channel (`player_journals` table maps user → channel) instead of cluttering town square. Medium-small.
+3. **`Wolf.remind` — nudge non-voters in their journals** (feedback #24). Reuses `handleNotVoted`'s query (`voting.js`) to find alive players without a vote, then posts a reminder in each player's journal channel (`player_journals` table maps user → channel) instead of cluttering town square. Medium-small.
 
-8. **Rollback command** (feedback #63). Scope tightly: undo the **last** `Wolf.next` only. Restore `day_phase`/`day_number`/`phase_change_at` on `games`, and restore that day's standing votes into `votes` by replaying `vote_history` (each voter's last action for the day; skip voters whose last action was a retract — same reconstruction as `handleLssv`'s past-day path in `voting.js`). Announce the rollback in town square. Medium.
+4. **Rollback command** (feedback #63). Scope tightly: undo the **last** `Wolf.next` only. Restore `day_phase`/`day_number`/`phase_change_at` on `games`, and restore that day's standing votes into `votes` by replaying `vote_history` (each voter's last action for the day; skip voters whose last action was a retract — same reconstruction as `handleLssv`'s past-day path in `voting.js`). Announce the rollback in town square. Medium.
 
-9. **Wolf-team dead channel** (feedback #46). Optional channel where eliminated wolves keep chatting. Fits the existing `game_channels` machinery (see `is_couple_chat` for the pattern of a flagged special channel with custom phase behavior in `channels.js` and `game-phases.js`). Grant view+send to dead wolves at death time (hook `killPlayer` in `players.js`, like `preserveCoupleChatAccess`). Medium.
+5. **Wolf-team dead channel** (feedback #46). Optional channel where eliminated wolves keep chatting. Fits the existing `game_channels` machinery (see `is_couple_chat` for the pattern of a flagged special channel with custom phase behavior in `channels.js` and `game-phases.js`). Grant view+send to dead wolves at death time (hook `killPlayer` in `players.js`, like `preserveCoupleChatAccess`). Medium.
 
-10. **`Wolf.perms_audit` — permission drift checker** (feedback #30-class; recurring bug theme). Generalize `handleFixJournals` (`journal.js`): compare every game channel's actual Discord permission overwrites against the expected matrix (town square, booth, memos, couple chats, dead chat, custom channels with `open_at_dawn`/`open_at_dusk`) and report mismatches, with a `fix` argument to repair. The expected matrix already exists implicitly in `channels.js` phase-change logic — extract it so audit and enforcement share one source of truth. Medium-large, high leverage: permission drift is the most recurring bug class in this codebase's history.
+6. **`Wolf.perms_audit` — permission drift checker** (feedback #30-class; recurring bug theme). Generalize `handleFixJournals` (`journal.js`): compare every game channel's actual Discord permission overwrites against the expected matrix (town square, booth, memos, couple chats, dead chat, custom channels with `open_at_dawn`/`open_at_dusk`) and report mismatches, with a `fix` argument to repair. The expected matrix already exists implicitly in `channels.js` phase-change logic — extract it so audit and enforcement share one source of truth. Medium-large, high leverage: permission drift is the most recurring bug class in this codebase's history.
 
 ## Foundations (unlock multiple items)
 
-11. **Record game winners at `Wolf.end`** (from code review). `games` has no winner column, blocking all stats features. Add a migration (`winning_team` on `games`), prompt during `handleEnd`'s existing confirmation flow (`game-phases.js`). Enables future `Wolf.stats`/post-game reveal. Small.
+7. **Record game winners at `Wolf.end`** (from code review). `games` has no winner column, blocking all stats features. Add a migration (`winning_team` on `games`), prompt during `handleEnd`'s existing confirmation flow (`game-phases.js`). Enables future `Wolf.stats`/post-game reveal. Small.
 
-12. **Message activity tracking** (feedback #26, #27, #49, #67). `Wolf.ia` and `Wolf.speed_check` paginate the Discord API at query time (slow, rate-limited). The bot already receives every message (`messageCreate` in `index.js`). Add a counter table (`game_id`, `user_id`, `channel_id`, `day_number`, `message_count`, unique on the first four) incremented on each message in game channels, then: `Wolf.ia` reads it instantly, `Wolf.ia_history` shows per-day totals for the whole game (#27, #67), `Wolf.silent` (item 6) becomes a trivial query, and the IA window start becomes a per-server setting instead of the hardcoded 9:30 AM EST cutoff in `utils.js` (#49). Large-ish but the single highest-leverage bot change.
+8. **Message activity tracking** (feedback #26, #27, #49, #67). `Wolf.ia` and `Wolf.speed_check` paginate the Discord API at query time (slow, rate-limited). The bot already receives every message (`messageCreate` in `index.js`). Add a counter table (`game_id`, `user_id`, `channel_id`, `day_number`, `message_count`, unique on the first four) incremented on each message in game channels, then: `Wolf.ia` reads it instantly, `Wolf.ia_history` shows per-day totals for the whole game (#27, #67), `Wolf.silent` (item 2) becomes a trivial query, and the IA window start becomes a per-server setting instead of the hardcoded 9:30 AM EST cutoff in `utils.js` (#49). Large-ish but the single highest-leverage bot change.
 
-13. **Journal categories: active game vs. archive** (feedback #88). Journals of players in the active game live in one category; the rest live in "Journal Archives" categories; players get moved back on signup. All journal category logic is in `bot/src/handlers/journal.js` (balancing system, ~1900 lines — read its category-splitting logic first). Large; touches the most complex handler.
+9. **Journal categories: active game vs. archive** (feedback #88). Journals of players in the active game live in one category; the rest live in "Journal Archives" categories; players get moved back on signup. All journal category logic is in `bot/src/handlers/journal.js` (balancing system, ~1900 lines — read its category-splitting logic first). Large; touches the most complex handler.
 
 ## Frontend
 
-14. **Bloodhound calculator** (feedback #87). Add alongside the existing bartender/sleepwalker calculators in `frontend/components/calculators/`. Follow the existing calculator component pattern. Small-medium.
+10. **Bloodhound calculator** (feedback #87). Add alongside the existing bartender/sleepwalker calculators in `frontend/components/calculators/`. Follow the existing calculator component pattern. Small-medium.
 
-15. **Role shorthand + acronym glossary** (feedback #36, #33 — requested twice). Show common abbreviations on `/roles` (data may need a `shorthand` column on `roles` — migration + admin UI) plus a general glossary section. Small-medium.
+11. **Role shorthand + acronym glossary** (feedback #36, #33 — requested twice). Show common abbreviations on `/roles` (data may need a `shorthand` column on `roles` — migration + admin UI) plus a general glossary section. Small-medium.
 
-16. **Action priority / order-of-operations reference** (feedback #32). A section on `/roles` explaining night-action resolution order. Source material: `engine-generator/RULES.md` and `rules.json` (`orderOfOperations`). Content work more than code. Small.
+12. **Action priority / order-of-operations reference** (feedback #32). A section on `/roles` explaining night-action resolution order. Source material: `engine-generator/RULES.md` and `rules.json` (`orderOfOperations`). Content work more than code. Small.
 
-17. **Rename channels pre-game from the dashboard** (feedback #43). Let mods edit game channel names on the game page before `Wolf.start`; bot reads names at channel creation (`handleStart` in `game.js` builds names from prefix + fixed suffixes — would need to read overrides from `game_channels` or a new column). Medium.
+13. **Rename channels pre-game from the dashboard** (feedback #43). Let mods edit game channel names on the game page before `Wolf.start`; bot reads names at channel creation (`handleStart` in `game.js` builds names from prefix + fixed suffixes — would need to read overrides from `game_channels` or a new column). Medium.
 
-18. **Per-slot villager themes** (feedback #53). When a role list has Villager x4, allow naming each slot (Baker, Farmer...). The data model already supports per-player thematic names (`players.thematic_custom_name`, `game_role.custom_name` — see the query in `sendRoleNotificationsToJournals`, `voting.js`); this is a frontend role-config UI feature. Medium.
+14. **Per-slot villager themes** (feedback #53). When a role list has Villager x4, allow naming each slot (Baker, Farmer...). The data model already supports per-player thematic names (`players.thematic_custom_name`, `game_role.custom_name` — see the query in `sendRoleNotificationsToJournals`, `voting.js`); this is a frontend role-config UI feature. Medium.
 
 <!-- REGENERATED SNAPSHOT BELOW — do not edit below this line; scripts/regenerate-feedback-md.py overwrites everything under this marker. -->
 
@@ -58,7 +52,7 @@ This section is maintained by hand. Everything below the marker line is regenera
 
 Snapshot of the `feedback` table. Resolved items (implemented, already covered, out-of-scope, or non-actionable) were **removed from the database** on **2026-07-13**.
 
-**Total entries:** 35
+**Total entries:** 32
 
 ---
 
@@ -366,18 +360,6 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #81 — 2026-04-30T18:50:12.101057+00:00
-
-- **Display name:** Queen dAnney
-- **User ID:** `117857003145134081`
-- **Server ID:** `1466585500314767413`
-
-**Feedback**
-
-> pin the day start and ends automatically each time for easier time reading back
-
----
-
 ## #82 — 2026-05-04T20:32:44.851122+00:00
 
 - **Display name:** Roxy 🏆🐪
@@ -459,29 +441,5 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 **Feedback**
 
 > it would be really neat if the bot put the journals in one section for people in an active game and the other section could be journal archives, then if they sign up for the next game bot couple move them back.
-
----
-
-## #89 — 2026-06-29T13:38:34.755425+00:00
-
-- **Display name:** Tiplouf Keiko?????
-- **User ID:** `412750883701522433`
-- **Server ID:** `1354597610656366683`
-
-**Feedback**
-
-> have stinkbot auto pin start of phase messages
-
----
-
-## #90 — 2026-07-12T23:00:56.434401+00:00
-
-- **Display name:** Roxy
-- **User ID:** `393594178061336576`
-- **Server ID:** `1515786983484690654`
-
-**Feedback**
-
-> We need a command that allows a mod to remove someone who shouldn't be signed up (suspended, left the server, game is over the max number of players, otherwise not eligible, etc) before a game has started
 
 ---

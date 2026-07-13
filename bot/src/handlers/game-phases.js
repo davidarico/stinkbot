@@ -95,7 +95,30 @@ async handleNext(message) {
         try {
             const channel = await this.client.channels.fetch(channelId);
             if (channel) {
-                await channel.send({ embeds: [embed] });
+                const sentMessage = await channel.send({ embeds: [embed] });
+
+                // Auto-pin the phase-start message in town square, unpinning the previous one
+                // (feedback #81, #89 — requested twice)
+                if (channelId === game.town_square_channel_id) {
+                    if (game.last_phase_pin_message_id) {
+                        try {
+                            const previousPin = await channel.messages.fetch(game.last_phase_pin_message_id);
+                            await previousPin.unpin();
+                        } catch (error) {
+                            console.error(`Error unpinning previous phase message ${game.last_phase_pin_message_id}:`, error);
+                        }
+                    }
+
+                    try {
+                        await sentMessage.pin();
+                        await this.db.query(
+                            'UPDATE games SET last_phase_pin_message_id = $1 WHERE id = $2',
+                            [sentMessage.id, game.id]
+                        );
+                    } catch (error) {
+                        console.error(`Error pinning phase message ${sentMessage.id}:`, error);
+                    }
+                }
             }
         } catch (error) {
             console.error(`Error sending phase message to main channel ${channelId}:`, error);

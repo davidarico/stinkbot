@@ -550,6 +550,61 @@ async handleSignOut(message) {
     await this.updateSignupMessage(game);
 },
 
+async handleRemoveSignup(message, args) {
+    const serverId = message.guild.id;
+
+    if (!args.length) {
+        return message.reply('❌ Usage: `Wolf.remove_signup <@user or user ID>`');
+    }
+
+    const mentionedUser = message.mentions.users.first();
+    const rawArg = args[0].replace(/[<@!>]/g, '');
+    const targetUserId = mentionedUser ? mentionedUser.id : (/^\d+$/.test(rawArg) ? rawArg : null);
+
+    if (!targetUserId) {
+        return message.reply('❌ Please provide a valid @mention or user ID.');
+    }
+
+    // Get game in signup phase
+    const gameResult = await this.db.query(
+        'SELECT * FROM games WHERE server_id = $1 AND status = $2',
+        [serverId, 'signup']
+    );
+
+    if (!gameResult.rows.length) {
+        return message.reply('❌ No active game available for signups.');
+    }
+
+    const game = gameResult.rows[0];
+
+    // Remove player (works regardless of whether signups are closed - this is a mod override)
+    const deleteResult = await this.db.query(
+        'DELETE FROM players WHERE game_id = $1 AND user_id = $2 RETURNING username',
+        [game.id, targetUserId]
+    );
+
+    if (deleteResult.rowCount === 0) {
+        return message.reply('❌ That user is not signed up for this game.');
+    }
+
+    // Remove "Signed Up" role and restore Spectator, if the member can still be fetched
+    // (they may have left the server, per feedback #90)
+    try {
+        const member = await message.guild.members.fetch(targetUserId);
+        await this.removeRole(member, 'Signed Up');
+        await this.assignRole(member, 'Spectator');
+    } catch (error) {
+        console.log(`Could not fetch member ${targetUserId} to update roles (may have left the server):`, error.message);
+    }
+
+    // React with checkmark for success
+    await message.react('✅');
+    await message.reply(`✅ Removed **${deleteResult.rows[0].username}** from signups.`);
+
+    // Update signup message with current players
+    await this.updateSignupMessage(game);
+},
+
 async updateSignupMessage(game) {
     try {
         // If we don't have a signup message ID, try to find it the old way as fallback
@@ -1243,7 +1298,7 @@ async handleStart(message, args = []) {
     // Pin a town-square anchor so players/mods can scroll back to the start of the game (feedback #40)
     try {
         const anchorMsg = await townSquare.send({
-            content: '📌 **Game start marker** — This message marks the start of the game in town square. Scroll **up** from here to read messages from early phases (e.g. N1).'
+            content: '📌 **LET THE KILLING BEGIN**'
         });
         await anchorMsg.pin('Game start anchor for town square');
     } catch (anchorErr) {

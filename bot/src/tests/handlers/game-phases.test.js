@@ -118,6 +118,55 @@ describe('Game Phase Handlers', () => {
                 expect.objectContaining({ SendMessages: false })
             );
         });
+
+        it('pins the new phase message in town square and unpins the previous one', async () => {
+            const game = {
+                id: 1, day_phase: 'night', day_number: 1, game_number: 1,
+                voting_booth_channel_id: 'booth-id',
+                town_square_channel_id: 'ts-id',
+                wolf_chat_channel_id: null,
+                votes_to_hang: 5,
+                last_phase_pin_message_id: 'old-pin-id',
+            };
+            bot.db.query = jest.fn()
+                .mockResolvedValueOnce({ rows: [game] })  // SELECT games
+                .mockResolvedValueOnce({ rows: [] })      // UPDATE games phase
+                .mockResolvedValueOnce({ rows: [] })      // SELECT game_channels (phase messages)
+                .mockResolvedValueOnce({ rows: [] })      // UPDATE games SET last_phase_pin_message_id
+                .mockResolvedValueOnce({ rows: [] });     // SELECT game_channels (permissions)
+
+            bot.createVotingMessage = jest.fn().mockResolvedValue(undefined);
+
+            const mockVotingChannel = makeMockVotingChannel();
+            const previousPin = { unpin: jest.fn().mockResolvedValue(undefined) };
+            const newPinMessage = { id: 'new-pin-id', pin: jest.fn().mockResolvedValue(undefined) };
+            const townSquareChannel = {
+                send: jest.fn().mockResolvedValue(newPinMessage),
+                messages: { fetch: jest.fn().mockResolvedValue(previousPin) },
+            };
+
+            bot.client.channels = {
+                fetch: jest.fn().mockImplementation((channelId) => {
+                    if (channelId === 'ts-id') return Promise.resolve(townSquareChannel);
+                    return Promise.resolve(mockVotingChannel);
+                }),
+            };
+
+            const msg = createMockMessage();
+            msg.guild.roles.cache.find = jest.fn().mockImplementation(fn =>
+                [{ id: 'alive-id', name: 'Alive' }].find(fn) || null
+            );
+
+            await bot.handleNext(msg);
+
+            expect(townSquareChannel.messages.fetch).toHaveBeenCalledWith('old-pin-id');
+            expect(previousPin.unpin).toHaveBeenCalled();
+            expect(newPinMessage.pin).toHaveBeenCalled();
+            expect(bot.db.query).toHaveBeenCalledWith(
+                expect.stringContaining('UPDATE games SET last_phase_pin_message_id'),
+                ['new-pin-id', game.id]
+            );
+        });
     });
 
     describe('handleEnd', () => {

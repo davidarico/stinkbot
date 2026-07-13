@@ -1,5 +1,5 @@
 -- Werewolf Discord Bot Database Schema
--- Generated automatically on 2026-07-13T15:43:51.810Z
+-- Generated automatically on 2026-07-13T16:32:27.098Z
 -- This file shows the current database structure with table comments
 -- Run this after migrations to get the latest schema
 
@@ -141,7 +141,8 @@ CREATE TABLE games (
     is_themed BOOLEAN DEFAULT FALSE,
     theme_name VARCHAR(100) DEFAULT NULL,
     signups_closed BOOLEAN NOT NULL DEFAULT FALSE,
-    dashboard_password_hash TEXT
+    dashboard_password_hash TEXT,
+    last_phase_pin_message_id VARCHAR(20)
 );
 
 CREATE TABLE night_action (
