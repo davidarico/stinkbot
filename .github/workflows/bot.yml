@@ -35,3 +35,23 @@ jobs:
         push: true
         platforms: linux/amd64,linux/arm64
         tags: ghcr.io/davidarico/stinkbot:latest
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+    - name: Deploy to production VM
+      env:
+        SSH_PRIVATE_KEY: ${{ secrets.STINKBOT_DEPLOY_SSH_KEY }}
+        SSH_HOST: ${{ secrets.STINKBOT_HOST }}
+        SSH_USER: ${{ secrets.STINKBOT_USER }}
+        SSH_KNOWN_HOST: ${{ secrets.STINKBOT_KNOWN_HOST }}
+      run: |
+        mkdir -p ~/.ssh
+        echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
+        echo "$SSH_KNOWN_HOST" > ~/.ssh/known_hosts
+        # The remote key is restricted via a forced command in authorized_keys
+        # (command="bash /home/ubuntu/deploy_stinkbot.sh") so this always runs
+        # the deploy script server-side, regardless of what's requested here.
+        ssh -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" "deploy"
