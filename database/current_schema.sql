@@ -1,5 +1,5 @@
 -- Werewolf Discord Bot Database Schema
--- Generated automatically on 2025-12-31T20:20:32.393Z
+-- Generated automatically on 2026-07-13T15:43:51.810Z
 -- This file shows the current database structure with table comments
 -- Run this after migrations to get the latest schema
 
@@ -10,6 +10,34 @@ CREATE TABLE admin_settings (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(setting_key)
+);
+
+-- Archived Discord messages from Werewolf game categories for search and browse
+CREATE TABLE archive_messages (
+    id SERIAL PRIMARY KEY,
+    message_id VARCHAR(20) NOT NULL,
+    content TEXT,
+    user_id VARCHAR(20) NOT NULL,
+    username VARCHAR(100) NOT NULL,
+    display_name VARCHAR(255),
+    timestamp TIMESTAMPTZ NOT NULL,
+    channel_id VARCHAR(20) NOT NULL,
+    channel_name VARCHAR(100) NOT NULL,
+    category_id VARCHAR(20) NOT NULL,
+    category VARCHAR(100) NOT NULL,
+    reply_to_message_id VARCHAR(20),
+    attachments JSONB DEFAULT '[]',
+    embeds JSONB DEFAULT '[]',
+    reactions JSONB DEFAULT '[]',
+    archived_at TIMESTAMPTZ NOT NULL,
+    archived_by JSONB NOT NULL DEFAULT '{}',
+    content_length INTEGER DEFAULT 0,
+    has_attachments BOOLEAN DEFAULT FALSE,
+    has_embeds BOOLEAN DEFAULT FALSE,
+    has_reactions BOOLEAN DEFAULT FALSE,
+    is_reply BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(message_id)
 );
 
 CREATE TABLE banned_users (
@@ -58,7 +86,6 @@ CREATE TABLE game_meta (
     UNIQUE(game_id, night, user_id)
 );
 
--- Table to store roles assigned to games (one row per seat/slot, ordered by sort_index)
 CREATE TABLE game_role (
     id SERIAL PRIMARY KEY,
     game_id INTEGER NOT NULL,
@@ -67,10 +94,8 @@ CREATE TABLE game_role (
     custom_name TEXT,
     charges INTEGER NOT NULL DEFAULT 0,
     win_by_number INTEGER NOT NULL DEFAULT 0,
-    UNIQUE (game_id, sort_index)
+    UNIQUE(game_id, sort_index)
 );
-
-CREATE INDEX idx_game_role_game_id ON game_role (game_id);
 
 -- Table to store speed vote information
 CREATE TABLE game_speed (
@@ -115,18 +140,8 @@ CREATE TABLE games (
     is_skinned BOOLEAN DEFAULT FALSE,
     is_themed BOOLEAN DEFAULT FALSE,
     theme_name VARCHAR(100) DEFAULT NULL,
-    signups_closed BOOLEAN NOT NULL DEFAULT FALSE
-);
-
--- Stores development tasks for the kanban board
-CREATE TABLE kanban_tasks (
-    id SERIAL PRIMARY KEY,
-    title VARCHAR(255) NOT NULL,
-    description TEXT,
-    status VARCHAR(20) NOT NULL DEFAULT 'todo',
-    position INTEGER NOT NULL DEFAULT 0,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    signups_closed BOOLEAN NOT NULL DEFAULT FALSE,
+    dashboard_password_hash TEXT
 );
 
 CREATE TABLE night_action (
@@ -140,6 +155,7 @@ CREATE TABLE night_action (
 -- Table to store player journals for personal notes
 CREATE TABLE player_journals (
     id SERIAL PRIMARY KEY,
+    server_id VARCHAR(20) NOT NULL,
     server_id VARCHAR(20) NOT NULL,
     user_id VARCHAR(20) NOT NULL,
     channel_id VARCHAR(20) NOT NULL,
@@ -157,14 +173,14 @@ CREATE TABLE players (
     status VARCHAR(20) NOT NULL DEFAULT 'alive',
     is_wolf BOOLEAN DEFAULT FALSE,
     signed_up_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    role_id INTEGER REFERENCES roles(id),
-    thematic_custom_name VARCHAR(255),
+    role_id INTEGER,
     skinned_role VARCHAR(100) DEFAULT NULL,
     is_dead BOOLEAN DEFAULT FALSE,
     is_framed BOOLEAN DEFAULT FALSE,
     framed_night INTEGER,
     charges_left INTEGER,
     win_by_number INTEGER DEFAULT 0,
+    thematic_custom_name VARCHAR(255),
     UNIQUE(game_id, user_id)
 );
 
@@ -210,6 +226,23 @@ CREATE TABLE server_users (
     UNIQUE(server_id, user_id)
 );
 
+CREATE TABLE super_users (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(20) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id)
+);
+
+CREATE TABLE vote_history (
+    id SERIAL PRIMARY KEY,
+    game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    day_number INTEGER NOT NULL,
+    voter_user_id VARCHAR(20) NOT NULL,
+    target_user_id VARCHAR(20),
+    action VARCHAR(10) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Table to store votes cast by players
 CREATE TABLE votes (
     id SERIAL PRIMARY KEY,
@@ -220,38 +253,4 @@ CREATE TABLE votes (
     voted_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(day_number, game_id, voter_user_id)
 );
-
--- Archived Discord messages from Werewolf game categories for search and browse
-CREATE TABLE archive_messages (
-    id SERIAL PRIMARY KEY,
-    message_id VARCHAR(20) NOT NULL UNIQUE,
-    content TEXT,
-    user_id VARCHAR(20) NOT NULL,
-    username VARCHAR(100) NOT NULL,
-    display_name VARCHAR(255),
-    timestamp TIMESTAMPTZ NOT NULL,
-    channel_id VARCHAR(20) NOT NULL,
-    channel_name VARCHAR(100) NOT NULL,
-    category_id VARCHAR(20) NOT NULL,
-    category VARCHAR(100) NOT NULL,
-    reply_to_message_id VARCHAR(20),
-    attachments JSONB DEFAULT '[]',
-    embeds JSONB DEFAULT '[]',
-    reactions JSONB DEFAULT '[]',
-    archived_at TIMESTAMPTZ NOT NULL,
-    archived_by JSONB NOT NULL DEFAULT '{}',
-    content_length INTEGER DEFAULT 0,
-    has_attachments BOOLEAN DEFAULT FALSE,
-    has_embeds BOOLEAN DEFAULT FALSE,
-    has_reactions BOOLEAN DEFAULT FALSE,
-    is_reply BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_archive_messages_category ON archive_messages(category);
-CREATE INDEX idx_archive_messages_channel_name ON archive_messages(channel_name);
-CREATE INDEX idx_archive_messages_user_id ON archive_messages(user_id);
-CREATE INDEX idx_archive_messages_timestamp ON archive_messages(timestamp DESC);
-CREATE INDEX idx_archive_messages_channel_timestamp ON archive_messages(channel_id, timestamp);
-CREATE INDEX idx_archive_messages_content_search ON archive_messages USING gin(to_tsvector('english', coalesce(content, '')));
 

@@ -1,20 +1,19 @@
 # Werewolf Game Engine
 
-A deterministic game engine for calculating night actions in Werewolf (Mafia-like social deception games). This engine replaces the need for AI-based calculations with predictable, rule-based logic.
+A deterministic game engine for calculating night actions in Werewolf (Mafia-like social deception games), built to replace the frontend's old OpenAI-based night calculation with predictable, rule-based logic.
+
+**Status**: standalone and not yet integrated. Nothing in the bot or frontend imports this package, and it is not part of the npm workspace - run `npm install` inside this directory to work on it.
 
 ## Features
 
-- **Deterministic Night Action Calculation**: Predictable outcomes based on game rules
-- **Role Input Requirements**: Specifies what input is needed from moderators for each role
-- **Order of Operations**: Follows the correct sequence for night actions
-- **Comprehensive Role Support**: All roles from the game with their specific logic
-- **Framing Effects**: Handles all framing interactions correctly
-- **Cross-Night State Tracking**: Tracks effects that persist across multiple nights
-- **Robust Testing**: Comprehensive test suite for all game logic
+- Deterministic night action calculation based on game rules
+- Role input requirements: specifies what input moderators must collect per role
+- Order of operations for night actions
+- Framing effect interactions
+- Cross-night state tracking (effects that persist between nights)
+- Test suite covering role and rule logic
 
 ## Architecture
-
-The engine is built with a modular architecture:
 
 - **GameEngine**: Main orchestrator that coordinates all components
 - **RuleEngine**: Handles game rules and order of operations
@@ -224,17 +223,9 @@ The engine supports various input types for different roles:
 
 ## Integration
 
-To integrate with the frontend, replace the OpenAI-based calculation:
+The frontend's OpenAI-based night calculation has been removed. When this engine is wired in, the intended usage is:
 
 ```typescript
-// Old OpenAI-based approach
-const openaiResult = await openai.chat.completions.create({
-  model: "o4-mini-2025-04-16",
-  messages: [...],
-  tools: [tools]
-});
-
-// New deterministic approach
 const engine = new GameEngine({
   rulesPath: './rules.json',
   rolesPath: './roles.json'

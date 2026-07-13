@@ -124,8 +124,19 @@ def main() -> int:
         lines.append("---")
         lines.append("")
 
+    # Preserve any hand-maintained content (e.g. the development roadmap) above the
+    # marker line; only the snapshot below the marker is regenerated.
+    marker = "<!-- REGENERATED SNAPSHOT BELOW"
     path = ROOT / "FEEDBACK.md"
-    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    prefix_lines: list[str] = []
+    if path.is_file():
+        existing = path.read_text(encoding="utf-8").splitlines()
+        for i, line in enumerate(existing):
+            if line.startswith(marker):
+                prefix_lines = existing[: i + 1] + [""]
+                break
+
+    path.write_text("\n".join(prefix_lines + lines).rstrip() + "\n", encoding="utf-8")
     print(f"Wrote {path} ({len(rows)} entries)")
     return 0
 

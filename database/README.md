@@ -1,175 +1,90 @@
 # StinkBot Database
 
-Database migrations and setup scripts for StinkBot.
+PostgreSQL migrations and schema tooling shared by the bot and frontend.
 
 ## Files
 
-- `database_setup.sql` - Legacy initial database schema setup (use migrations instead)
-- `migrate.js` - Migration runner script
-- `migrations/` - Directory containing all migration files
+- `migrate.js` - Migration runner
+- `migrations/` - Migration files (forward + rollback pairs)
+- `generate_schema.js` - Dumps the live schema to `current_schema.sql`
+- `current_schema.sql` - Generated snapshot of the full schema
 - `.env.example` - Example environment configuration
 
 ## Setup
 
-### Prerequisites
-- [PostgreSQL](https://www.postgresql.org/) installed and running
-    - Post-install local run script (assuming Postgres\X\bin is added to path): 
-        ```batch
-        pg_ctl start -D "<path_to_data>\data"
-        ```
-- [Node.js](https://nodejs.org/) for running migrations
-
-### Environment Configuration
-1. Copy `.env.example` to `.env`
-2. Update the database credentials in `.env`
-
-### Install Dependencies
-```bash
-npm install
-```
+1. Install and start PostgreSQL, and make sure Node.js is available.
+2. Copy `.env.example` to `.env` and set your connection details.
+3. `npm install` (or `npm install` from the repo root, which covers all workspaces).
 
 ## Usage
 
-### Database Migrations
+### Migrations
 
-#### Apply All Pending Migrations
 ```bash
-npm run migrate
-# or
-npm run migrate:up
+npm run migrate            # apply all pending migrations (alias: migrate:up)
+npm run migrate:status     # show applied/pending migrations
+npm run migrate:down       # roll back the last migration (alias: migrate:rollback)
+node migrate.js rollback 3 # roll back the last 3 migrations
 ```
 
-#### Check Migration Status
-```bash
-npm run migrate:status
-```
+### Creating a migration
 
-#### Rollback Last Migration
-```bash
-npm run migrate:down
-# or
-npm run migrate:rollback
-```
-
-#### Rollback Multiple Migrations
-```bash
-node migrate.js rollback 3  # rollback last 3 migrations
-```
-
-#### Create New Migration
 ```bash
 npm run migrate:create "add user preferences table"
-# or
-node migrate.js create "add user preferences table"
 ```
 
-This will create two files:
-- `YYYYMMDDHHMMSS_add_user_preferences_table.sql` - The migration
-- `YYYYMMDDHHMMSS_add_user_preferences_table.rollback.sql` - The rollback
+This creates two files in `migrations/`:
 
-#### Reset Database (Development Only)
+- `YYYYMMDDTHHMMSS_add_user_preferences_table.sql` - the forward migration
+- `YYYYMMDDTHHMMSS_add_user_preferences_table.rollback.sql` - the rollback
+
+Guidelines:
+
+1. Every migration gets a rollback file, and test that the rollback works.
+2. Keep each migration to a single logical change.
+3. Never modify a migration that has already been applied; write a new one.
+4. The runner wraps each migration in a transaction.
+
+### Schema snapshot
+
+```bash
+npm run schema:generate
+```
+
+Regenerates `current_schema.sql` from the connected database. Run this after applying new migrations so the snapshot stays accurate - it is the file other tooling (and `.cursor/rules`) points at as the schema reference. If it disagrees with the migrations directory, trust the migrations.
+
+### Reset (development only)
+
 ```bash
 npm run db:reset
 ```
-⚠️ **Warning**: This will destroy all data!
 
-### Migration File Structure
+Drops and recreates the `stinkbot` database, then reapplies all migrations. This destroys all data.
 
-Each migration consists of two files:
-1. `*.sql` - The forward migration
-2. `*.rollback.sql` - The reverse migration
+## Schema overview
 
-Example migration file (`20250731120000_add_user_settings.sql`):
-```sql
--- Migration: Add user settings
--- Created: 2025-07-31T12:00:00.000Z
+Core game tables: `games`, `players`, `votes`, `game_channels`, `game_role`, `roles`, `game_meta`, `game_speed`, `night_action`, `player_journals`. Server and admin tables: `server_configs`, `server_users`, `super_users`, `banned_users`, `admin_settings`, `feedback`. Archives: `archive_messages`. See `current_schema.sql` or the migration files for details.
 
-CREATE TABLE user_settings (
-    id SERIAL PRIMARY KEY,
-    user_id VARCHAR(20) NOT NULL,
-    setting_key VARCHAR(100) NOT NULL,
-    setting_value TEXT,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, setting_key)
-);
+## Environment variables
 
-CREATE INDEX idx_user_settings_user_id ON user_settings(user_id);
-```
+The migration runner supports two configurations:
 
-Example rollback file (`20250731120000_add_user_settings.rollback.sql`):
-```sql
--- Rollback for: Add user settings
--- Created: 2025-07-31T12:00:00.000Z
+### Option 1: DATABASE_URL (recommended)
 
-DROP INDEX IF EXISTS idx_user_settings_user_id;
-DROP TABLE IF EXISTS user_settings;
-```
-
-### Best Practices
-
-1. **Always create rollback files** - Every migration should have a corresponding rollback
-2. **Use descriptive names** - Migration names should clearly describe what they do
-3. **Test rollbacks** - Always test that your rollbacks work correctly
-4. **Keep migrations atomic** - Each migration should be a single logical change
-5. **Don't modify existing migrations** - Once applied, never modify a migration file
-6. **Use transactions** - The migration runner wraps each migration in a transaction
-
-### Migration Naming Convention
-
-Migrations are named with the format:
-`YYYYMMDDHHMMSS_descriptive_name.sql`
-
-Where:
-- `YYYY` - Year (4 digits)
-- `MM` - Month (2 digits) 
-- `DD` - Day (2 digits)
-- `HH` - Hour (2 digits)
-- `MM` - Minute (2 digits)
-- `SS` - Second (2 digits)
-- `descriptive_name` - Snake_case description
-
-### Legacy Setup (Deprecated)
-```bash
-npm run setup  # Uses database_setup.sql - only for initial development
-```
-
-## Schema
-
-The database uses PostgreSQL and includes tables for:
-- Server configurations
-- Game instances  
-- Player management
-- Voting records
-- Game channels
-- Player journals
-
-See the migration files in `migrations/` directory for the complete schema.
-
-## Environment Variables
-
-The migration system supports two ways to configure database connections:
-
-### Option 1: DATABASE_URL (Recommended)
-Use a single connection string that includes all connection details:
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `DATABASE_URL` | Full PostgreSQL connection string | `postgresql://user:pass@host:port/db` |
-
-Example DATABASE_URL formats:
 ```bash
 # Local development
 DATABASE_URL=postgresql://postgres:password@localhost:5432/stinkbot
 
-# Production with SSL (common on hosted services like Heroku, Railway, etc.)
+# Hosted with SSL (Supabase, Railway, etc.)
 DATABASE_URL=postgresql://user:pass@host.com:5432/dbname?sslmode=require
 
 # Local with SSL disabled
 DATABASE_URL=postgresql://postgres:password@localhost:5432/stinkbot?sslmode=disable
 ```
 
-### Option 2: Individual Environment Variables
-If `DATABASE_URL` is not set, these individual variables will be used:
+### Option 2: Individual variables
+
+Used only when `DATABASE_URL` is not set:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -177,6 +92,4 @@ If `DATABASE_URL` is not set, these individual variables will be used:
 | `DB_PORT` | Database port | `5432` |
 | `DB_NAME` | Database name | `stinkbot` |
 | `DB_USER` | Database user | `postgres` |
-| `DB_PASSWORD` | Database password | _(empty)_ |
-
-**Note:** `DATABASE_URL` takes priority over individual environment variables. This is the recommended approach for production deployments and when dealing with SSL connections.
+| `DB_PASSWORD` | Database password | (empty) |

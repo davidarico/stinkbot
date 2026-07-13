@@ -403,6 +403,131 @@ async handleNotVoted(message) {
     }
 },
 
+// Append a vote/retract event to vote_history. Never throws: history is a
+// best-effort audit trail and must not block the vote itself.
+async logVoteAction(gameId, dayNumber, voterUserId, targetUserId, action) {
+    try {
+        await this.db.query(
+            'INSERT INTO vote_history (game_id, day_number, voter_user_id, target_user_id, action) VALUES ($1, $2, $3, $4, $5)',
+            [gameId, dayNumber, voterUserId, targetUserId, action]
+        );
+    } catch (error) {
+        console.error('Error logging vote action to vote_history:', error);
+    }
+},
+
+async handleLssv(message, args) {
+    const serverId = message.guild.id;
+    const gameResult = await this.db.query(
+        'SELECT * FROM games WHERE server_id = $1 AND status = $2',
+        [serverId, 'active']
+    );
+    if (!gameResult.rows.length) {
+        return message.reply('❌ No active game found.');
+    }
+    const game = gameResult.rows[0];
+
+    // Optional day argument, defaults to the current day
+    let day = game.day_number;
+    if (args.length) {
+        day = parseInt(args[0], 10);
+        if (Number.isNaN(day) || day < 1 || day > game.day_number) {
+            return message.reply(`❌ Day must be a number between 1 and ${game.day_number}.`);
+        }
+    }
+
+    try {
+        // Standing votes with the time each was cast, earliest first.
+        // Current day: the live votes table is exactly the standing set.
+        // Past days: reconstruct from vote_history (votes are wiped at phase change) —
+        // each voter's last action for that day stands, unless it was a retract.
+        let standing;
+        if (day === game.day_number) {
+            const votesResult = await this.db.query(
+                'SELECT voter_user_id, target_user_id, voted_at AS cast_at FROM votes WHERE game_id = $1 AND day_number = $2 ORDER BY voted_at ASC, id ASC',
+                [game.id, day]
+            );
+            standing = votesResult.rows;
+        } else {
+            const historyResult = await this.db.query(
+                `SELECT DISTINCT ON (voter_user_id) voter_user_id, target_user_id, action, created_at AS cast_at
+                 FROM vote_history
+                 WHERE game_id = $1 AND day_number = $2
+                 ORDER BY voter_user_id, created_at DESC, id DESC`,
+                [game.id, day]
+            );
+            standing = historyResult.rows
+                .filter((row) => row.action === 'vote')
+                .sort((a, b) => new Date(a.cast_at) - new Date(b.cast_at));
+        }
+
+        if (!standing.length) {
+            const note = day === game.day_number
+                ? 'No votes have been cast yet today.'
+                : `No final votes recorded for Day ${day}. Note: vote history only exists for votes cast after the history feature was added.`;
+            return message.reply(`📭 ${note}`);
+        }
+
+        // Map user ids to usernames
+        const playersResult = await this.db.query(
+            'SELECT user_id, username FROM players WHERE game_id = $1',
+            [game.id]
+        );
+        const names = new Map(playersResult.rows.map((p) => [p.user_id, p.username]));
+        const nameOf = (userId) => names.get(userId) || `<@${userId}>`;
+
+        // Final votes in the order they were cast
+        const castOrder = standing
+            .map((v, i) => {
+                const unix = Math.floor(new Date(v.cast_at).getTime() / 1000);
+                return `${i + 1}. **${nameOf(v.voter_user_id)}** → **${nameOf(v.target_user_id)}** — <t:${unix}:t> (<t:${unix}:R>)`;
+            })
+            .join('\n');
+
+        // LSSV: for each target with 2+ standing votes, when their second vote landed.
+        // Earliest second vote = longest standing second vote.
+        const votesByTarget = new Map();
+        for (const v of standing) {
+            if (!votesByTarget.has(v.target_user_id)) {
+                votesByTarget.set(v.target_user_id, []);
+            }
+            votesByTarget.get(v.target_user_id).push(v);
+        }
+        const secondVotes = [];
+        for (const [targetId, votes] of votesByTarget) {
+            if (votes.length >= 2) {
+                secondVotes.push({ targetId, voteCount: votes.length, secondAt: votes[1].cast_at });
+            }
+        }
+        secondVotes.sort((a, b) => new Date(a.secondAt) - new Date(b.secondAt));
+
+        const lssvLines = secondVotes.length
+            ? secondVotes
+                .map((s, i) => {
+                    const unix = Math.floor(new Date(s.secondAt).getTime() / 1000);
+                    const marker = i === 0 ? ' 🏆' : '';
+                    return `${i + 1}. **${nameOf(s.targetId)}** (${s.voteCount} votes) — second vote at <t:${unix}:t> (<t:${unix}:R>)${marker}`;
+                })
+                .join('\n')
+            : 'No player has two or more standing votes.';
+
+        const embed = new EmbedBuilder()
+            .setTitle(`🗳️ LSSV — Day ${day}`)
+            .setDescription('Longest standing second vote. Standing votes only — retracted and changed votes count from when the current vote was cast.')
+            .addFields(
+                { name: 'Final votes in cast order', value: castOrder, inline: false },
+                { name: 'Second votes (earliest first)', value: lssvLines, inline: false }
+            )
+            .setColor(0x9B59B6)
+            .setTimestamp();
+
+        await message.reply({ embeds: [embed] });
+    } catch (error) {
+        console.error('Error in handleLssv:', error);
+        await message.reply('❌ Could not build the LSSV report.');
+    }
+},
+
 async sendPlayerListToDeadChat(gameId, deadChatChannel) {
     const playersResult = await this.db.query(
         `SELECT p.username,
@@ -859,6 +984,9 @@ async handleVote(message, args) {
         [game.id, voterId, target.id, game.day_number]
     );
 
+    // Durable log: `votes` is wiped at phase change, vote_history is not
+    await this.logVoteAction(game.id, game.day_number, voterId, target.id, 'vote');
+
     // React with checkmark for success
     await message.react('✅');
     
@@ -897,6 +1025,8 @@ async handleRetract(message) {
     if (deleteResult.rowCount === 0) {
         return message.reply('❌ You have no vote to retract.');
     }
+
+    await this.logVoteAction(game.id, game.day_number, voterId, null, 'retract');
 
     // React with checkmark for success
     await message.react('✅');

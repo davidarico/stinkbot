@@ -1,605 +1,228 @@
-# Werewolf Discord Bot
+# StinkBot Discord Bot
 
-A Discord bot for managing Werewolf (mafia) games across multiple servers.
+A Discord bot for running Werewolf (mafia) games across multiple servers. It manages signups, role assignment, day/night phases, voting, player journals, and message archiving.
 
-## Features
-
-- Game management (signup, voting, day/night cycles)
-- Role management and assignments
-- Journal system for players
-- Archive functionality for game categories
-- **Daily member sync for archive purposes**
-
-## Daily Member Sync
-
-The bot includes an automated daily process that syncs all server members to the database for archive purposes. This feature:
-
-- **Runs automatically** every day at 2 AM UTC
-- **Stores member data** in the `server_users` table with:
-  - `user_id`: Discord user ID
-  - `server_id`: Discord server ID  
-  - `display_name`: User's display name (nickname or username)
-- **Updates existing records** when display names change
-- **Skips bot users** to avoid cluttering the database
-- **Provides logging** to a designated channel (if configured)
-
-### Manual Sync Command
-
-Moderators can trigger a manual sync using:
-```
-Wolf.sync_members
-```
-
-### Configuration
-
-To enable logging to a Discord channel, set the environment variable:
-```
-MEMBER_SYNC_LOG_CHANNEL_ID=your_channel_id_here
-```
-
-### Database Schema
-
-The member data is stored in the `server_users` table:
-```sql
-CREATE TABLE server_users (
-    id SERIAL PRIMARY KEY,
-    user_id VARCHAR(255) NOT NULL,
-    server_id VARCHAR(255) NOT NULL,
-    display_name VARCHAR(255) NOT NULL
-);
-```
-
-## Installation
+## Setup
 
 ### Prerequisites
 
-- Node.js (v16 or higher)
-- PostgreSQL database
-- Discord bot token
+- Node.js 18+
+- PostgreSQL (migrations live in the `database/` workspace)
+- A Discord bot token
 
-### Installation
+### Install and run
 
-1. **Clone and setup the project:**
-   ```bash
-   npm install
-   ```
+From the repo root:
 
-2. **Database setup:**
-   ```bash
-   # Create a PostgreSQL database named 'werewolf_bot'
-   # Then run the setup script:
-   psql -d werewolf_bot -f database_setup.sql
-   
-   # Or use the npm script (requires environment setup first):
-   npm run db:refresh
-   ```
-
-3. **Configure environment:**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your Discord token and database credentials
-   ```
-
-4. **Test your setup:**
-   ```bash
-   npm test
-   ```
-
-5. **Start the bot:**
-   ```bash
-   npm start
-   ```
-
-   For development with auto-restart:
-   ```bash
-   npm run dev
-   ```
-
-## ⚙️ Configuration
-
-### Environment Variables
-
-Create a `.env` file with the following variables:
-
-```env
-# Discord Bot Token (required)
-DISCORD_TOKEN=your_discord_bot_token_here
-
-# Database Configuration (required)
-PG_HOST=localhost
-PG_PORT=5432
-PG_DATABASE=werewolf_bot
-PG_USER=your_db_user
-PG_PASSWORD=your_db_password
-
-# Bot Configuration (optional)
-# This will change the prefix for commands listed below
-BOT_PREFIX=Wolf. 
-
-# OpenAI Configuration (optional)
-# For AI-powered responses to unknown commands
-OPENAI_API_KEY=your_openai_api_key_here
-
-# AWS S3 Configuration (optional)
-# For uploading archive files to S3 and processing Discord images
-AWS_ACCESS_KEY_ID=your_aws_access_key_id_here
-AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key_here
-AWS_REGION=us-east-1
-AWS_S3_BUCKET_NAME=your-s3-bucket-name-here
-
-# Note: For image processing, the bot uses a hardcoded bucket name 'stinkwolf-images'
-# Make sure this bucket exists and is accessible with the provided credentials
+```bash
+npm install               # installs all workspaces
+npm run db:migrate        # apply migrations (configure database/.env first)
+cp bot/.env.example bot/.env   # then fill in your values
+npm run bot:start         # or bot:dev for auto-restart
 ```
 
-### Discord Bot Setup
+In development, database config is loaded from the first existing file among `database/.env`, `.env`, and `bot/.env`, so the bot and the migration runner always see the same `DATABASE_URL`.
 
-1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
-2. Create a new application
-3. Go to "Bot" section and create a bot
-4. Copy the bot token to your `.env` file
-5. Enable the following intents:
-   - MESSAGE CONTENT INTENT
-   - SERVER MEMBERS INTENT
-6. Go to "Installation" tab 
-7. Ensure that "bot" is added under "Guild Install" > "Scopes"
-8. Ensure the following Permissions are granted under "Guild Install" > "Permissions"
-   - Add Reactions
-   - Embed Links
-   - Manage Channels
-   - Manage Messages (*needed for creating Mod role with this permission*)
-   - Manage Roles
-   - Pin Messages (*newish alternative role for allowing just Pin without broader Manage access*)
-   - Read Message History
-   - Send Messages   
-   - View Channels
-9. Open the "Install Link" in your browser, select the Server where you want to add the bot, Authorize all
-10. With bot running, use command `wolf.server_roles`
-11. Grant bot user the "Mod" role
+### Environment variables
 
-### S3 Bucket Setup (for Image Processing)
+See `.env.example` for the full annotated list. Summary:
 
-If you want to enable automatic Discord image processing during archiving:
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `DISCORD_TOKEN` | yes | Bot token |
+| `DATABASE_URL` | yes | PostgreSQL connection string |
+| `BOT_PREFIX` | no | Command prefix, defaults to `Wolf.` |
+| `WEBSITE_URL` | no | Frontend base URL included in new-game mod messages |
+| `DATABASE_SSL_REJECT_UNAUTHORIZED` | no | Force strict/relaxed TLS for Postgres; unset uses a dev-friendly heuristic |
+| `OPENAI_API_KEY` | no | Joke replies to unknown commands |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_REGION` | no | S3 image upload during archiving |
+| `AWS_S3_BUCKET_NAME` | no | Bucket for JSON archive backups |
+| `MEMBER_SYNC_LOG_CHANNEL_ID` | no | Channel that receives member-sync logs |
+| `ENABLE_ALIVE_MENTION_DETECTION` | no | Enables @Alive mention rate limiting |
 
-1. Create an S3 bucket named `stinkwolf-images` in your AWS account
-2. Configure the bucket for public read access by adding a bucket policy:
-   ```json
-   {
-       "Version": "2012-10-17",
-       "Statement": [
-           {
-               "Sid": "PublicReadGetObject",
-               "Effect": "Allow",
-               "Principal": "*",
-               "Action": "s3:GetObject",
-               "Resource": "arn:aws:s3:::stinkwolf-images/*"
-           }
-       ]
-   }
-   ```
-3. Set up an IAM user with the following permissions:
-   ```json
-   {
-       "Version": "2012-10-17",
-       "Statement": [
-           {
-               "Effect": "Allow",
-               "Action": [
-                   "s3:PutObject"
-               ],
-               "Resource": "arn:aws:s3:::stinkwolf-images/*"
-           }
-       ]
-   }
-   ```
-4. Add the IAM user credentials to your `.env` file
-5. Test the setup with: `npm run test-images`
+The old `PG_*` variables are deprecated; use `DATABASE_URL`.
 
-**Image Storage**: Images are stored using the message ID as the filename (e.g., `message_id.jpg`) to prevent duplicates when re-archiving categories. For messages with multiple images, additional images use `_1`, `_2`, etc. suffixes.
+### Discord application setup
 
-## 🎮 Commands
+1. Create an application at the [Discord Developer Portal](https://discord.com/developers/applications) and add a bot.
+2. Copy the bot token into `.env`.
+3. Enable the MESSAGE CONTENT and SERVER MEMBERS intents.
+4. Under Installation > Guild Install, add the `bot` scope with these permissions: Add Reactions, Embed Links, Manage Channels, Manage Messages, Manage Roles, Pin Messages, Read Message History, Send Messages, View Channels.
+5. Open the install link, add the bot to your server.
+6. With the bot running, use `Wolf.server_roles` to create the game roles, then grant the bot user the Mod role.
 
-Commands are divided into two categories: **Player Commands** (available to everyone) and **Moderator Commands** (require Manage Channels or Administrator permissions).
+## Commands
 
-### Player Commands (Everyone Can Use)
+Commands use the `Wolf.` prefix by default. Moderator commands require the Manage Channels or Administrator permission (or the Mod role granted through `Wolf.mod`).
+
+### Player commands
 
 | Command | Description |
 |---------|-------------|
-| `Wolf.in` | Sign up for the current game |
-| `Wolf.out` | Remove yourself from the current game |
-| `Wolf.vote @user` | Vote for a player (day phase only) |
+| `Wolf.in` / `Wolf.out` | Join or leave signups for the current game |
+| `Wolf.vote @user` | Vote for a player (voting booth, day phase only) |
 | `Wolf.retract` | Retract your current vote |
-| `Wolf.alive` | Show all players currently alive in the game |
-| `Wolf.players` | Show all players alive or dead in the game |
-| `Wolf.inlist` | Show all players signed up for the current game (mobile-friendly format) |
-| `Wolf.my_journal` | 📔 Find your personal journal channel |
-| `Wolf.help` | Show all available commands |
+| `Wolf.votecount` | Vote totals without voter names (Day 2+) |
+| `Wolf.alive` | List living players |
+| `Wolf.players` | List all players, dead or alive |
+| `Wolf.my_journal` | Find your personal journal channel |
+| `Wolf.rename_journal <new-name>` | Rename your journal |
+| `Wolf.iaself` | Your own message count in town square |
+| `Wolf.speed_check` | Message counts since the last phase change |
+| `Wolf.feedback <text>` | Submit feedback (stored in the database) |
+| `Wolf.help` | Show the command list |
 
-### Moderator Commands (Moderators Only)
+### Super user commands
+
+`Wolf.mod @user` grants the Mod role; restricted to users in the `super_users` table or holders of the Town Council role. `Wolf.unmod` lets super users remove Mod from anyone and lets moderators remove it from themselves (`Wolf.unmod me`).
+
+### Moderator commands
+
+Setup and game management:
 
 | Command | Description |
 |---------|-------------|
-| `Wolf.setup` | Configure server settings |
-| `Wolf.server_roles` | 🎭 Create all game roles |
-| `Wolf.create` | Create a new game |
-| `Wolf.start` | Start the game and create channels |
-| `Wolf.next` | Move to next phase (day/night) |
-| `Wolf.end` | End the current game |
-| `Wolf.add_channel <name>` | Create an additional channel in the game category |
-| `Wolf.day <message>` | Set custom day transition message |
-| `Wolf.night <message>` | Set custom night transition message |
-| `Wolf.journal @user` | 📔 Create a personal journal for a player |
-| `Wolf.journal_link` | 🔗 Link existing journal channels to players using intelligent matching |
-| `Wolf.journal_owner` | 👤 Show who owns the current journal channel (use in journal) |
-| `Wolf.journal_unlink` | 🔓 Unlink the current journal from its owner (use in journal) |
-| `Wolf.journal_assign @user` | 🎯 Assign the current journal to a specific user (use in journal) |
-| `Wolf.balance_journals` | 📚 Balance journals across categories (handles Discord's 50 channel limit) |
-| `Wolf.populate_journals [number]` | 🧪 Create test journals for testing the balancing system |
+| `Wolf.setup` | Initial server setup (prefix, starting number, game name) |
+| `Wolf.server_roles` | Create the game roles |
+| `Wolf.create` | Create a new game with a signup channel |
+| `Wolf.start [dark]` | Start the game and create channels; `dark` hides town square, memos, and voting booth from the Alive role |
+| `Wolf.signups [open\|close]` | Open or close signups |
+| `Wolf.next` | Advance to the next phase (day/night) |
+| `Wolf.end` | End the current game (requires confirmation) |
+| `Wolf.scuff` | Rewind an active game back to signup (requires confirmation) |
+| `Wolf.settings` | View or change game settings (votes to hang, phase messages) |
 
-| `[DEPRECATED] Wolf.role_assign` | 🎭 Randomly assign roles from a provided list to all signed-up players |
-| `Wolf.roles_list` | 📋 Display all assigned roles for players in the current game |
-| `Wolf.server` | 🖥️ Display detailed server information for logging and debugging |
-| `Wolf.ia <YYYY-MM-DD HH:MM>` | 📊 Get message count per player in town square since specified date/time (EST) |
-| `Wolf.speed <number>` | ⚡ Start a speed vote with target number of reactions (use "abort" to cancel) |
-| `Wolf.recovery` | 🔄 Recovery mode - migrate from manual game management to bot control |
-| `Wolf.issues` | 🐛 Display current known issues and bugs |
-| `Wolf.archive <category-name>` | 🗄️ Archive all messages from a game category to OpenSearch (with Discord image processing and S3 upload) |
-| `Wolf.refresh` | 🔄 **Reset server** (delete channels, reset roles to Spectator) |
+Channels and voting:
 
-> ⚠️ **Warning**: The `refresh` command will delete ALL text channels except #general, delete ALL categories, reset game counter to 1, end any active games, and reset all members to Spectator role. This action cannot be undone! Use only for testing!
+| Command | Description |
+|---------|-------------|
+| `Wolf.add_channel <name>` | Create an extra channel in the game category |
+| `Wolf.channel_config` | View additional channel settings |
+| `Wolf.set_voting_booth <channel-name>` | Point the current game at a different voting booth channel |
+| `Wolf.create_vote` | Manually create a voting message |
+| `Wolf.get_votes` | Current vote counts including who voted for whom |
+| `Wolf.not_voted` | Living players who have not voted today |
+| `Wolf.lssv [day]` | Longest standing second vote: final votes in cast order, plus when each leader's second vote landed (defaults to today; past days need vote history) |
+| `Wolf.lockdown` / `Wolf.lockdown lift` | Prevent/restore Alive players speaking in town square and memos |
 
-## 🎯 Typical Game Flow
+Players and roles:
 
-1. **Server Setup** (one-time):
-   ```
-   Wolf.setup
-   # Follow prompts to set prefix, starting number, and game name
-   
-   Wolf.server_roles
-   # Creates all necessary game roles
-   ```
+| Command | Description |
+|---------|-------------|
+| `Wolf.add_in @user` | Add a player to signups on their behalf |
+| `Wolf.kill @player` | Swap a player's Alive role for Dead |
+| `Wolf.dead` | List dead players |
+| `Wolf.inlist` | Mobile-friendly signup list |
+| `Wolf.roles_list` | Show assigned roles for the current game |
+| `Wolf.role_config` | Show the game's role configuration |
+| `Wolf.ratio` | Town / Wolf / Neutral seat counts from the saved role list |
+| `Wolf.wolves_alive` | Count living wolves (mods see names) |
 
-2. **Create Game**:
-   ```
-   Wolf.create
-   # Creates signup channel and category
-   ```
+Journals:
 
-3. **Player Signups**:
-   ```
-   Wolf.in   # Players join
-   Wolf.out  # Players leave (if needed)
-   ```
+| Command | Description |
+|---------|-------------|
+| `Wolf.journal @user` | Create a personal journal for a player |
+| `Wolf.journal_link` | Link existing journal channels to players by name matching |
+| `Wolf.journal_owner` / `Wolf.journal_unlink` / `Wolf.journal_assign @user` | Inspect or change a journal's owner (run inside the journal) |
+| `Wolf.journal_grant_pin` | Grant pin permissions across all journals |
+| `Wolf.balance_journals` | Rebalance journal categories (Discord's 50-channel limit) |
+| `Wolf.fix_journals` | Repair journal permissions |
 
-4. **Start Game**:
-   ```
-   Wolf.start
-   # Creates all game channels, renames signup to dead-chat
-   ```
+Analysis, maintenance, and recovery:
 
-5. **During Game**:
-   ```
-   Wolf.vote @player    # Players vote (day phase only)
-   Wolf.retract         # Players retract votes
-   Wolf.next           # Moderator advances phases
-   ```
+| Command | Description |
+|---------|-------------|
+| `Wolf.ia [channel] <YYYY-MM-DD HH:MM>` | Per-player message counts since a date (EST); both arguments optional |
+| `Wolf.server` | Server information for debugging |
+| `Wolf.archive <category-name>` | Archive a game category (see below) |
+| `Wolf.archive_local <category-name>` | Archive to a local JSON file (dev only) |
+| `Wolf.sync_members` | Manually run the member sync |
+| `Wolf.recovery` | Migrate a manually run game to bot control |
+| `Wolf.delete_category <name>` | Delete a category and all channels in it (requires confirmation) |
+| `Wolf.populate_journals [n]` | Create test journals (testing) |
+| `Wolf.refresh` | Reset the server: deletes channels and categories, resets roles and the game counter. Testing only; cannot be undone |
 
-6. **End Game**:
-   ```
-   Wolf.end
-   # Requires confirmation
-   ```
+## Game flow
 
-## 📔 Journal System
-
-The bot includes a comprehensive journal system for players to take notes and communicate with moderators.
-
-### Journal Features
-
-- **Personal journals**: Each player gets their own private channel
-- **Automatic creation**: Journals are created when players sign up or manually with `Wolf.journal @user`
-- **Permission management**: Players can read/write, moderators can read/write, spectators can read only
-- **Database tracking**: All journals are tracked in the database for persistence
-
-### Journal Balancing
-
-Discord has a 50-channel limit per category. The system automatically handles this by:
-
-- **Proactively preventing Discord limits** by splitting at 49+ journals before creating new ones
-- **User-friendly notifications** when splits are about to occur
-- **Automatically placing** new journals in the appropriate category based on alphabetical order
-- **Automatically rebalancing** categories when needed to maintain equal distribution
-- **Automatically splitting** journals into multiple categories when approaching the 50-journal limit
-- **Creating smart category names** like "Journals (A-L)" and "Journals (M-Z)"
-- **Preserving all permissions** when moving channels
-- **Automatic alphabetical ordering** - categories are created in the correct order from the start
-
-You can also manually rebalance using `Wolf.balance_journals` if needed.
-
-**Scenarios**:
-- **< 50 journals**: Stays in single category, just alphabetized
-- **50+ journals**: Splits into multiple categories to stay well under the Discord limit
-  - **50 journals**: Splits into 2 categories of 25 each
-  - **75 journals**: Splits into 2 categories of 38 each
-  - **100 journals**: Splits into 2 categories of 50 each
-  - **120+ journals**: Splits into 3+ categories as needed
-
-**Testing**: Use `Wolf.populate_journals [number]` to create test journals for testing the balancing system.
-
-For detailed documentation, see [Journal Balancing System](docs/journal-balancing.md).
-
-## 🎭 Role System
-
-The bot uses a comprehensive role system to manage permissions and access:
+1. `Wolf.setup`, then `Wolf.server_roles` (one-time per server).
+2. `Wolf.create` makes a signup channel plus mod-chat and breakdown channels; players join with `Wolf.in`.
+3. `Wolf.start` creates the game channels and turns the signup channel into dead-chat.
+4. During the game, players vote in the voting booth; the moderator advances phases with `Wolf.next`.
+5. `Wolf.end` finishes the game; `Wolf.archive` preserves it.
 
 ### Roles
 
-| Role | Color | Purpose | Permissions |
-|------|-------|---------|-------------|
-| **Mod** | 🔴 Red | Moderators/Admins | Can see mod-chat, manage channels |
-| **Spectator** | ⚪ Gray | Default for new members | Can see and chat in dead-chat only |
-| **Signed Up** | 🟡 Yellow | Players who joined the game | Temporary role during signup phase |
-| **Alive** | 🟢 Green | Living players | Can see all game channels, cannot see dead-chat |
-| **Dead** | ⚫ Black | Eliminated players | Can see all channels, can only chat in dead-chat |
+`Wolf.server_roles` creates five roles:
 
-### Role Flow
+| Role | Purpose |
+|------|---------|
+| Mod | Game moderators; sees mod-chat, manages channels |
+| Spectator | Default for non-players; sees and chats in dead-chat only |
+| Signed Up | Temporary role during signups |
+| Alive | Living players; sees game channels but not dead-chat |
+| Dead | Eliminated players; sees everything, chats only in dead-chat |
 
-1. **Setup**: Run `Wolf.roles` to create all roles
-2. **Signup**: Players who use `Wolf.in` get **Signed Up** role
-3. **Game Start**: All **Signed Up** players become **Alive**
-4. **Elimination**: Players manually change from **Alive** to **Dead** (by moderators)
-5. **Spectators**: Non-players get **Spectator** role for watching
+### Channels
 
-### Channel Permissions
+With server prefix `g` and game number 5, `Wolf.create` produces `g5-signups`, `g5-mod-chat`, and `g5-breakdown`. `Wolf.start` renames signups to `g5-dead-chat` and creates `g5-results`, `g5-player-memos`, `g5-townsquare`, `g5-voting-booth`, and `g5-wolf-chat`. Additional channels (including couple chats) can be added with `Wolf.add_channel` and configured via `Wolf.channel_config`.
 
-- **Dead Chat**: Dead + Spectators can see/chat, Alive cannot see
-- **Game Channels**: Alive can see/chat, Dead can see but not chat, Spectators cannot see
-- **Mod Chat**: Only Mod role can see and chat
+### Voting
 
-## 📁 Channel Structure
+Votes are only accepted in the voting booth during day phases, self-votes are rejected, and counts update in real time with display names. Votes clear at each new day.
 
-When a game is created, the bot generates:
+## Journals
 
-### During Signup Phase
-- `{prefix}{number}-signups` - Player signup channel
+Every player can get a private journal channel (created at signup or via `Wolf.journal`). Players and mods can write, spectators can read. Because Discord caps categories at 50 channels, the bot automatically splits journals into alphabetized categories ("Journals (A-L)", "Journals (M-Z)") as they grow, and `Wolf.balance_journals` can rebalance manually. Details in [docs/journal-balancing.md](docs/journal-balancing.md).
 
-### During Active Game
-- `{prefix}{number}-dead-chat` - Chat for eliminated players (displays **initial player list** when game starts)
-- `{prefix}{number}-townsquare` - Main game discussion
-- `{prefix}{number}-wolf-chat` - Private wolf communication
-- `{prefix}{number}-memos` - Game notes and information
-- `{prefix}{number}-results` - Game results and announcements
-- `{prefix}{number}-voting-booth` - Voting channel
-- `{prefix}{number}-breakdown` - Roles available in the game
-- `{prefix}{number}-mod-chat` - Private moderator communication
+## Archiving
 
-Example with prefix "g" and game number 1:
-- `g1-signups` → `g1-dead-chat`
-- `g1-town-square`
-- `g1-wolf-chat`
-- etc.
+`Wolf.archive <category-name>` walks every text channel in the category (excluding mod-chat), and:
 
-## 🗳️ Voting System
+- inserts all messages into the Postgres `archive_messages` table, which powers the frontend's archive search
+- downloads Discord image attachments and re-uploads them to the `stinkwolf-images` S3 bucket (filename is the message ID, so re-archiving does not duplicate), rewriting attachment URLs
+- optionally writes a JSON backup to `AWS_S3_BUCKET_NAME` as `archives/<category-name>_<category-id>.json`
 
-The voting system provides real-time vote tracking with several built-in protections:
+Archiving is rate-limited to respect the Discord API and continues past individual channel failures.
 
-- Players can only vote during day phases
-- Votes must be cast in the voting booth channel
-- **Players cannot vote for themselves** (self-voting is blocked)
-- Vote counts are updated in real-time with **display names** for clarity
-- Players can retract and change votes
-- Voting results show both vote counts and who voted for whom
-- Votes are cleared each new day
+Note: archive search used to be backed by OpenSearch. The scripts under `scripts/` are left over from that setup; new work should target the Postgres tables.
 
-Example vote display:
+## Member sync
+
+In production the bot syncs every server member into the `server_users` table (user ID, server ID, display name) daily at 4 AM UTC and once shortly after startup, skipping bots and updating changed display names. Moderators can run it on demand with `Wolf.sync_members`. Set `MEMBER_SYNC_LOG_CHANNEL_ID` to log results to a channel.
+
+## Development
+
+### Layout
+
 ```
-Player1 (2)
-- Player2
-- Player3
-
-Player2 (1)
-- Player1
+src/
+  index.js                 Entry point: Discord client, intents, cron jobs
+  werewolf-bot.js          Command router and optional service clients
+  database.js              pg pool and env loading
+  handlers/                All command logic, mixed into WerewolfBot
+  utils/                   Shared helpers
+  tests/                   Jest unit tests and mock helpers
+scripts/                   One-off and legacy maintenance scripts
+test/                      Legacy live-connectivity checks
 ```
 
-## 🗄️ Archive System
-
-The archive system allows moderators to save all messages from a game category to a JSON file for permanent storage.
-
-### Archive Command
-
-**Usage:** `Wolf.archive <category-name>`
-
-The archive command will:
-1. Find the specified category by name (case-insensitive)
-2. Process all text channels in the category (excluding mod-chat channels)
-3. Fetch all messages from each channel with complete metadata
-4. Generate a timestamped JSON file with all data
-5. Upload to S3 (if configured) and/or save locally
-
-### Archive Data Structure
-
-The generated JSON file includes:
-- **Category metadata**: name, ID, archive timestamp, archived by user
-- **Channel data**: For each channel, includes all messages with:
-  - Message content, author, timestamps
-  - User display names and usernames
-  - Reply references and attachments
-  - Embeds and reactions
-  - Complete message threading information
-
-### S3 Integration (Optional)
-
-If AWS S3 is configured, archive files are automatically uploaded to your S3 bucket:
-
-**Required Environment Variables:**
-```env
-AWS_ACCESS_KEY_ID=your_aws_access_key_id_here
-AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key_here  
-AWS_REGION=us-east-1
-AWS_S3_BUCKET_NAME=your-s3-bucket-name-here
-```
-
-**S3 Storage Structure:**
-- Files are uploaded to: `archives/<category-name>_<category-id>.json`
-- Files overwrite previous backups to prevent duplicates
-- Public URLs are provided in the completion message
-- Local backup is always created regardless of S3 configuration
-
-### Archive Features
-
-- **Complete message history**: All messages from category channels
-- **Rich metadata**: User info, timestamps, attachments, reactions
-- **Rate limiting**: Built-in delays to respect Discord API limits
-- **Error handling**: Continues processing even if individual channels fail
-- **Progress updates**: Real-time status messages during processing
-- **Dual storage**: OpenSearch indexing + S3 backup for redundancy
-- **Consistent backups**: S3 files use `<category-name>_<category-id>.json` format to prevent duplicates
-
-## 🔧 Development
-
-### Project Structure
-```
-werewolf-discord-bot/
-├── src/
-│   ├── index.js          # Main bot entry point
-│   ├── werewolf-bot.js   # Core bot logic
-│   └── database.js       # Database connection
-├── test/
-│   └── test-bot.js       # Test suite
-├── database_setup.sql    # Database schema
-├── package.json
-└── README.md
-```
+To add a command: add a `case` in `werewolf-bot.js` and implement the handler in the matching `handlers/` module. If players should be able to use it, add it to the `playerCommands` list.
 
 ### Testing
 
-Run the test suite to verify your setup:
 ```bash
-npm test
+npm run test:unit           # Jest suite (src/tests), uses mocks — run this
+npm run test:unit:coverage
+npm test                    # legacy live check against real Discord/Postgres
 ```
 
-The test suite checks:
-- Database connectivity
-- Database schema integrity
-- Discord bot connection
+### Deployment
 
-### Available NPM Scripts
+CI builds and pushes a multi-arch (amd64/arm64) Docker image to `ghcr.io/davidarico/stinkbot:latest` on pushes to `main` that touch `bot/`. The container needs the env vars above and a volume at `/usr/src/app/data` if you want the alive-mentions SQLite database to persist.
 
-```bash
-npm start        # Start the bot in production mode
-npm run dev      # Start with auto-restart (development)
-npm test         # Run the test suite
-npm run db:refresh  # Refresh database schema (⚠️ deletes all data!)
-npm run setup-opensearch  # Set up OpenSearch index
-npm run test-opensearch   # Test OpenSearch connection
-npm run migrate-archives  # Migrate S3 archive files to OpenSearch
-```
+## Troubleshooting
 
-### Database Management
-
-**Refresh Database Schema:**
-```bash
-npm run db:refresh
-```
-⚠️ **Warning**: This completely wipes and recreates all database tables. All game data will be lost!
-
-**Manual Database Setup:**
-```bash
-psql -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PG_DATABASE -f database_setup.sql
-```
-- Environment configuration
-
-### Database Schema
-
-The bot uses 4 main tables:
-- `server_configs` - Server-specific settings
-- `games` - Game instances and metadata
-- `players` - Player signups and status
-- `votes` - Voting records
-
-## ✨ New Features & Improvements
-
-### Role-Based Permission System
-- **`Wolf.roles` command** creates comprehensive role system for game management
-- **Automatic role assignment**: Players get appropriate roles during signup and game phases
-- **Channel permissions**: Each role has specific access to game channels
-- **Roles include**: Mod (admin), Spectator (observers), Signed Up, Alive, Dead
-- **Mod-chat channel**: Private communication for moderators in each game
-
-### Display Names
-- **Player lists and voting** now show Discord display names instead of usernames for better readability
-- Display names are used in signup lists, voting sheets, and player rosters
-- System falls back to username if display name is not available
-
-### Anti-Self-Voting
-- **Players cannot vote for themselves** - the bot will reject self-votes with a clear error message
-- Helps prevent accidental votes and maintains game integrity
-
-### Enhanced Game Start
-- **Player list is automatically posted** to the dead chat channel when a game starts
-- Provides a reference for all participants at the beginning of the game
-
-### Server Refresh for Testing
-- **`Wolf.refresh` command** resets a server for quick iteration
-- Deletes all text channels except #general, removes all categories, and cleans database
-- **Resets all members to Spectator role** (except bots)
-- Requires confirmation to prevent accidental use
-- Perfect for testing and development environments
-
-### Database Management
-- **Complete database refresh script** - `npm run db:refresh` completely wipes and recreates schema
-- Useful for development and testing environments
-- ⚠️ **Destroys all existing data** - use with caution!
-
-## 🛠️ Troubleshooting
-
-### Common Issues
-
-**Bot not responding:**
-- Check if bot token is correct
-- Verify bot has necessary permissions
-- Ensure bot is online in Discord
-
-**Database errors:**
-- Verify PostgreSQL is running
-- Check database credentials in `.env`
-- Ensure `database_setup.sql` was executed
-
-**Permission errors:**
-- Ensure users have Manage Channels or Administrator permissions
-- Check bot permissions in Discord server
-
-**Channel creation fails:**
-- Verify bot has Manage Channels permission
-- Check if Discord server has channel limit
-
-### Debug Mode
-
-For detailed logging during development:
-```bash
-NODE_ENV=development npm run dev
-```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests: `npm test`
-5. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Support
-
-If you encounter issues:
-1. Run `npm test` to verify your setup
-2. Check the troubleshooting section
-3. Review Discord bot permissions
-4. Verify database configuration
-
-For additional help, please create an issue with:
-- Error messages
-- Steps to reproduce
-- Your environment details
+- Bot not responding: check the token, that the bot is online, and that the message content intent is enabled.
+- Database errors: verify `DATABASE_URL` and that migrations have been applied (`npm run db:migrate` from the repo root). TLS errors against Supabase in local dev can be worked around with `DATABASE_SSL_REJECT_UNAUTHORIZED=false`.
+- Permission errors: the bot needs Manage Channels and Manage Roles; command users need moderator permissions or the Mod role.

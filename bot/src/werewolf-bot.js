@@ -261,6 +261,9 @@ class WerewolfBot {
                 case 'not_voted':
                     await this.handleNotVoted(message);
                     break;
+                case 'lssv':
+                    await this.handleLssv(message, args);
+                    break;
                 case 'archive':
                     await this.handleArchive(message, args);
                     break;

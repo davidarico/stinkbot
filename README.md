@@ -1,100 +1,66 @@
-# 🐺 StinkBot Monorepo
+# StinkBot
 
-A monorepo containing the StinkBot Discord bot, frontend web application, and database migrations for managing Werewolf games across multiple servers.
+StinkBot runs Werewolf (mafia) games on Discord. This repo holds the bot, a web frontend for moderators, and the PostgreSQL migrations they share.
 
-## 📁 Structure
+## Layout
 
 ```
-├── bot/              # Discord bot application
-├── frontend/         # Web frontend application  
-├── database/         # Database migrations and setup
-└── README.md         # This file
+bot/               Discord bot (discord.js)
+frontend/          Next.js app: mod dashboard, role reference, message archives
+database/          PostgreSQL migrations and schema tooling
+engine-generator/  Deterministic night-action engine (standalone, not yet integrated)
+docs/              Cross-cutting technical docs
+scripts/           Maintenance scripts
+FAIL-OVER.md       Planned failover architecture
+FEEDBACK.md        Triaged player feedback from the in-bot feedback command
 ```
 
-## 🚀 Getting Started
+## Setup
 
-### Prerequisites
-- Node.js 18+
-- PostgreSQL database
-- Discord bot token
+Requires Node.js 18+, PostgreSQL, and a Discord bot token.
 
-### Installation
-
-1. Clone the repository
-2. Install all dependencies:
-   ```bash
-   npm run install:all
-   ```
-
-## 📦 Individual Components
-
-### 🤖 Discord Bot (`/bot`)
-The Discord bot for managing Werewolf games.
-
-**Quick Start:**
-1. Copy `bot/.env.example` to `bot/.env` and fill in your values
-2. Set up your PostgreSQL database using `database/migrate` script, see [database/README.md](database/README.md)
-3. Start the bot: `npm run bot:start`
-
-For detailed setup and commands, see [bot/README.md](bot/README.md).
-
-### 🌐 Frontend (`/frontend`)
-Web application for game management and statistics (coming soon).
-
-**Development:**
 ```bash
-npm run frontend:dev
+npm install          # installs the bot, frontend, and database workspaces
 ```
 
-### 🗄️ Database (`/database`)
-Database migrations and setup scripts.
+Copy `.env.example` to `.env` in `bot/`, `frontend/`, and `database/`, fill in your values, then:
 
-**Usage:**
 ```bash
-npm run db:migrate
+npm run db:migrate   # apply database migrations
+npm run bot:start    # start the bot
+npm run frontend:dev # start the frontend dev server
 ```
 
-## 🛠️ Available Scripts
+Detailed setup for each component (Discord permissions, S3, environment variables) lives in its own README:
 
-### Global Scripts
-- `npm run install:all` - Install dependencies for all components
-- `npm run bot:start` - Start the Discord bot
-- `npm run bot:dev` - Start bot in development mode
-- `npm run bot:test` - Run bot tests
-- `npm run frontend:dev` - Start frontend development server
-- `npm run frontend:build` - Build frontend for production
-- `npm run db:migrate` - Run database migrations
+- [bot/README.md](bot/README.md)
+- [frontend/README.md](frontend/README.md)
+- [database/README.md](database/README.md)
+- [engine-generator/README.md](engine-generator/README.md)
 
-### Individual Component Scripts
-Each component has its own package.json with specific scripts. Use the workspace commands above or navigate to the specific directory.
+Note: `engine-generator` is not part of the npm workspace. If you need it, run `npm install` inside that directory.
 
-## 🔧 Development
+## Root scripts
 
-This monorepo uses npm workspaces for dependency management. Each component is independently deployable but shares common tooling and configuration.
+| Script | Description |
+|--------|-------------|
+| `npm run bot:start` | Start the Discord bot |
+| `npm run bot:dev` | Start the bot with auto-restart (nodemon) |
+| `npm run bot:test` | Run the bot's connectivity test script |
+| `npm run frontend:dev` | Start the frontend dev server |
+| `npm run frontend:build` | Build the frontend for production |
+| `npm run db:migrate` | Apply pending database migrations |
 
-### Contributing
-1. Make changes in the appropriate component directory
-2. Test your changes using the component-specific scripts
-3. The CI/CD pipeline will automatically detect which components have changed
+Each workspace has additional scripts in its own `package.json` (unit tests, migration rollbacks, schema generation, and so on).
 
-## 📄 Environment Variables
+## Deployment
 
-Each component may have its own environment variable requirements. See the individual component README files for specific details:
+- **Bot**: pushes to `main` that touch `bot/` build a multi-arch Docker image and publish it to `ghcr.io/davidarico/stinkbot:latest` (`.github/workflows/bot.yml`). Production runs this image on a VM.
+- **Frontend**: deployed on Vercel.
+- **Database**: Supabase PostgreSQL.
 
-- [Bot Environment Variables](bot/README.md#environment-variables)
-- Frontend Environment Variables (coming soon)
-- Database Environment Variables (coming soon)
+See [FAIL-OVER.md](FAIL-OVER.md) for the planned primary/standby setup.
 
-## 🤝 Contributing
+## License
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes in the appropriate component directory
-4. Run tests for the affected component
-5. Submit a pull request
-
-Changes will only trigger builds/deployments for the components that have been modified.
-
-## 📄 License
-
-This project is licensed under the MIT License.
+MIT

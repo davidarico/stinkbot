@@ -167,6 +167,7 @@ async handleHelp(message) {
                     '`Wolf.wolves_alive` - Count wolves who still have Alive (mods see names; Dead see count only)\n' +
                     '`Wolf.add_in @user` - Add someone to signups without them running `Wolf.in`\n' +
                     '`Wolf.not_voted` - Alive players with no vote yet today (Day 2+ day)\n' +
+                '`Wolf.lssv [day]` - 🗳️ Longest standing second vote: final votes in cast order (defaults to today)\n' +
                     '`Wolf.set_voting_booth <channel-name>` - 🗳️ Set voting booth channel for current game\n' +
                     '`Wolf.lockdown` - 🔒 Lock down townsquare and memos (alive players cannot speak)\n' +
                     '`Wolf.lockdown lift` - 🔓 Lift lockdown and restore normal permissions\n' +

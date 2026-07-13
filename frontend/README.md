@@ -1,194 +1,92 @@
 # Stinkwolf Frontend
 
-## Overview
+Next.js web application for the StinkBot Werewolf system. Moderators run games from a per-game dashboard, players browse the role catalog, and anyone can search archived game messages.
 
-The Stinkwolf Frontend is a Next.js-based web application that provides a comprehensive management interface for Discord-based Werewolf games. This application allows game moderators to manage active werewolf games running on Discord servers through an intuitive web interface.
+## Pages
 
-## Features
+- `/` - Landing page with links into the app
+- `/game/[gameId]` - Password-protected moderator dashboard: player status, role assignment, votes, night actions, channels, game settings
+- `/roles` - Role reference (town, wolf, and neutral roles)
+- `/archives` - Full-text search over archived Discord messages, with filters and message context
+- `/archives/baseball` - Archive browser for the baseball server
+- `/admin` - Admin tools: feedback triage and per-server role management
 
-### Game Management
-- **Real-time Game State**: View and manage current game phase (signup, day, night)
-- **Player Management**: Track player status (alive/dead), assign roles, and manage player actions
-- **Role Assignment**: Comprehensive role system with town, wolf, and neutral alignments
-- **Voting System**: Track and manage player votes during day phases
-- **Phase Control**: Seamlessly transition between game phases
+## Stack
 
-### Role System
-The application supports a wide variety of Werewolf roles including:
-- **Town Roles**: Villager, Seer, Doctor, Bartender, Sleepwalker, and more
-- **Wolf Roles**: Werewolf, Alpha Wolf, and specialized wolf variants
-- **Neutral Roles**: Turncoat and other independent roles
+- Next.js 16 (App Router) with React 19 and TypeScript
+- Tailwind CSS v4; Radix UI primitives with shadcn-style components in `components/ui/`
+- PostgreSQL via `pg` - no ORM; all queries live in the `lib/database.ts` service layer
+- Deployed on Vercel against a Supabase database
 
-### Database Integration
-- **PostgreSQL Backend**: Connects to a PostgreSQL database for persistent game state
-- **Real-time Updates**: Synchronizes with Discord bot data in real-time
-- **Game History**: Maintains historical data of games and player statistics
+Note: `next.config.mjs` currently ignores TypeScript and ESLint errors during builds, so a passing build does not imply a clean typecheck.
 
-### Message Archives
-- **OpenSearch Integration**: Full-text search through archived Discord messages
-- **Advanced Filtering**: Filter by game, channel, user, and content
-- **Message Context**: View messages in chronological context
-- **User Name Sync**: Automatically updates display names from Discord
-- **Pagination**: Efficient browsing of large message archives
+## Getting started
 
-## Technology Stack
-
-- **Framework**: Next.js 15 with React 19
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS with custom UI components
-- **UI Components**: Radix UI primitives with custom styling
-- **Database**: PostgreSQL (via Supabase)
-- **Archives**: PostgreSQL-backed search and browse of archived Discord messages
-- **Authentication**: Session-based authentication per game
-
-## Project Structure
-
-```
-frontend/
-├── app/                    # Next.js app directory
-│   ├── api/               # API routes
-│   │   └── database/      # Database API endpoints
-│   ├── game/              # Game management pages
-│   │   └── [gameId]/      # Dynamic game pages
-│   └── roles/             # Role information pages
-├── components/            # Reusable React components
-│   ├── ui/               # Base UI components (buttons, cards, etc.)
-│   └── role-info-components.tsx
-├── lib/                   # Utility libraries
-│   ├── database.ts        # Database service layer
-│   └── utils.ts          # General utilities
-├── hooks/                 # Custom React hooks
-├── public/               # Static assets
-└── styles/               # Global styles
+```bash
+npm install       # or from the repo root, which installs all workspaces
+cp .env.example .env
+npm run dev       # http://localhost:3000
 ```
 
-## Database Schema
+### Environment variables
 
-The application connects to a PostgreSQL database with the following key tables:
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `DATABASE_URL` | yes | PostgreSQL connection string |
+| `GAME_TOKEN_SECRET` | yes | Signs game dashboard session cookies; generate with `openssl rand -base64 32` |
+| `ADMIN_TOKEN_SECRET` | no | Fallback secret if `GAME_TOKEN_SECRET` is unset |
+| `NODE_ENV` | no | `development` relaxes Postgres TLS verification for Supabase URLs |
 
-- **games**: Core game information including status, phase, channels, and configuration
-- **players**: Player information including roles, status, and game participation
-- **votes**: Voting records for each game day
-- **server_configs**: Discord server configuration and settings
+## Game dashboard authentication
 
-## Getting Started
+Each game gets a cryptographically random dashboard password when the bot creates it; only the scrypt hash is stored. The bot posts a link in mod-chat that pre-fills the password via the `p` query parameter, or it can be entered manually at `/game/[gameId]`.
 
-### Prerequisites
-- Node.js 18+ and npm
-- PostgreSQL database (or Supabase instance)
-- Environment variables configured
+A successful login sets an HTTP-only, HMAC-signed session cookie (24-hour lifetime) that every game-management API route requires. See `lib/game-auth.ts`. Older games without a generated password temporarily accept their Discord category ID.
 
-### Installation
+## Archives
 
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
+Archive search runs on Postgres full-text search over the `archive_messages` table, populated by the bot's `Wolf.archive` command. Display names and avatars are joined from `server_users` at query time. The system's design (query flow, jump-to-message, reply previews) is documented in [docs/archives-search-system.md](../docs/archives-search-system.md).
 
-2. Set up environment variables:
-   ```bash
-   # Create .env.local file
-   DATABASE_URL=your_postgresql_connection_string
-   NODE_ENV=development
-   
-   ```
+## API routes
 
-3. Run the development server:
-   ```bash
-   npm run dev
-   ```
+Game management (session cookie required):
 
-4. Open [http://localhost:3000](http://localhost:3000) in your browser.
+- `GET/POST /api/games/[gameId]` - Game info; password verification and updates
+- `/api/games/[gameId]/players` - Player list and status updates
+- `/api/games/[gameId]/roles`, `/player-roles` - Role configuration and assignments
+- `/api/games/[gameId]/votes` - Votes per day
+- `/api/games/[gameId]/night-actions` - Night action records
+- `/api/games/[gameId]/channels` - Game channel management
+- `/api/games/[gameId]/info` - Summary info
 
-## Message Archives
+Public and admin:
 
-The archives feature allows users to search through archived Discord messages from Werewolf games. Archives are stored in PostgreSQL (table `archive_messages`).
+- `GET /api/roles` - Role catalog
+- `/api/archives/search`, `/context`, `/navigation`, `/message/[messageId]`, `/health` - Archive search and navigation
+- `/api/archives/baseball/*` - Baseball archive variants
+- `/api/admin/*` - Admin auth, feedback, servers, and roles
+- `GET /api/media/oembed` - oEmbed proxy for media previews
 
-### Prerequisites
-- Database migration applied (includes `archive_messages` table)
-- Messages archived via the bot `Wolf.archive <category-name>` command (or migrated from S3)
+## Project structure
 
-### Features
-- **Full-text Search**: Search through message content with fuzzy matching
-- **Filter by Game**: Filter messages by specific game categories
-- **Filter by Channel**: Filter messages by Discord channels
-- **Filter by User**: Filter messages by specific users
-- **Message Context**: Click on any message to view surrounding context
-- **Pagination**: Browse through large result sets efficiently
-- **User Name Sync**: Display names are automatically updated from the database
+```
+app/            Pages and API routes (App Router)
+components/     Feature components and modals
+components/ui/  Base UI components (shadcn-style)
+lib/            database.ts (service layer), game-auth.ts, archive-search.ts, media-utils.ts, utils.ts
+hooks/          use-mobile, use-toast
+public/         Static assets
+```
 
-### API Endpoints
-- `GET /api/archives/search` - Search messages with filters and pagination
-- `GET /api/archives/aggregations` - Get available filter options
-- `GET /api/archives/context` - Get message context around a specific message
+Data access convention: server routes call methods on `lib/database.ts` rather than running SQL inline.
 
-### Production Build
+## Design system
+
+Dark-only "Moonwatch" theme defined as CSS tokens in `app/globals.css`. Use the token classes (`bg-background`, `bg-card`, `text-foreground`, `text-muted-foreground`, `border-border`) instead of hardcoded Tailwind colors. Alignment colors: blue for town, red for wolves, amber for neutrals.
+
+## Production build
 
 ```bash
 npm run build
 npm start
 ```
-
-## Usage
-
-### Accessing Game Management
-
-*Note: "Access Test Game Management" seems to be deprecated. Instructions updated accordingly*
-
-1. Navigate to `[SITE_URL]/game/[GAME_ID]`
-   - SITE_URL defaults to localhost:3000
-   - GAME_ID can be found in mod-chat embed after starting a game
-2. Open the link in the pinned mod-chat message. It pre-fills the generated
-   dashboard password through the `p` query parameter, or the password can be
-   entered manually.
-3. Use the management interface to:
-   - Assign roles to players
-   - Track game phases
-   - Monitor voting
-   - Update player statuses
-
-### Game Authentication
-
-Each new game receives a cryptographically random dashboard password. Only its
-scrypt hash is stored in the database. Successful login creates a signed,
-HTTP-only session that is required by every game-management API endpoint.
-
-Set `GAME_TOKEN_SECRET` to a stable random value in every frontend deployment.
-Existing games without a generated password temporarily accept their category ID
-so they remain accessible during migration.
-
-## API Endpoints
-
-### Games
-- `GET /api/games/[gameId]` - Retrieve game information (authenticated)
-- `POST /api/games/[gameId]` - Verify password or perform an authenticated update
-
-### Players
-- `GET /api/games/[gameId]/players` - Get players for a game
-- `POST /api/games/[gameId]/players` - Assign roles or update player status
-
-### Votes
-- `GET /api/games/[gameId]/votes?dayNumber={day}` - Get votes for a specific day
-- `POST /api/games/[gameId]/votes` - Add a vote
-
-### Roles
-- `GET /api/roles` - Get available roles
-
-## Contributing
-
-This project is part of the Stinkbot monorepo. When contributing:
-
-1. Follow TypeScript best practices
-2. Use the established UI component patterns
-3. Ensure database operations are properly handled
-4. Test with real game scenarios
-
-## Integration with Discord Bot
-
-The frontend works in conjunction with a Discord bot that handles:
-- Player signups via Discord
-- Channel management
-- Real-time game notifications
-- Vote collection through Discord interactions
-
-The web interface provides the administrative layer while the Discord bot handles player-facing interactions.
