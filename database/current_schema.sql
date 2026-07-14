@@ -1,5 +1,5 @@
 -- Werewolf Discord Bot Database Schema
--- Generated automatically on 2026-07-13T16:32:27.098Z
+-- Generated automatically on 2026-07-14T00:51:19.222Z
 -- This file shows the current database structure with table comments
 -- Run this after migrations to get the latest schema
 
@@ -10,34 +10,6 @@ CREATE TABLE admin_settings (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(setting_key)
-);
-
--- Archived Discord messages from Werewolf game categories for search and browse
-CREATE TABLE archive_messages (
-    id SERIAL PRIMARY KEY,
-    message_id VARCHAR(20) NOT NULL,
-    content TEXT,
-    user_id VARCHAR(20) NOT NULL,
-    username VARCHAR(100) NOT NULL,
-    display_name VARCHAR(255),
-    timestamp TIMESTAMPTZ NOT NULL,
-    channel_id VARCHAR(20) NOT NULL,
-    channel_name VARCHAR(100) NOT NULL,
-    category_id VARCHAR(20) NOT NULL,
-    category VARCHAR(100) NOT NULL,
-    reply_to_message_id VARCHAR(20),
-    attachments JSONB DEFAULT '[]',
-    embeds JSONB DEFAULT '[]',
-    reactions JSONB DEFAULT '[]',
-    archived_at TIMESTAMPTZ NOT NULL,
-    archived_by JSONB NOT NULL DEFAULT '{}',
-    content_length INTEGER DEFAULT 0,
-    has_attachments BOOLEAN DEFAULT FALSE,
-    has_embeds BOOLEAN DEFAULT FALSE,
-    has_reactions BOOLEAN DEFAULT FALSE,
-    is_reply BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(message_id)
 );
 
 CREATE TABLE banned_users (
