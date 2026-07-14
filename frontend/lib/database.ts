@@ -88,12 +88,24 @@ const BASEBALL_SERVER_CATEGORY_ID = '991056744056754206'
 
 export class DatabaseService {
   private pool: Pool
+  // Message archives live in a separate self-hosted Postgres (Pi behind DuckDNS)
+  // so archive bulk doesn't count against the main database. Falls back to the
+  // main pool when ARCHIVE_DATABASE_URL is not set (local dev).
+  private archivePool: Pool
 
-  constructor(connectionString: string) {
+  constructor(connectionString: string, archiveConnectionString?: string) {
     this.pool = new Pool({
       connectionString,
       ssl: connectionString.includes('supabase') ? { rejectUnauthorized: false } : false,
     })
+    this.archivePool = archiveConnectionString
+      ? new Pool({
+          connectionString: archiveConnectionString,
+          // The Pi serves a self-signed cert for its DuckDNS hostname:
+          // encrypt, but skip chain verification.
+          ssl: { rejectUnauthorized: false },
+        })
+      : this.pool
   }
 
   async getGame(gameId: string): Promise<Game | null> {
@@ -1308,12 +1320,12 @@ export class DatabaseService {
 
     const valuesForPage = [...values, params.size, params.from]
     const [countResult, dataResult] = await Promise.all([
-      this.pool.query(
+      this.archivePool.query(
         `SELECT count(*)::int as total FROM archive_messages m ${whereClause}`,
         values
       ),
       // Join each reply to its parent message so previews arrive with the page
-      this.pool.query(
+      this.archivePool.query(
         `SELECT m.*,
                 r.message_id AS reply_message_id,
                 r.content AS reply_content,
@@ -1334,7 +1346,7 @@ export class DatabaseService {
     // Optional: compute target page when jumping to a message
     let targetPage: number | null = null
     if (params.jumpToMessageId && total > 0) {
-      const countBeforeResult = await this.pool.query(
+      const countBeforeResult = await this.archivePool.query(
         `SELECT count(*)::int as cnt FROM archive_messages m ${whereClause} ${whereClause ? 'AND' : 'WHERE'} m.timestamp > (SELECT timestamp FROM archive_messages WHERE message_id = $${paramIndex} LIMIT 1)`,
         [...values, params.jumpToMessageId]
       )
@@ -1379,7 +1391,7 @@ export class DatabaseService {
   }>> {
     const categoryOp = onlyBaseballServer ? '=' : '!='
     // max() collapses mid-archive renames to a single row per id
-    const result = await this.pool.query(
+    const result = await this.archivePool.query(
       `SELECT category_id, max(category) as category, channel_id, max(channel_name) as channel_name, count(*)::int as message_count
        FROM archive_messages
        WHERE category_id ${categoryOp} $1
@@ -1411,7 +1423,7 @@ export class DatabaseService {
   }
 
   async getArchiveMessageByMessageId(messageId: string): Promise<any | null> {
-    const result = await this.pool.query(
+    const result = await this.archivePool.query(
       'SELECT * FROM archive_messages WHERE message_id = $1 LIMIT 1',
       [messageId]
     )
@@ -1425,7 +1437,7 @@ export class DatabaseService {
     config: { storage: string }
   }> {
     try {
-      const result = await this.pool.query(
+      const result = await this.archivePool.query(
         'SELECT count(*)::int as cnt FROM archive_messages'
       )
       return {
@@ -1451,15 +1463,18 @@ export class DatabaseService {
     const windowMs = 5 * 60 * 1000
     const from = new Date(targetTime - windowMs).toISOString()
     const to = new Date(targetTime + windowMs).toISOString()
-    const result = await this.pool.query(
+    const result = await this.archivePool.query(
       `SELECT * FROM archive_messages WHERE channel_id = $1 AND timestamp >= $2 AND timestamp <= $3 ORDER BY timestamp ASC LIMIT $4`,
       [channelId, from, to, limit * 2]
     )
     return result.rows.map((row: any) => this.mapArchiveRow(row))
   }
 
-  // Cleanup method to close the pool
+  // Cleanup method to close the pools
   async close() {
+    if (this.archivePool !== this.pool) {
+      await this.archivePool.end()
+    }
     await this.pool.end()
   }
 }
@@ -1468,4 +1483,4 @@ export class DatabaseService {
 if (!process.env.DATABASE_URL) {
   throw new Error('DATABASE_URL environment variable is not set')
 }
-export const db = new DatabaseService(process.env.DATABASE_URL)
+export const db = new DatabaseService(process.env.DATABASE_URL, process.env.ARCHIVE_DATABASE_URL)

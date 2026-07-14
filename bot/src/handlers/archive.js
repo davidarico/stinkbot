@@ -282,7 +282,7 @@ async handleArchive(message, args) {
                         const batch = messagesToIndex.slice(i, i + batchSize);
                         
                         try {
-                            const client = await this.db.connect();
+                            const client = await this.archiveDb.connect();
                             try {
                                 for (const msg of batch) {
                                     await client.query(

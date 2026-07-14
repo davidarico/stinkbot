@@ -4,6 +4,8 @@
 
 The archives search system allows users to search through Discord messages stored in Postgres (the `archive_messages` table). It provides full-text search, filtering by game/channel/user, pagination, inline reply previews, and a "jump to message" feature for navigating to specific messages (like reply threads).
 
+`archive_messages` lives in a **dedicated archive database** (isolated Postgres container on the Raspberry Pi, reached via `ARCHIVE_DATABASE_URL`), separate from the main Supabase database. In `lib/database.ts` the archive methods run on `archivePool`; everything else, including the `server_users` display-name enrichment, runs on the main pool. When `ARCHIVE_DATABASE_URL` is unset, `archivePool` falls back to the main pool. Because the two tables sit in different databases, archive queries must never join main-DB tables (user enrichment is done as a separate query).
+
 > Historical note: this system originally ran on OpenSearch. It was migrated to Postgres full-text search, and the OpenSearch client, indexing scripts, and response shapes have been removed.
 
 ## Architecture
@@ -27,8 +29,10 @@ The archives search system allows users to search through Discord messages store
 └──────┬──────────────────────────────────┘
        │
 ┌──────▼──────────────────────────────────┐
-│  Postgres                               │
+│  Archive Postgres (Pi, ARCHIVE_DB_URL)  │
 │  - archive_messages (search + count)    │
+├─────────────────────────────────────────┤
+│  Main Postgres (Supabase, DATABASE_URL) │
 │  - server_users (display name/avatar)   │
 └─────────────────────────────────────────┘
 ```

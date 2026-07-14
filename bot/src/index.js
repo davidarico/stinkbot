@@ -1,6 +1,7 @@
 const { Client, GatewayIntentBits, PermissionFlagsBits } = require('discord.js');
 const cron = require('node-cron');
 const db = require('./database');
+const archiveDb = require('./archive-database');
 const WerewolfBot = require('./werewolf-bot');
 const AliveMentionDetector = require('./alive-mention-detector');
 
@@ -27,7 +28,7 @@ if (!process.env.DISCORD_TOKEN) {
     console.log('🔑 Discord token loaded.');
 }
 
-const werewolfBot = new WerewolfBot(client, db);
+const werewolfBot = new WerewolfBot(client, db, archiveDb);
 const aliveMentionDetector = new AliveMentionDetector(client, db);
 
 client.once('ready', async () => {

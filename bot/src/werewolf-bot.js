@@ -6,9 +6,11 @@ const { S3Client } = require('@aws-sdk/client-s3');
 const OpenAI = require('openai');
 
 class WerewolfBot {
-    constructor(client, db) {
+    constructor(client, db, archiveDb) {
         this.client = client;
         this.db = db;
+        // Message archives live in a separate database (see archive-database.js)
+        this.archiveDb = archiveDb || db;
         this.prefix = process.env.BOT_PREFIX || 'Wolf.';
 
         // Initialize OpenAI client if API key is available
