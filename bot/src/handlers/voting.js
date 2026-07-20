@@ -316,17 +316,22 @@ async handleAddIn(message, args) {
         return message.reply(`❌ Usage: \`${this.prefix}add_in @player\``);
     }
     const serverId = message.guild.id;
+    // Find the server's current game. Signup takes precedence so mid-signup
+    // adds behave exactly as before; otherwise fall back to an in-progress game.
     const gameResult = await this.db.query(
-        'SELECT * FROM games WHERE server_id = $1 AND status = $2',
-        [serverId, 'signup']
+        "SELECT * FROM games WHERE server_id = $1 AND status IN ('signup', 'active') ORDER BY CASE status WHEN 'signup' THEN 0 ELSE 1 END, id DESC LIMIT 1",
+        [serverId]
     );
     if (!gameResult.rows.length) {
-        return message.reply('❌ No game in signup phase.');
+        return message.reply('❌ No game found for this server.');
     }
     const game = gameResult.rows[0];
-    if (game.signups_closed) {
+    const inProgress = game.status !== 'signup';
+
+    if (!inProgress && game.signups_closed) {
         return message.reply('❌ Signups are closed - cannot add players.');
     }
+
     const bannedUser = await this.db.query('SELECT * FROM banned_users WHERE user_id = $1', [targetMember.id]);
     if (bannedUser.rows.length > 0) {
         return message.reply('❌ That user is banned from signing up.');
@@ -336,18 +341,37 @@ async handleAddIn(message, args) {
         [game.id, targetMember.id]
     );
     if (existingPlayer.rows.length > 0) {
-        return message.reply('❌ That user is already signed up.');
+        return message.reply(inProgress ? '❌ That user is already in this game.' : '❌ That user is already signed up.');
     }
+
+    // Adding to a live game is unusual, so require an explicit confirmation.
+    if (inProgress) {
+        await message.reply('⚠️ This game is already in progress, are you sure you would like to proceed? Reply `yes` to confirm.');
+        const filter = (m) => m.author.id === message.author.id && !m.author.bot;
+        const collected = await message.channel.awaitMessages({ filter, max: 1, time: 30000 });
+        if (!collected.size) {
+            return message.reply('⏰ Confirmation timed out - no player was added.');
+        }
+        if (collected.first().content.trim().toLowerCase() !== 'yes') {
+            return message.reply('✋ Cancelled - no player was added.');
+        }
+    }
+
     const displayName = targetMember.displayName || targetMember.user.username;
     await this.db.query(
         'INSERT INTO players (game_id, user_id, username) VALUES ($1, $2, $3)',
         [game.id, targetMember.id, displayName]
     );
     await this.ensureUserHasJournal(message, targetMember.user);
-    await this.assignRole(targetMember, 'Signed Up');
+    // Live games use the Alive role; signups use Signed Up.
+    await this.assignRole(targetMember, inProgress ? 'Alive' : 'Signed Up');
     await this.removeRole(targetMember, 'Spectator');
-    await this.updateSignupMessage(game);
-    await message.reply(`✅ Added **${displayName}** to the signup list.`);
+    if (inProgress) {
+        await message.reply(`✅ Added **${displayName}** to the in-progress game.`);
+    } else {
+        await this.updateSignupMessage(game);
+        await message.reply(`✅ Added **${displayName}** to the signup list.`);
+    }
 },
 
 async handleNotVoted(message) {
