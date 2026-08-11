@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/database'
+import { db, type ArchiveScope } from '@/lib/database'
 
-export async function handleArchiveSearch(request: NextRequest, onlyBaseballServer: boolean) {
+export async function handleArchiveSearch(request: NextRequest, scope: ArchiveScope) {
   try {
     const { searchParams } = new URL(request.url)
     const query = searchParams.get('query') || ''
@@ -23,7 +23,7 @@ export async function handleArchiveSearch(request: NextRequest, onlyBaseballServ
       from,
       size,
       jumpToMessageId: jumpToMessageId || undefined,
-      onlyBaseballServer
+      scope
     })
 
     // Enrich with current display names and profile pictures from server_users
@@ -57,9 +57,9 @@ export async function handleArchiveSearch(request: NextRequest, onlyBaseballServ
   }
 }
 
-export async function handleArchiveNavigation(onlyBaseballServer: boolean) {
+export async function handleArchiveNavigation(scope: ArchiveScope) {
   try {
-    const categories = await db.getArchiveNavigation(onlyBaseballServer)
+    const categories = await db.getArchiveNavigation(scope)
     return NextResponse.json({ categories })
   } catch (error) {
     console.error('Archive navigation error:', error)

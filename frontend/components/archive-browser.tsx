@@ -7,7 +7,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
-  ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, Hash, Menu,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuLabel, DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu'
+import {
+  ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, Hash, Menu,
   MessageSquare, Reply, Search, X
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -66,6 +70,13 @@ interface SearchResponse {
 const SEARCH_DEBOUNCE_MS = 300
 const CHANNEL_PAGE_SIZE = 50
 const SEARCH_PAGE_SIZE = 20
+
+// Archives users can switch between from the header menu. /archives/baseball is
+// deliberately absent - it stays reachable only by direct URL.
+const ARCHIVE_LINKS = [
+  { apiBase: '/api/archives', href: '/archives', label: 'Main Archives' },
+  { apiBase: '/api/archives/speedwolf', href: '/archives/speedwolf', label: 'Speedwolf Archives' }
+]
 
 interface ArchiveBrowserProps {
   apiBase: string
@@ -539,6 +550,32 @@ export function ArchiveBrowser({ apiBase, title, backHref }: ArchiveBrowserProps
               </button>
             )}
           </div>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost" size="sm"
+                className="h-8 w-8 p-0 shrink-0 text-muted-foreground hover:text-foreground"
+                aria-label="Switch archive"
+              >
+                <Menu className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuLabel className="text-xs text-muted-foreground">Archives</DropdownMenuLabel>
+              {ARCHIVE_LINKS.map((link) => {
+                const isCurrent = link.apiBase === apiBase
+                return (
+                  <DropdownMenuItem key={link.href} asChild>
+                    <Link href={link.href} className="flex items-center justify-between gap-2">
+                      <span>{link.label}</span>
+                      {isCurrent && <Check className="h-3.5 w-3.5 text-muted-foreground" />}
+                    </Link>
+                  </DropdownMenuItem>
+                )
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </header>
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain">

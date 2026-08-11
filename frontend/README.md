@@ -8,7 +8,8 @@ Next.js web application for the StinkBot Werewolf system. Moderators run games f
 - `/game/[gameId]` - Password-protected moderator dashboard: player status, role assignment, votes, night actions, channels, game settings
 - `/roles` - Role reference (town, wolf, and neutral roles)
 - `/archives` - Full-text search over archived Discord messages, with filters and message context
-- `/archives/baseball` - Archive browser for the baseball server
+- `/archives/speedwolf` - Archive browser for the Speedwolf server (linked from the archive header menu)
+- `/archives/baseball` - Archive browser for the baseball server (unlinked, direct URL only)
 - `/admin` - Admin tools: feedback triage and per-server role management
 
 ## Stack
@@ -63,7 +64,7 @@ Public and admin:
 
 - `GET /api/roles` - Role catalog
 - `/api/archives/search`, `/context`, `/navigation`, `/message/[messageId]`, `/health` - Archive search and navigation
-- `/api/archives/baseball/*` - Baseball archive variants
+- `/api/archives/speedwolf/*`, `/api/archives/baseball/*` - Per-server archive variants of `search` and `navigation`
 - `/api/admin/*` - Admin auth, feedback, servers, and roles
 - `GET /api/media/oembed` - oEmbed proxy for media previews
 

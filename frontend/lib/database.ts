@@ -86,6 +86,15 @@ interface Role {
 // browser and surfaced only at /archives/baseball.
 const BASEBALL_SERVER_CATEGORY_ID = '991056744056754206'
 
+// Speedwolf runs on its own Discord server and gets its own browser at
+// /archives/speedwolf, kept out of the main one. archive_messages carries no
+// guild id, so the category ids are looked up from `games` on the main database -
+// that way newly archived Speedwolf games are picked up without a code change.
+const SPEEDWOLF_SERVER_ID = '1515786983484690654'
+const SPEEDWOLF_CATEGORY_CACHE_MS = 5 * 60 * 1000
+
+export type ArchiveScope = 'main' | 'baseball' | 'speedwolf'
+
 export class DatabaseService {
   private pool: Pool
   // Message archives live in a separate self-hosted Postgres (Pi behind DuckDNS)
@@ -1253,6 +1262,47 @@ export class DatabaseService {
     }
   }
 
+  // The category ids of every archived Speedwolf game. Cached briefly because
+  // every archive query needs it and new games appear at most a few times a day.
+  private speedwolfCategoryIds: { ids: string[]; expiresAt: number } | null = null
+
+  private async getSpeedwolfCategoryIds(): Promise<string[]> {
+    const now = Date.now()
+    if (this.speedwolfCategoryIds && this.speedwolfCategoryIds.expiresAt > now) {
+      return this.speedwolfCategoryIds.ids
+    }
+    const result = await this.pool.query(
+      'SELECT DISTINCT category_id FROM games WHERE server_id = $1 AND category_id IS NOT NULL',
+      [SPEEDWOLF_SERVER_ID]
+    )
+    const ids = result.rows.map((row: any) => row.category_id)
+    this.speedwolfCategoryIds = { ids, expiresAt: now + SPEEDWOLF_CATEGORY_CACHE_MS }
+    return ids
+  }
+
+  // WHERE fragments restricting an archive query to one server's categories.
+  // `prefix` is the table alias in the query being built (e.g. 'm.').
+  private async buildArchiveScopeFilter(scope: ArchiveScope, startIndex: number, prefix = ''): Promise<{
+    conditions: string[]
+    values: any[]
+  }> {
+    if (scope === 'baseball') {
+      return { conditions: [`${prefix}category_id = $${startIndex}`], values: [BASEBALL_SERVER_CATEGORY_ID] }
+    }
+    const speedwolfIds = await this.getSpeedwolfCategoryIds()
+    if (scope === 'speedwolf') {
+      return { conditions: [`${prefix}category_id = ANY($${startIndex})`], values: [speedwolfIds] }
+    }
+    // Main archive: everything that isn't one of the dedicated browsers
+    return {
+      conditions: [
+        `${prefix}category_id != $${startIndex}`,
+        `${prefix}category_id != ALL($${startIndex + 1})`
+      ],
+      values: [BASEBALL_SERVER_CATEGORY_ID, speedwolfIds]
+    }
+  }
+
   async searchArchiveMessages(params: {
     query?: string
     game?: string
@@ -1262,7 +1312,7 @@ export class DatabaseService {
     from: number
     size: number
     jumpToMessageId?: string
-    onlyBaseballServer?: boolean
+    scope?: ArchiveScope
   }): Promise<{
     messages: any[]
     total: number
@@ -1272,15 +1322,10 @@ export class DatabaseService {
     const values: any[] = []
     let paramIndex = 1
 
-    if (params.onlyBaseballServer) {
-      conditions.push(`m.category_id = $${paramIndex}`)
-      values.push(BASEBALL_SERVER_CATEGORY_ID)
-      paramIndex++
-    } else {
-      conditions.push(`m.category_id != $${paramIndex}`)
-      values.push(BASEBALL_SERVER_CATEGORY_ID)
-      paramIndex++
-    }
+    const scopeFilter = await this.buildArchiveScopeFilter(params.scope || 'main', paramIndex, 'm.')
+    conditions.push(...scopeFilter.conditions)
+    values.push(...scopeFilter.values)
+    paramIndex += scopeFilter.values.length
 
     if (params.query && params.query.trim()) {
       conditions.push(`to_tsvector('english', coalesce(m.content,'')) @@ plainto_tsquery('english', $${paramIndex})`)
@@ -1384,19 +1429,19 @@ export class DatabaseService {
   // stored created_at for categories, but Discord IDs are snowflakes (creation
   // time lives in the high bits), so sorting by category_id yields
   // newest-created categories first.
-  async getArchiveNavigation(onlyBaseballServer = false): Promise<Array<{
+  async getArchiveNavigation(scope: ArchiveScope = 'main'): Promise<Array<{
     categoryId: string
     category: string
     channels: Array<{ channelId: string; channelName: string; messageCount: number }>
   }>> {
-    const categoryOp = onlyBaseballServer ? '=' : '!='
+    const scopeFilter = await this.buildArchiveScopeFilter(scope, 1)
     // max() collapses mid-archive renames to a single row per id
     const result = await this.archivePool.query(
       `SELECT category_id, max(category) as category, channel_id, max(channel_name) as channel_name, count(*)::int as message_count
        FROM archive_messages
-       WHERE category_id ${categoryOp} $1
+       WHERE ${scopeFilter.conditions.join(' AND ')}
        GROUP BY category_id, channel_id`,
-      [BASEBALL_SERVER_CATEGORY_ID]
+      scopeFilter.values
     )
 
     const byCategory = new Map<string, {
