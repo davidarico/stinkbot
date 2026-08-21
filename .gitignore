@@ -38,3 +38,5 @@ build/
 archive_*.json
 
 __pycache__/
+.vercel
+.env*
