@@ -3,7 +3,6 @@
 const { Client } = require('@opensearch-project/opensearch');
 const { createAwsSigv4Signer } = require('@opensearch-project/opensearch/aws');
 const { S3Client } = require('@aws-sdk/client-s3');
-const OpenAI = require('openai');
 
 class WerewolfBot {
     constructor(client, db, archiveDb) {
@@ -12,15 +11,6 @@ class WerewolfBot {
         // Message archives live in a separate database (see archive-database.js)
         this.archiveDb = archiveDb || db;
         this.prefix = process.env.BOT_PREFIX || 'Wolf.';
-
-        // Initialize OpenAI client if API key is available
-        if (process.env.OPENAI_API_KEY) {
-            this.openai = new OpenAI({
-                apiKey: process.env.OPENAI_API_KEY
-            });
-        } else {
-            this.openai = null;
-        }
 
         // Initialize S3 client if credentials are available
         if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && process.env.AWS_REGION) {
@@ -108,12 +98,7 @@ class WerewolfBot {
                 return;
             }
         } else if (!playerCommands.includes(command) && !this.hasModeratorPermissions(message.member)) {
-            const funnyResponse = await this.generateFunnyResponse(message.content.slice(prefix.length).trim().split(/ +/), message.author.displayName);
-            if (funnyResponse) {
-                await message.reply(funnyResponse);
-            } else {
-                await message.reply('❓ Unknown command bozo. (Or you fuckers used up all the tokens)');
-            }
+            await message.reply('❓ Unknown command bozo.');
             return;
         }
 
@@ -317,12 +302,7 @@ class WerewolfBot {
                     await this.handleDeleteCategory(message, args);
                     break;
                 default:
-                    const funnyResponse = await this.generateFunnyResponse(message.content.slice(prefix.length).trim().split(/ +/), message.author.displayName);
-                    if (funnyResponse) {
-                        await message.reply(funnyResponse);
-                    } else {
-                        await message.reply('❓ Unknown command bozo. (Or you fuckers used up all the tokens)');
-                    }
+                    await message.reply('❓ Unknown command bozo.');
             }
         } catch (error) {
             console.error('Error handling command:', error);
