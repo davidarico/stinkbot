@@ -34,6 +34,7 @@ See `.env.example` for the full annotated list. Summary:
 | `BOT_PREFIX` | no | Command prefix, defaults to `Wolf.` |
 | `WEBSITE_URL` | no | Frontend base URL included in new-game mod messages |
 | `DATABASE_SSL_REJECT_UNAUTHORIZED` | no | Force strict/relaxed TLS for Postgres; unset uses a dev-friendly heuristic |
+| `OPENAI_API_KEY` | no | Joke replies to unknown commands |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_REGION` | no | S3 image upload during archiving |
 | `AWS_S3_BUCKET_NAME` | no | Bucket for JSON archive backups |
 | `MEMBER_SYNC_LOG_CHANNEL_ID` | no | Channel that receives member-sync logs |

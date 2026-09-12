@@ -10,12 +10,12 @@ A Discord bot ("StinkBot") that runs Werewolf/mafia games, plus a Next.js fronte
 
 - npm workspaces: `bot`, `frontend`, `database`. Run workspace scripts from the repo root (`npm run bot:dev`, `npm run db:migrate`, etc.).
 - `engine-generator/` is **not** a workspace. It's a standalone TypeScript night-action calculator built to replace the frontend's old OpenAI-based night calculation. It is not wired into the bot or frontend yet.
-- The bot no longer generates AI responses at all (the old OpenAI joke reply to unknown commands was removed); unknown commands get a fixed message. The frontend's old OpenAI night-action calculation is gone too, but the `openai` dependency in `frontend/package.json` and the root `package.json` still lingers unused.
+- The frontend's old OpenAI night-action calculation is gone, but the `openai` dependency in `frontend/package.json` and the root `package.json` still lingers unused.
 
 ## Bot (`bot/`)
 
 - Prefix commands only (`Wolf.command`), no slash commands. Prefix comes from `BOT_PREFIX` (default `Wolf.`); the per-server *game/channel* prefix (e.g. `g1-townsquare`) is separate and lives in `server_configs.game_prefix`.
-- `src/index.js` is the entry (Discord client, intents, cron). `src/werewolf-bot.js` is a router - a big `switch` over command names plus lazy service clients (S3, OpenSearch, both optional and conditional on env vars). All real logic lives in `src/handlers/*.js`. New commands: add a `case` in werewolf-bot.js and implement in the appropriate handler.
+- `src/index.js` is the entry (Discord client, intents, cron). `src/werewolf-bot.js` is a router - a big `switch` over command names plus lazy service clients (OpenAI, S3, OpenSearch, all optional and conditional on env vars). All real logic lives in `src/handlers/*.js`. New commands: add a `case` in werewolf-bot.js and implement in the appropriate handler.
 - Daily member sync cron runs at **4 AM UTC** (`0 4 * * *`) and only in `NODE_ENV=production`.
 - Two test systems:
   - `npm run test:unit` (from `bot/`) - Jest, tests in `bot/src/tests/`, mocks in `bot/src/tests/helpers/` (mock-discord, mock-db, bot-factory). This is the suite to run and extend.
