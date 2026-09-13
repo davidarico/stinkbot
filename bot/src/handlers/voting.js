@@ -6,6 +6,62 @@ const moment = require('moment-timezone');
 // https://discord.com/developers/docs/topics/permissions
 const PIN_PERMISSION = 0x0008000000000000;
 
+// Discord rejects the whole embed if any field value is over 1024 characters,
+// so long vote lists have to be split across several fields. A 20-vote day
+// renders ~1870 characters, which used to fail Wolf.lssv outright.
+const EMBED_FIELD_VALUE_LIMIT = 1024;
+// Keeps a pathological game from blowing the 6000-character whole-embed cap.
+const MAX_FIELDS_PER_SECTION = 5;
+
+// Pack pre-rendered lines into as many embed fields as they need, numbering the
+// fields when there is more than one. Returns a single field holding emptyValue
+// when there are no lines at all.
+function chunkLinesToFields(name, lines, emptyValue) {
+    if (!lines.length) {
+        return [{ name, value: emptyValue, inline: false }];
+    }
+
+    const chunks = [[]];
+    let currentLength = 0;
+    for (const rawLine of lines) {
+        // A single line past the limit can never fit; truncate rather than drop it.
+        const line = rawLine.length > EMBED_FIELD_VALUE_LIMIT
+            ? `${rawLine.slice(0, EMBED_FIELD_VALUE_LIMIT - 1)}\u2026`
+            : rawLine;
+        const current = chunks[chunks.length - 1];
+        const added = current.length ? line.length + 1 : line.length;
+        if (currentLength + added > EMBED_FIELD_VALUE_LIMIT) {
+            chunks.push([line]);
+            currentLength = line.length;
+        } else {
+            current.push(line);
+            currentLength += added;
+        }
+    }
+
+    let omitted = 0;
+    while (chunks.length > MAX_FIELDS_PER_SECTION) {
+        omitted += chunks.pop().length;
+    }
+    if (omitted) {
+        const last = chunks[chunks.length - 1];
+        let note = `\u2026and ${omitted} more`;
+        // Make room for the note by giving back lines until it fits.
+        while (last.length && last.join('\n').length + note.length + 1 > EMBED_FIELD_VALUE_LIMIT) {
+            last.pop();
+            omitted += 1;
+            note = `\u2026and ${omitted} more`;
+        }
+        last.push(note);
+    }
+
+    return chunks.map((chunkLines, i) => ({
+        name: chunks.length > 1 ? `${name} (${i + 1}/${chunks.length})` : name,
+        value: chunkLines.join('\n'),
+        inline: false,
+    }));
+}
+
 module.exports = {
 
 async createVotingMessage(gameId, votingChannel) {
@@ -501,12 +557,10 @@ async handleLssv(message, args) {
         const nameOf = (userId) => names.get(userId) || `<@${userId}>`;
 
         // Final votes in the order they were cast
-        const castOrder = standing
-            .map((v, i) => {
-                const unix = Math.floor(new Date(v.cast_at).getTime() / 1000);
-                return `${i + 1}. **${nameOf(v.voter_user_id)}** → **${nameOf(v.target_user_id)}** - <t:${unix}:t> (<t:${unix}:R>)`;
-            })
-            .join('\n');
+        const castOrderLines = standing.map((v, i) => {
+            const unix = Math.floor(new Date(v.cast_at).getTime() / 1000);
+            return `${i + 1}. **${nameOf(v.voter_user_id)}** → **${nameOf(v.target_user_id)}** - <t:${unix}:t> (<t:${unix}:R>)`;
+        });
 
         // LSSV: for each target with 2+ standing votes, when their second vote landed.
         // Earliest second vote = longest standing second vote.
@@ -525,29 +579,25 @@ async handleLssv(message, args) {
         }
         secondVotes.sort((a, b) => new Date(a.secondAt) - new Date(b.secondAt));
 
-        const lssvLines = secondVotes.length
-            ? secondVotes
-                .map((s, i) => {
-                    const unix = Math.floor(new Date(s.secondAt).getTime() / 1000);
-                    const marker = i === 0 ? ' 🏆' : '';
-                    return `${i + 1}. **${nameOf(s.targetId)}** (${s.voteCount} votes) - second vote at <t:${unix}:t> (<t:${unix}:R>)${marker}`;
-                })
-                .join('\n')
-            : 'No player has two or more standing votes.';
+        const lssvLines = secondVotes.map((s, i) => {
+            const unix = Math.floor(new Date(s.secondAt).getTime() / 1000);
+            const marker = i === 0 ? ' 🏆' : '';
+            return `${i + 1}. **${nameOf(s.targetId)}** (${s.voteCount} votes) - second vote at <t:${unix}:t> (<t:${unix}:R>)${marker}`;
+        });
 
         const embed = new EmbedBuilder()
             .setTitle(`🗳️ LSSV - Day ${day}`)
             .setDescription('Longest standing second vote. Standing votes only - retracted and changed votes count from when the current vote was cast.')
             .addFields(
-                { name: 'Final votes in cast order', value: castOrder, inline: false },
-                { name: 'Second votes (earliest first)', value: lssvLines, inline: false }
+                ...chunkLinesToFields('Final votes in cast order', castOrderLines, 'No votes.'),
+                ...chunkLinesToFields('Second votes (earliest first)', lssvLines, 'No player has two or more standing votes.')
             )
             .setColor(0x9B59B6)
             .setTimestamp();
 
         await message.reply({ embeds: [embed] });
     } catch (error) {
-        console.error('Error in handleLssv:', error);
+        console.error(`Error in handleLssv (game ${game.id}, day ${day}):`, error);
         await message.reply('❌ Could not build the LSSV report.');
     }
 },

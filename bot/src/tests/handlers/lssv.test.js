@@ -116,6 +116,88 @@ describe('LSSV Handler', () => {
             expect(bot.db.query.mock.calls[1][0]).toContain('FROM vote_history');
         });
 
+        it('splits a long vote list across fields that each fit Discord\'s 1024-char limit', async () => {
+            // 20 standing votes render ~1870 characters - one field cannot hold them.
+            const bigPlayers = [];
+            const standingVotes = [];
+            for (let i = 0; i < 20; i++) {
+                bigPlayers.push({ user_id: `voter${i}`, username: `LongPlayerName${i}` });
+                standingVotes.push({
+                    voter_user_id: `voter${i}`,
+                    target_user_id: i % 2 === 0 ? 't1' : 't2',
+                    cast_at: new Date(Date.UTC(2026, 6, 13, 10, i)).toISOString(),
+                });
+            }
+            bigPlayers.push({ user_id: 't1', username: 'TargetOne' });
+            bigPlayers.push({ user_id: 't2', username: 'TargetTwo' });
+
+            bot.db.query = jest.fn()
+                .mockResolvedValueOnce({ rows: [activeGame] })
+                .mockResolvedValueOnce({ rows: standingVotes })
+                .mockResolvedValueOnce({ rows: bigPlayers });
+
+            const msg = createMockMessage();
+            await bot.handleLssv(msg, []);
+
+            expect(msg.reply).toHaveBeenCalledWith({ embeds: [expect.anything()] });
+            const embed = msg.reply.mock.calls[0][0].embeds[0];
+
+            for (const field of embed.data.fields) {
+                expect(field.value.length).toBeLessThanOrEqual(1024);
+                expect(field.name.length).toBeLessThanOrEqual(256);
+            }
+            const totalLength = embed.data.fields
+                .reduce((sum, f) => sum + f.name.length + f.value.length, embed.data.title.length + embed.data.description.length);
+            expect(totalLength).toBeLessThanOrEqual(6000);
+
+            // Cast-order section spans more than one field and loses no voter
+            const castFields = embed.data.fields.filter((f) => f.name.startsWith('Final votes in cast order'));
+            expect(castFields.length).toBeGreaterThan(1);
+            expect(castFields[0].name).toContain(`(1/${castFields.length})`);
+            const castText = castFields.map((f) => f.value).join('\n');
+            expect(castText.split('\n')).toHaveLength(20);
+            for (let i = 0; i < 20; i++) {
+                expect(castText).toContain(`LongPlayerName${i}`);
+            }
+            expect(castText).toContain('20. ');
+        });
+
+        it('keeps a single field unnumbered when everything fits', async () => {
+            const standingVotes = [
+                { voter_user_id: 'v1', target_user_id: 't1', cast_at: '2026-07-13T10:00:00Z' },
+                { voter_user_id: 'v2', target_user_id: 't1', cast_at: '2026-07-13T10:05:00Z' },
+            ];
+            bot.db.query = jest.fn()
+                .mockResolvedValueOnce({ rows: [activeGame] })
+                .mockResolvedValueOnce({ rows: standingVotes })
+                .mockResolvedValueOnce({ rows: players });
+
+            const msg = createMockMessage();
+            await bot.handleLssv(msg, []);
+
+            const embed = msg.reply.mock.calls[0][0].embeds[0];
+            expect(embed.data.fields).toHaveLength(2);
+            expect(embed.data.fields[0].name).toBe('Final votes in cast order');
+            expect(embed.data.fields[1].name).toBe('Second votes (earliest first)');
+        });
+
+        it('falls back to placeholder text when nobody has a second vote', async () => {
+            const standingVotes = [
+                { voter_user_id: 'v1', target_user_id: 't1', cast_at: '2026-07-13T10:00:00Z' },
+                { voter_user_id: 'v2', target_user_id: 't2', cast_at: '2026-07-13T10:05:00Z' },
+            ];
+            bot.db.query = jest.fn()
+                .mockResolvedValueOnce({ rows: [activeGame] })
+                .mockResolvedValueOnce({ rows: standingVotes })
+                .mockResolvedValueOnce({ rows: players });
+
+            const msg = createMockMessage();
+            await bot.handleLssv(msg, []);
+
+            const embed = msg.reply.mock.calls[0][0].embeds[0];
+            expect(embed.data.fields[1].value).toBe('No player has two or more standing votes.');
+        });
+
         it('reports missing history for a past day', async () => {
             bot.db.query = jest.fn()
                 .mockResolvedValueOnce({ rows: [activeGame] })
