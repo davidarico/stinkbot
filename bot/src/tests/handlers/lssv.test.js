@@ -198,6 +198,50 @@ describe('LSSV Handler', () => {
             expect(embed.data.fields[1].value).toBe('No player has two or more standing votes.');
         });
 
+        it('falls back to vote_history for the current day once night has fallen', async () => {
+            // Wolf.next wipes the votes table at nightfall but leaves day_number at 3,
+            // so the live table is empty and only vote_history still has the day's votes.
+            const nightGame = { ...activeGame, day_phase: 'night' };
+            const historyRows = [
+                { voter_user_id: 'v2', target_user_id: 't1', action: 'vote', cast_at: '2026-07-13T15:30:00Z' },
+                { voter_user_id: 'v1', target_user_id: 't1', action: 'vote', cast_at: '2026-07-13T14:00:00Z' },
+            ];
+            bot.db.query = jest.fn()
+                .mockResolvedValueOnce({ rows: [nightGame] })
+                .mockResolvedValueOnce({ rows: historyRows })
+                .mockResolvedValueOnce({ rows: players });
+
+            const msg = createMockMessage();
+            await bot.handleLssv(msg, ['3']);
+
+            // Must not consult the wiped live votes table
+            expect(bot.db.query.mock.calls[1][0]).toContain('FROM vote_history');
+            expect(bot.db.query.mock.calls[1][0]).not.toContain('FROM votes');
+
+            const embed = msg.reply.mock.calls[0][0].embeds[0];
+            expect(embed.data.title).toContain('Day 3');
+            const castOrderField = embed.data.fields[0].value;
+            expect(castOrderField.split('\n')).toHaveLength(2);
+            expect(castOrderField).toContain('Alice');
+            expect(castOrderField).toContain('Bob');
+            expect(embed.data.fields[1].value).toContain('Dave');
+            expect(embed.data.fields[1].value).toContain('2 votes');
+        });
+
+        it('defaults to the current day at night without a day argument', async () => {
+            const nightGame = { ...activeGame, day_phase: 'night' };
+            bot.db.query = jest.fn()
+                .mockResolvedValueOnce({ rows: [nightGame] })
+                .mockResolvedValueOnce({ rows: [] });
+
+            const msg = createMockMessage();
+            await bot.handleLssv(msg, []);
+
+            expect(bot.db.query.mock.calls[1][0]).toContain('FROM vote_history');
+            // The "nothing yet today" wording would be wrong once the day is over
+            expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('No final votes recorded for Day 3'));
+        });
+
         it('reports missing history for a past day', async () => {
             bot.db.query = jest.fn()
                 .mockResolvedValueOnce({ rows: [activeGame] })

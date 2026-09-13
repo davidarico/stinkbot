@@ -518,11 +518,14 @@ async handleLssv(message, args) {
 
     try {
         // Standing votes with the time each was cast, earliest first.
-        // Current day: the live votes table is exactly the standing set.
-        // Past days: reconstruct from vote_history (votes are wiped at phase change) -
+        // The live votes table is the standing set only while the day is still
+        // running: Wolf.next wipes every vote when the phase flips to night but
+        // leaves day_number alone, so the current day needs vote_history too
+        // once night has fallen. Otherwise reconstruct from vote_history -
         // each voter's last action for that day stands, unless it was a retract.
+        const liveVotes = day === game.day_number && game.day_phase === 'day';
         let standing;
-        if (day === game.day_number) {
+        if (liveVotes) {
             const votesResult = await this.db.query(
                 'SELECT voter_user_id, target_user_id, voted_at AS cast_at FROM votes WHERE game_id = $1 AND day_number = $2 ORDER BY voted_at ASC, id ASC',
                 [game.id, day]
@@ -542,7 +545,7 @@ async handleLssv(message, args) {
         }
 
         if (!standing.length) {
-            const note = day === game.day_number
+            const note = liveVotes
                 ? 'No votes have been cast yet today.'
                 : `No final votes recorded for Day ${day}. Note: vote history only exists for votes cast after the history feature was added.`;
             return message.reply(`📭 ${note}`);
