@@ -3,6 +3,7 @@
 const { Client } = require('@opensearch-project/opensearch');
 const { createAwsSigv4Signer } = require('@opensearch-project/opensearch/aws');
 const { S3Client } = require('@aws-sdk/client-s3');
+const { ChannelType } = require('discord.js');
 const OpenAI = require('openai');
 
 class WerewolfBot {
@@ -77,6 +78,111 @@ class WerewolfBot {
             }
         } else {
             this.openSearchClient = null;
+        }
+
+        // Pending debounce timers for the journal auto-fix watcher, keyed by guild id.
+        this.journalAutoFixTimers = new Map();
+    }
+
+    // Journal permissions drift whenever a journal channel is moved between categories,
+    // so reapply the Wolf.fix_journals matrix automatically instead of waiting for a mod
+    // to notice (feedback #93). Moving a batch of journals fires one event per channel,
+    // so the run is debounced per guild and the summary goes to the active game's mod
+    // chat when there is one. Set ENABLE_JOURNAL_AUTO_FIX=false to turn this off.
+    scheduleJournalAutoFix(guild, reason) {
+        if (process.env.ENABLE_JOURNAL_AUTO_FIX === 'false') return;
+        if (!guild) return;
+
+        const delayMs = parseInt(process.env.JOURNAL_AUTO_FIX_DEBOUNCE_MS, 10) || 30000;
+        const existing = this.journalAutoFixTimers.get(guild.id);
+        if (existing) {
+            clearTimeout(existing.timer);
+        }
+        const reasons = existing ? existing.reasons : new Set();
+        reasons.add(reason);
+
+        const timer = setTimeout(async () => {
+            this.journalAutoFixTimers.delete(guild.id);
+            const why = Array.from(reasons).join(', ');
+            console.log(`📔 Journal category change detected in ${guild.name} (${why}) - reapplying journal permissions`);
+            try {
+                const result = await this.fixJournalPermissions(guild);
+                if (result.error) {
+                    console.log(`📔 Journal auto-fix skipped for ${guild.name}: ${result.error}`);
+                    return;
+                }
+                console.log(`📔 Journal auto-fix finished for ${guild.name}: ${result.total} journals, ${result.failed.length} problem(s)`);
+                await this.reportJournalAutoFix(guild, why, result);
+            } catch (error) {
+                console.error(`❌ Journal auto-fix failed for ${guild.name}:`, error);
+            }
+        }, delayMs);
+
+        // Never let the debounce timer hold the process open on shutdown.
+        if (typeof timer.unref === 'function') timer.unref();
+        this.journalAutoFixTimers.set(guild.id, { timer, reasons });
+    }
+
+    async reportJournalAutoFix(guild, why, result) {
+        try {
+            const gameResult = await this.db.query(
+                "SELECT mod_chat_channel_id FROM games WHERE server_id = $1 AND status IN ('signup', 'active') AND mod_chat_channel_id IS NOT NULL ORDER BY id DESC LIMIT 1",
+                [guild.id]
+            );
+            if (!gameResult.rows.length) return;
+
+            const modChannel = await this.client.channels.fetch(gameResult.rows[0].mod_chat_channel_id);
+            if (!modChannel) return;
+
+            const summary = result.failed.length > 0
+                ? `⚠️ Reapplied journal permissions after a category change (${why}). ${result.total} journals checked, ${result.failed.length} need attention:\n${result.failed.join('\n')}`
+                : `✅ Reapplied journal permissions after a category change (${why}). All ${result.total} journals are correct.`;
+
+            await modChannel.send(summary.slice(0, 1900));
+        } catch (error) {
+            console.error('Error reporting journal auto-fix to mod chat:', error);
+        }
+    }
+
+    // Returns true when a channel is a journal, or a journal category, so the watcher
+    // only reacts to the journal tree and ignores ordinary game channel edits.
+    isJournalTreeChannel(channel) {
+        if (!channel) return false;
+        if (channel.type === ChannelType.GuildCategory) {
+            return channel.name === 'Journals' || channel.name.startsWith('Journals (');
+        }
+        return typeof channel.name === 'string' && channel.name.endsWith('-journal');
+    }
+
+    async handleChannelUpdate(oldChannel, newChannel) {
+        try {
+            if (!newChannel?.guild) return;
+
+            // A journal moved between categories (the case feedback #93 describes)
+            if (this.isJournalTreeChannel(newChannel) && oldChannel?.parentId !== newChannel.parentId) {
+                this.scheduleJournalAutoFix(newChannel.guild, `${newChannel.name} moved categories`);
+                return;
+            }
+
+            // A journal category was renamed into or out of the "Journals" naming scheme
+            if (newChannel.type === ChannelType.GuildCategory &&
+                oldChannel?.name !== newChannel.name &&
+                (this.isJournalTreeChannel(oldChannel) || this.isJournalTreeChannel(newChannel))) {
+                this.scheduleJournalAutoFix(newChannel.guild, `category renamed to ${newChannel.name}`);
+            }
+        } catch (error) {
+            console.error('Error handling channel update:', error);
+        }
+    }
+
+    async handleChannelCreate(channel) {
+        try {
+            if (!channel?.guild) return;
+            if (channel.type !== ChannelType.GuildCategory) return;
+            if (!this.isJournalTreeChannel(channel)) return;
+            this.scheduleJournalAutoFix(channel.guild, `category ${channel.name} created`);
+        } catch (error) {
+            console.error('Error handling channel create:', error);
         }
     }
 

@@ -3,6 +3,10 @@
 const { ChannelType, EmbedBuilder } = require('discord.js');
 const moment = require('moment-timezone');
 
+// Discord's PinMessages flag (1 << 51) is missing from discord.js 14's PermissionFlagsBits,
+// so it is referenced by raw value here, matching journal.js/voting.js/utils.js.
+const PIN_PERMISSION = 0x0008000000000000;
+
 module.exports = {
 
 async getServerChannelCapacity(serverId, guild, plannedNewChannels = 0) {
@@ -439,6 +443,51 @@ async handleCreate(message) {
     }
 },
 
+async applyInvitedUserPermissions(guild, gameId) {
+    try {
+        const channelsWithInvitesResult = await this.db.query(
+            'SELECT invited_users, channel_name, channel_id, is_couple_chat FROM game_channels WHERE game_id = $1 AND invited_users IS NOT NULL AND is_created = true',
+            [gameId]
+        );
+
+        for (const channelData of channelsWithInvitesResult.rows) {
+            if (channelData.invited_users && Array.isArray(channelData.invited_users)) {
+                // Get the channel object
+                const channel = await this.client.channels.fetch(channelData.channel_id);
+                if (!channel) {
+                    console.error(`[PERMISSIONS] Could not find channel ${channelData.channel_name} with ID ${channelData.channel_id}`);
+                    continue;
+                }
+
+                for (const userId of channelData.invited_users) {
+                    try {
+                        // Check if user is still in the server before granting anything
+                        try {
+                            await guild.members.fetch(userId);
+                        } catch (fetchError) {
+                            console.log(`User ${userId} not found in server, skipping permission grant`);
+                            continue;
+                        }
+
+                        // Add view permission for this user to the channel. Couple chat
+                        // members also get pin rights so they can pin their own notes
+                        // (feedback #96) - same PIN_PERMISSION used for journals/wolf chat.
+                        const userOverwrites = { ViewChannel: true };
+                        if (channelData.is_couple_chat) {
+                            userOverwrites[PIN_PERMISSION] = true;
+                        }
+                        await channel.permissionOverwrites.edit(userId, userOverwrites);
+                    } catch (permissionError) {
+                        console.error(`Error adding view permission for user ${userId} to channel ${channelData.channel_name}:`, permissionError);
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error processing invited user permissions:', error);
+    }
+},
+
 async handleSignUp(message) {
     const serverId = message.guild.id;
     const user = message.author;
@@ -446,6 +495,13 @@ async handleSignUp(message) {
     // Check if user is suspended (has the "Suspended" role)
     if (message.member?.roles?.cache?.some(r => r.name === 'Suspended')) {
         return message.reply('❌ Suspended players cannot sign up for games.');
+    }
+
+    // Mods run the game, so they can't also play in it (feedback #94). This checks the
+    // "Mod" role rather than hasModeratorPermissions() so a mod who wants to play can
+    // step down with Wolf.unmod me instead of being locked out by server permissions.
+    if (message.member?.roles?.cache?.some(r => r.name === 'Mod')) {
+        return message.reply(`❌ Mods cannot sign up for their own game. Run \`${this.prefix}unmod me\` first if you want to play this one.`);
     }
 
     // Check if user is banned
@@ -1238,45 +1294,7 @@ async handleStart(message, args = []) {
     }
 
     // Add view permissions for invited users to their respective channels
-    try {
-        const channelsWithInvitesResult = await this.db.query(
-            'SELECT invited_users, channel_name, channel_id FROM game_channels WHERE game_id = $1 AND invited_users IS NOT NULL AND is_created = true',
-            [game.id]
-        );
-
-        for (const channelData of channelsWithInvitesResult.rows) {
-            if (channelData.invited_users && Array.isArray(channelData.invited_users)) {
-                // Get the channel object
-                const channel = await this.client.channels.fetch(channelData.channel_id);
-                if (!channel) {
-                    console.error(`[PERMISSIONS] Could not find channel ${channelData.channel_name} with ID ${channelData.channel_id}`);
-                    continue;
-                }
-
-                for (const userId of channelData.invited_users) {
-                    try {
-                        // Check if user is in the server
-                        let member;
-                        try {
-                            member = await message.guild.members.fetch(userId);
-                        } catch (fetchError) {
-                            console.log(`User ${userId} not found in server, skipping permission grant`);
-                            continue;
-                        }
-
-                        // Add view permission for this user to the channel
-                        await channel.permissionOverwrites.edit(userId, {
-                            ViewChannel: true
-                        });
-                    } catch (permissionError) {
-                        console.error(`Error adding view permission for user ${userId} to channel ${channelData.channel_name}:`, permissionError);
-                    }
-                }
-            }
-        }
-    } catch (error) {
-        console.error('Error processing invited user permissions:', error);
-    }
+    await this.applyInvitedUserPermissions(message.guild, game.id);
 
     // Update game in database with explicit UTC timestamp
     await this.db.query(

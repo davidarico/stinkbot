@@ -36,35 +36,120 @@ This section is maintained by hand. Everything below the marker line is regenera
 
 ## Frontend
 
-10. **Bloodhound calculator** (feedback #87). Add alongside the existing bartender/sleepwalker calculators in `frontend/components/calculators/`. Follow the existing calculator component pattern. Small-medium.
+10. **Role shorthand + acronym glossary** (feedback #36, #33 - requested twice). Show common abbreviations on `/roles` (data may need a `shorthand` column on `roles` - migration + admin UI) plus a general glossary section. Small-medium.
 
-11. **Role shorthand + acronym glossary** (feedback #36, #33 - requested twice). Show common abbreviations on `/roles` (data may need a `shorthand` column on `roles` - migration + admin UI) plus a general glossary section. Small-medium.
+11. **Action priority / order-of-operations reference** (feedback #32). A section on `/roles` explaining night-action resolution order. Source material: `engine-generator/RULES.md` and `rules.json` (`orderOfOperations`). Content work more than code. Small.
 
-12. **Action priority / order-of-operations reference** (feedback #32). A section on `/roles` explaining night-action resolution order. Source material: `engine-generator/RULES.md` and `rules.json` (`orderOfOperations`). Content work more than code. Small.
+12. **Rename channels pre-game from the dashboard** (feedback #43). Let mods edit game channel names on the game page before `Wolf.start`; bot reads names at channel creation (`handleStart` in `game.js` builds names from prefix + fixed suffixes - would need to read overrides from `game_channels` or a new column). Medium.
 
-13. **Rename channels pre-game from the dashboard** (feedback #43). Let mods edit game channel names on the game page before `Wolf.start`; bot reads names at channel creation (`handleStart` in `game.js` builds names from prefix + fixed suffixes - would need to read overrides from `game_channels` or a new column). Medium.
+## Feedback triage (verified 2026-09-20)
 
-14. **Per-slot villager themes** (feedback #53). When a role list has Villager x4, allow naming each slot (Baker, Farmer...). The data model already supports per-player thematic names (`players.thematic_custom_name`, `game_role.custom_name` - see the query in `sendRoleNotificationsToJournals`, `voting.js`); this is a frontend role-config UI feature. Medium.
+Every row in the snapshot below was checked against the code on `main`. The snapshot itself stays in
+chronological order because `scripts/regenerate-feedback-md.py` writes it that way; this section is the
+ranked view and survives regeneration. Rank = most relevant first. "Relevance" weighs whether the item is
+still unimplemented, how badly it hurts a live game, and how many times players asked for it.
+
+The 11 rows resolved in the 2026-09-20 pass were deleted from the `feedback` table, so they no longer
+appear in the snapshot: #22, #31, #53, #66, #69, #76, #77, #78, #80, #83, #87.
+
+### Shipped 2026-09-20
+
+- **#94 - mods can `Wolf.in`.** `handleSignUp` now refuses anyone holding the **Mod** role
+  (`bot/src/handlers/game.js`). It checks the role rather than `hasModeratorPermissions()` so a mod who
+  wants to play can step down with `Wolf.unmod me` instead of being locked out by server permissions; the
+  refusal message says so.
+- **#96 - couple chat members can pin.** The invited-user permission pass was extracted into
+  `applyInvitedUserPermissions` (`bot/src/handlers/game.js`) and now grants `PIN_PERMISSION` on top of
+  `ViewChannel` when `game_channels.is_couple_chat` is set. Non-couple invited channels are unchanged.
+- **#93 - journal permissions repair themselves.** `handleFixJournals` was split into
+  `fixJournalPermissions(guild, onProgress)` (`bot/src/handlers/journal.js`), and `index.js` now listens on
+  `channelUpdate`/`channelCreate`. A journal moving categories, a journal category being renamed, or a new
+  one being created schedules a debounced re-run (30s, per guild) and posts the summary to the active
+  game's mod chat. Kill switch: `ENABLE_JOURNAL_AUTO_FIX=false`; debounce override:
+  `JOURNAL_AUTO_FIX_DEBOUNCE_MS`.
+
+### Won't do
+
+- **#92, and the wolf half of #79 - send role messages to wolves' journals.** Declined; already discussed
+  and settled. Wolves get their role in wolf chat and nowhere else, and the journal skip in
+  `sendRoleNotificationsToJournals` (`bot/src/handlers/voting.js`) is intentional.
+
+  Recording why the metagaming argument does not hold, so it does not get re-raised: the submitter's
+  concern is that observers can read the wolf team off which journals do *not* light up with an unread
+  badge on N1. But the journal permission matrix (`fixJournalPermissions`, `bot/src/handlers/journal.js`)
+  denies `ViewChannel` to both **Alive** and **Signed Up**, and grants it to @everyone, **Spectator**,
+  **Dead** and **Mod**. Discord only shows unread badges for channels you can view, so the set of people
+  who can see the absence is exactly the set who can already open any journal and read its contents. Nobody
+  can see the flash without being able to read the message, and living players - the only ones the leak
+  would matter to - cannot see other players' journals at all. Sending the messages would hand spectators
+  the wolf team *more* directly, not less.
+
+  The *other* half of #79 - putting the game number in the role-assignment embed - is unrelated, still
+  open, and is item 1 below.
+
+### Tier 1 - still open, affects live games
+
+1. **#79 (game-number half) - stamp the game number on the role-assignment embed.** The embed in
+   `sendRoleNotificationsToJournals` has no game number, so a player scrolling their journal months later
+   cannot tell which game a role belonged to. Cheapest open item in this file and purely additive.
+2. **#30 - "actually fix the permission issue."** The concrete symptoms it spawned are now all closed
+   (#31 dead-couple view access, #82 couple chat day lockout, #96 pinning, #93 journal drift), but nothing
+   yet *verifies* the permission matrix - drift is still found by players, not by the bot. Keep it open as
+   the umbrella for roadmap item 6 (`Wolf.perms_audit`), which is now the only unaddressed piece.
+
+### Tier 2 - unimplemented, high leverage
+
+3. **#26 + #27 + #67 - per-day / whole-game activity tracking** (three separate requests, Oct 2025 - Mar
+   2026). Verified unimplemented: no `silent` or `ia_history` command exists, and `Wolf.ia` still paginates
+   the Discord API at query time. Roadmap foundation item 8; unlocks the other three.
+4. **#49 - configurable IA reset time** (Jan 2026). Verified: the 09:30 EST cutoff is hardcoded in
+   `handlers/utils.js`. Same foundation as #3, so it rides along cheaply.
+5. **#24 - move the @Alive ping warning into journals** (Sep 2025). Verified:
+   `alive-mention-detector.js` still replies in-channel, so the warning still FUDs town square. Note the
+   detector only runs when `ENABLE_ALIVE_MENTION_DETECTION` is set.
+6. **#86 - `Wolf.assign`** (Jun 2026). Verified: no `assign` case in `werewolf-bot.js`; manual assignment is
+   dashboard-only. Roadmap item 1.
+7. **#63 - rollback command** (Mar 2026). Verified: no `rollback` case. Now cheaper than when it was filed,
+   because `vote_history` exists to reconstruct a wiped day. Roadmap item 4.
+8. **#88 - active-game vs. archive journal categories** (Jun 2026). Verified: `handlers/journal.js` has no
+   archive concept at all. Real mod pain, but it touches the most complex handler - hence below the cheaper
+   wins.
+9. **#46 - wolf-team dead channel** (Jan 2026). Verified unimplemented; `is_couple_chat` is the pattern to
+   copy. Pure feature, no bug pressure.
+10. **#43 - rename channels from the dashboard pre-game** (Dec 2025). Verified: `manage-channels-modal.tsx`
+    only invites users, and `add-channel-modal.tsx` names new custom channels; the fixed channels cannot be
+    renamed. Roadmap item 12.
+11. **#32 + #33 + #36 - action-priority reference, role shorthands, acronym glossary** (asked twice, Oct
+    2025). Verified: no `shorthand`/`acronym`/`glossary`/order-of-operations content anywhere in `frontend/`.
+    Content work, low risk, but nothing is blocked on it.
+12. **#57 - give dead players "Signed Up" too** (Feb 2026). Verified: `Wolf.scuff` deliberately only converts
+    Alive members and its confirmation embed explicitly promises not to touch Dead. Still valid as a
+    request, but it asks to reverse a documented decision - needs a call from David before anyone
+    implements it.
+13. **#95 - tolerate a space in command names (`ia self` = `iaself`)** (Aug 2026). Verified: dispatch splits
+    on whitespace and matches `args[0]` only, and `iaself`/`ia` differ in permission tier, so `Wolf.ia self`
+    is rejected for a normal player. Genuine papercut, but fixing it means aliasing across a permission
+    boundary - do it deliberately, not as a quick regex.
+14. **#91 - don't create a mod chat per game** (Jul 2026). Verified: `handleStart` still builds
+    `<prefix><n>-mod-chat`. Flagging a conflict that has since grown: mod chat is now the delivery target for
+    both the wolf-chat-add failure alert and the #93 journal auto-fix summary, so removing per-game mod chat
+    needs a new home for mod alerts first. Low relevance until that is settled.
+
+### Tier 3 - low value or not actionable
+
+15. **#99 - Mong's journal has its own category** (Sep 2026). The submitter says it causes no issues.
+    Cosmetic artifact of the journal category-splitting logic; only worth touching while doing #88.
+16. **#35 - "fix the custom message on the site"** (Oct 2025). Not actionable as written - no target is
+    identifiable, and the custom-name path it most likely referred to now works. Ask the submitter or
+    delete.
 
 <!-- REGENERATED SNAPSHOT BELOW - do not edit below this line; scripts/regenerate-feedback-md.py overwrites everything under this marker. -->
 
 # Feedback
 
-Snapshot of the `feedback` table. Resolved items (implemented, already covered, out-of-scope, or non-actionable) were **removed from the database** on **2026-07-13**.
+Snapshot of the `feedback` table. Resolved items (implemented, already covered, out-of-scope, or non-actionable) were **removed from the database** on **2026-09-20**.
 
-**Total entries:** 32
-
----
-
-## #22 - 2025-09-27T23:07:36.951854+00:00
-
-- **Display name:** ElevatorClassic 🐪
-- **User ID:** `1248024419201450075`
-- **Server ID:** `1354597610656366683`
-
-**Feedback**
-
-> let mods set a voting booth message
+**Total entries:** 26
 
 ---
 
@@ -113,18 +198,6 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 **Feedback**
 
 > please for the love of god actually fix the permission issue
-
----
-
-## #31 - 2025-10-10T13:58:29.733432+00:00
-
-- **Display name:** Fletch 🏆🐪
-- **User ID:** `238822260645953537`
-- **Server ID:** `1354597610656366683`
-
-**Feedback**
-
-> dead cannot see couple chat
 
 ---
 
@@ -216,18 +289,6 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #53 - 2026-01-16T01:43:35.041247+00:00
-
-- **Display name:** SemiCharmedMike
-- **User ID:** `193883917055557642`
-- **Server ID:** `1395040693138886857`
-
-**Feedback**
-
-> Allow for villagers to have separate themes. Set it so that if Villager x4 is selected, it drops four villager inputs under theme names.
-
----
-
 ## #57 - 2026-02-03T02:06:15.433796+00:00
 
 - **Display name:** ElevatorClassic 👻🐪🐪
@@ -252,18 +313,6 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #66 - 2026-03-27T13:50:38.253524+00:00
-
-- **Display name:** Elevator Elevator
-- **User ID:** `1248024419201450075`
-- **Server ID:** `1466585500314767413`
-
-**Feedback**
-
-> Sleepwalker cant visit themself when selecting from all alive players
-
----
-
 ## #67 - 2026-03-29T18:10:00.358975+00:00
 
 - **Display name:** Hannibad Mulligan
@@ -273,18 +322,6 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 **Feedback**
 
 > the wolf ia command tracks who violated IA standards on previous days
-
----
-
-## #69 - 2026-03-31T23:08:19.226653+00:00
-
-- **Display name:** Dragon
-- **User ID:** `238869345734754305`
-- **Server ID:** `1466585500314767413`
-
-**Feedback**
-
-> sometimes the bot doesnt add wolves to wolf chat
 
 ---
 
@@ -300,42 +337,6 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #76 - 2026-04-13T00:24:31.26748+00:00
-
-- **Display name:** 18+vator
-- **User ID:** `1248024419201450075`
-- **Server ID:** `1466585500314767413`
-
-**Feedback**
-
-> Whenever someone types 'wolf.out' reply with 'There is no way off Mr. Bones' Wild Ride'
-
----
-
-## #77 - 2026-04-17T01:36:03.52644+00:00
-
-- **Display name:** Roxy 🏆🏆
-- **User ID:** `393594178061336576`
-- **Server ID:** `1466585500314767413`
-
-**Feedback**
-
-> people with the suspended role should not be able to wolf.in
-
----
-
-## #78 - 2026-04-17T02:59:36.136679+00:00
-
-- **Display name:** Dragon
-- **User ID:** `238869345734754305`
-- **Server ID:** `1466585500314767413`
-
-**Feedback**
-
-> suspended players can still sign up
-
----
-
 ## #79 - 2026-04-20T18:40:54.727809+00:00
 
 - **Display name:** Roxy 🏆🏆
@@ -345,18 +346,6 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 **Feedback**
 
 > put the game number in the message that gives out roles so when I'm looking at my journal later I can easily tell what game it was. Also put wolf roles in journals for the same reason. Would be a cool way to divide journals up for batshit people like me who read stuff back.
-
----
-
-## #80 - 2026-04-27T22:18:51.773853+00:00
-
-- **Display name:** Dragonversary
-- **User ID:** `238869345734754305`
-- **Server ID:** `1466585500314767413`
-
-**Feedback**
-
-> not all players are getting added to wolf chat recently. mods should be notified who didn't get added when this happens
 
 ---
 
@@ -372,42 +361,6 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #83 - 2026-05-06T19:06:58.480068+00:00
-
-- **Display name:** Raf👑 👑 🏆🏆🏆🏆
-- **User ID:** `410499132755542018`
-- **Server ID:** `1466585500314767413`
-
-**Feedback**
-
-> kow has a skill issue not being able to change vote threshold
-
----
-
-## #84 - 2026-05-25T16:28:38.042744+00:00
-
-- **Display name:** Roxy 🏆🏆🐪
-- **User ID:** `393594178061336576`
-- **Server ID:** `1354597610656366683`
-
-**Feedback**
-
-> the bot used the world "lynch" when replying to Wolf.ln which is highly controversial and ideally not used due to the connotation and history of the word
-
----
-
-## #85 - 2026-06-08T17:41:21.667104+00:00
-
-- **Display name:** Roxy 🏆🏆🏆🐪🐪
-- **User ID:** `393594178061336576`
-- **Server ID:** `1354597610656366683`
-
-**Feedback**
-
-> I am once again requesting we take the word "lynch" out of the bot's vocabulary <:harold:1162572194979778621>
-
----
-
 ## #86 - 2026-06-12T00:18:22.034903+00:00
 
 - **Display name:** Alex is a Mod
@@ -420,18 +373,6 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 
 ---
 
-## #87 - 2026-06-15T19:15:42.291082+00:00
-
-- **Display name:** Everlasting Dragon
-- **User ID:** `238869345734754305`
-- **Server ID:** `1466585500314767413`
-
-**Feedback**
-
-> a bloodhound calculator similar to the bartender and sleepwalker calculators would be great
-
----
-
 ## #88 - 2026-06-25T13:59:24.427355+00:00
 
 - **Display name:** Oryx the African Antelope 🏆🏆
@@ -441,5 +382,89 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 **Feedback**
 
 > it would be really neat if the bot put the journals in one section for people in an active game and the other section could be journal archives, then if they sign up for the next game bot couple move them back.
+
+---
+
+## #91 - 2026-07-26T15:33:38.021072+00:00
+
+- **Display name:** Raf👑 👑 🏆🏆🏆🏆
+- **User ID:** `410499132755542018`
+- **Server ID:** `1466585500314767413`
+
+**Feedback**
+
+> uhhh don’t have a modchat for each game
+
+---
+
+## #92 - 2026-07-27T16:29:43.469673+00:00
+
+- **Display name:** Roxy 🏆🏆
+- **User ID:** `393594178061336576`
+- **Server ID:** `1466585500314767413`
+
+**Feedback**
+
+> send roles in journals for all players including wolves in wolfchat so people can't meta discord channel flashes on who has messages in their journal
+
+---
+
+## #93 - 2026-07-29T16:55:41.674651+00:00
+
+- **Display name:** Roxy 🏆🏆
+- **User ID:** `393594178061336576`
+- **Server ID:** `1466585500314767413`
+
+**Feedback**
+
+> it would be awesome if anytime journal categories were changed the bot automatically ran the fix journals command
+
+---
+
+## #94 - 2026-08-01T02:37:28.523562+00:00
+
+- **Display name:** Fermin 🚤🚤
+- **User ID:** `892154745882570832`
+- **Server ID:** `1515786983484690654`
+
+**Feedback**
+
+> Mods shouldn't be able to wolf in XD
+
+---
+
+## #95 - 2026-08-13T17:06:34.00866+00:00
+
+- **Display name:** Tiplouf Keiko??
+- **User ID:** `412750883701522433`
+- **Server ID:** `1466585500314767413`
+
+**Feedback**
+
+> make it so spaces wont break the bot commands. So iaself and ia self would both be the same
+
+---
+
+## #96 - 2026-08-23T00:04:21.294021+00:00
+
+- **Display name:** Roxy, Seriously. 🏆🏆
+- **User ID:** `393594178061336576`
+- **Server ID:** `1466585500314767413`
+
+**Feedback**
+
+> couple chat perms should include pinning
+
+---
+
+## #99 - 2026-09-13T23:44:55.381948+00:00
+
+- **Display name:** Roxy mother of FUD gremlins 🏆🏆
+- **User ID:** `393594178061336576`
+- **Server ID:** `1466585500314767413`
+
+**Feedback**
+
+> Mong's journal has his own category despite it being in the middle of the alphabet it doesn't cause issues it's just weird <:kermitlaugh:1467604295125045280>
 
 ---

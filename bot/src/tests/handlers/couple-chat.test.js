@@ -183,4 +183,62 @@ describe('Couple Chat Permissions', () => {
             expect(bot.client.channels.fetch).not.toHaveBeenCalled();
         });
     });
+    describe('invited user permissions (feedback #96 - couple chat members can pin)', () => {
+        const PIN_PERMISSION = 0x0008000000000000;
+
+        function setupInvites(bot, rows) {
+            const channel = makeMockChannel('g1-couple-chat');
+            bot.db.query = jest.fn().mockResolvedValue({ rows });
+            bot.client.channels = { fetch: jest.fn().mockResolvedValue(channel) };
+            const guild = { id: 'guild-1', members: { fetch: jest.fn().mockResolvedValue({ id: 'u1' }) } };
+            return { channel, guild };
+        }
+
+        it('grants pin rights alongside view access in a couple chat', async () => {
+            const { channel, guild } = setupInvites(bot, [{
+                channel_id: 'couple-id',
+                channel_name: 'g1-couple-chat',
+                invited_users: ['u1', 'u2'],
+                is_couple_chat: true,
+            }]);
+
+            await bot.applyInvitedUserPermissions(guild, 1);
+
+            expect(channel.permissionOverwrites.edit).toHaveBeenCalledWith(
+                'u1',
+                { ViewChannel: true, [PIN_PERMISSION]: true }
+            );
+            expect(channel.permissionOverwrites.edit).toHaveBeenCalledWith(
+                'u2',
+                { ViewChannel: true, [PIN_PERMISSION]: true }
+            );
+        });
+
+        it('grants view access only in an ordinary invited channel', async () => {
+            const { channel, guild } = setupInvites(bot, [{
+                channel_id: 'custom-id',
+                channel_name: 'g1-cult-chat',
+                invited_users: ['u1'],
+                is_couple_chat: false,
+            }]);
+
+            await bot.applyInvitedUserPermissions(guild, 1);
+
+            expect(channel.permissionOverwrites.edit).toHaveBeenCalledWith('u1', { ViewChannel: true });
+        });
+
+        it('skips invited users who have left the server', async () => {
+            const { channel, guild } = setupInvites(bot, [{
+                channel_id: 'couple-id',
+                channel_name: 'g1-couple-chat',
+                invited_users: ['gone'],
+                is_couple_chat: true,
+            }]);
+            guild.members.fetch = jest.fn().mockRejectedValue(new Error('Unknown Member'));
+
+            await bot.applyInvitedUserPermissions(guild, 1);
+
+            expect(channel.permissionOverwrites.edit).not.toHaveBeenCalled();
+        });
+    });
 });

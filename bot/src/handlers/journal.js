@@ -508,30 +508,43 @@ async handleJournalPinPerms(message) {
     }
 },
 
-async handleFixJournals(message) {
-    const serverId = message.guild.id;
+// Core of Wolf.fix_journals, split out from the command so the channelUpdate watcher in
+// index.js can reapply the same permission matrix without a message to reply to
+// (feedback #93). Returns { total, failed } or { error } when there is nothing to fix.
+// onProgress(processed, total, channelName, warning) is optional and may throw safely.
+async fixJournalPermissions(guild, onProgress = null) {
+    const serverId = guild.id;
+
+    const report = async (processed, total, name, warning = null) => {
+        if (!onProgress) return;
+        try {
+            await onProgress(processed, total, name, warning);
+        } catch (error) {
+            console.error('Error reporting journal fix progress:', error);
+        }
+    };
 
     // Get all journal categories
-    const journalCategories = message.guild.channels.cache.filter(
-        channel => channel.type === ChannelType.GuildCategory && 
+    const journalCategories = guild.channels.cache.filter(
+        channel => channel.type === ChannelType.GuildCategory &&
         (channel.name === 'Journals' || channel.name.startsWith('Journals ('))
     );
 
     if (journalCategories.size === 0) {
-        return message.reply('❌ No journal categories found. Create some journals first with `Wolf.journal @user`.');
+        return { error: 'No journal categories found. Create some journals first with `Wolf.journal @user`.' };
     }
 
     // Get all journal channels from all categories
     const allJournalChannels = [];
     for (const category of journalCategories.values()) {
-        const categoryChannels = message.guild.channels.cache.filter(
+        const categoryChannels = guild.channels.cache.filter(
             channel => channel.parent?.id === category.id && channel.name.endsWith('-journal')
         );
         allJournalChannels.push(...categoryChannels.values());
     }
 
     if (allJournalChannels.length === 0) {
-        return message.reply('❌ No journal channels found in any journal categories.');
+        return { error: 'No journal channels found in any journal categories.' };
     }
 
     // Fetch all journals for this server from the database in one query
@@ -547,18 +560,15 @@ async handleFixJournals(message) {
         journalMap.set(row.channel_id, row.user_id);
     }
 
-    // Send initial progress message
-    const progressMsg = await message.reply(`🔍 Found ${allJournalChannels.length} journal channels. Starting to fix permissions...`);
-
     const failed = [];
     let processedCount = 0;
 
     // Get roles for permissions
-    const modRole = message.guild.roles.cache.find(r => r.name === 'Mod');
-    const spectatorRole = message.guild.roles.cache.find(r => r.name === 'Spectator');
-    const deadRole = message.guild.roles.cache.find(r => r.name === 'Dead');
-    const aliveRole = message.guild.roles.cache.find(r => r.name === 'Alive');
-    const signedUpRole = message.guild.roles.cache.find(r => r.name === 'Signed Up');
+    const modRole = guild.roles.cache.find(r => r.name === 'Mod');
+    const spectatorRole = guild.roles.cache.find(r => r.name === 'Spectator');
+    const deadRole = guild.roles.cache.find(r => r.name === 'Dead');
+    const aliveRole = guild.roles.cache.find(r => r.name === 'Alive');
+    const signedUpRole = guild.roles.cache.find(r => r.name === 'Signed Up');
 
     for (const journal of allJournalChannels) {
         processedCount++;
@@ -567,23 +577,20 @@ async handleFixJournals(message) {
             const userId = journalMap.get(journal.id);
             let member = null;
             if (userId) {
-                member = await message.guild.members.fetch(userId).catch(() => null);
+                member = await guild.members.fetch(userId).catch(() => null);
             }
             if (!userId) {
                 failed.push(`\t${journal.name} has no user_id mapping in player_journals`);
-                await progressMsg.edit(`🔍 Processing journal ${processedCount}/${allJournalChannels.length}... ⚠️ ${journal.name} has no user_id mapping`);
+                await report(processedCount, allJournalChannels.length, journal.name, `${journal.name} has no user_id mapping`);
             } else if (!member) {
                 failed.push(`\t${journal.name} user ${userId} not in server`);
-                await progressMsg.edit(`🔍 Processing journal ${processedCount}/${allJournalChannels.length}... ⚠️ ${journal.name} user not found`);
+                await report(processedCount, allJournalChannels.length, journal.name, `${journal.name} user not found`);
             }
 
-            // Update progress message every 10 journals or for the first few
-            if (processedCount <= 5 || processedCount % 10 === 0 || processedCount === allJournalChannels.length) {
-                await progressMsg.edit(`🔍 Processing journal ${processedCount}/${allJournalChannels.length}: ${journal.name}...`);
-            }
+            await report(processedCount, allJournalChannels.length, journal.name);
 
             // Everyone: can see but not send
-            await journal.permissionOverwrites.edit(message.guild.roles.everyone, {
+            await journal.permissionOverwrites.edit(guild.roles.everyone, {
                 ViewChannel: true,
                 SendMessages: false
             });
@@ -640,15 +647,44 @@ async handleFixJournals(message) {
         } catch (error) {
             console.error(`Error fixing permissions for journal ${journal.id} (${journal.name}):`, error);
             failed.push(`\t${journal.name} encountered error: ${error.message || error}`);
-            await progressMsg.edit(`🔍 Processing journal ${processedCount}/${allJournalChannels.length}... ❌ Error with ${journal.name}`);
+            await report(processedCount, allJournalChannels.length, journal.name, `Error with ${journal.name}`);
         }
     }
 
-    // Final status message
-    if (failed.length > 0) {
-        await progressMsg.edit(`⚠️ Completed with issues for ${failed.length} journals:\n${failed.join('\n')}`);
+    return { total: allJournalChannels.length, failed };
+},
+
+async handleFixJournals(message) {
+    let progressMsg = null;
+
+    const onProgress = async (processed, total, name, warning) => {
+        if (!progressMsg) {
+            progressMsg = await message.reply(`🔍 Found ${total} journal channels. Starting to fix permissions...`);
+        }
+        if (warning) {
+            await progressMsg.edit(`🔍 Processing journal ${processed}/${total}... ⚠️ ${warning}`);
+            return;
+        }
+        // Update progress message every 10 journals or for the first few
+        if (processed <= 5 || processed % 10 === 0 || processed === total) {
+            await progressMsg.edit(`🔍 Processing journal ${processed}/${total}: ${name}...`);
+        }
+    };
+
+    const result = await this.fixJournalPermissions(message.guild, onProgress);
+
+    if (result.error) {
+        return message.reply(`❌ ${result.error}`);
+    }
+
+    const finalText = result.failed.length > 0
+        ? `⚠️ Completed with issues for ${result.failed.length} journals:\n${result.failed.join('\n')}`
+        : `✅ Successfully fixed permissions for all ${result.total} journal channels.`;
+
+    if (progressMsg) {
+        await progressMsg.edit(finalText);
     } else {
-        await progressMsg.edit(`✅ Successfully fixed permissions for all ${allJournalChannels.length} journal channels.`);
+        await message.reply(finalText);
     }
 },
 

@@ -85,6 +85,16 @@ client.on('messageReactionAdd', async (reaction, user) => {
     await werewolfBot.handleReaction(reaction, user);
 });
 
+// Journal permissions break when journals are moved between categories, so reapply them
+// automatically instead of waiting for a mod to run Wolf.fix_journals (feedback #93).
+client.on('channelUpdate', async (oldChannel, newChannel) => {
+    await werewolfBot.handleChannelUpdate(oldChannel, newChannel);
+});
+
+client.on('channelCreate', async (channel) => {
+    await werewolfBot.handleChannelCreate(channel);
+});
+
 client.on('guildMemberAdd', async (member) => {
     try {
         // Find the Spectator role

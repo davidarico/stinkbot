@@ -211,6 +211,34 @@ describe('Game Handlers', () => {
             );
         });
 
+        it('refuses signup and does not insert player when member has the Mod role', async () => {
+            bot.db.query = jest.fn();
+
+            const msg = createMockMessage();
+            msg.member.roles.cache.some = jest.fn().mockImplementation((predicate) => predicate({ name: 'Mod' }));
+            msg.react = jest.fn().mockResolvedValue(undefined);
+
+            await bot.handleSignUp(msg);
+
+            expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('Mods cannot sign up'));
+            expect(bot.db.query).not.toHaveBeenCalledWith(
+                expect.stringContaining('INSERT INTO players'),
+                expect.any(Array)
+            );
+            expect(msg.react).not.toHaveBeenCalled();
+        });
+
+        it('points a blocked mod at unmod me so they can still play', async () => {
+            bot.db.query = jest.fn();
+
+            const msg = createMockMessage();
+            msg.member.roles.cache.some = jest.fn().mockImplementation((predicate) => predicate({ name: 'Mod' }));
+
+            await bot.handleSignUp(msg);
+
+            expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('unmod me'));
+        });
+
         it('replies with error when no active signup game', async () => {
             bot.db.query = jest.fn()
                 .mockResolvedValueOnce({ rows: [] })  // not banned
