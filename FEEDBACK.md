@@ -6,6 +6,12 @@ This section is maintained by hand. Everything below the marker line is regenera
 
 ## Recently shipped
 
+- **2026-09-20 batch** (feedback #94, #96, #93, #79, #30). Mods can no longer `Wolf.in`; couple chat members
+  can pin; journal permissions reapply themselves on category changes; role messages carry the game name
+  and number; and `Wolf.perms_audit [fix]` now checks every game channel against a shared expected
+  permission matrix (`bot/src/handlers/permissions-audit.js`). See the triage section below for details and
+  for the two limits on what the audit can judge.
+
 - **`Wolf.lssv` - longest standing second vote** (feedback #75, shipped 2026-07-13). Included a new append-only `vote_history` table (`database/migrations/20260713T154002_*`) that logs every vote/retract, because `Wolf.next` wipes the live `votes` table at phase change. Reuse `vote_history` for anything needing past-day vote data.
 
 - **Auto-pin phase-start messages** (feedback #81, #89, shipped 2026-07-13). `Wolf.next` now pins the new day/night embed in town square and unpins the previous phase pin. Added `games.last_phase_pin_message_id` (`database/migrations/20260713T162846_*`) to track the current pin; logic lives in `handleNext`'s `mainChannelPromises` block in `bot/src/handlers/game-phases.js`.
@@ -24,23 +30,21 @@ This section is maintained by hand. Everything below the marker line is regenera
 
 5. **Wolf-team dead channel** (feedback #46). Optional channel where eliminated wolves keep chatting. Fits the existing `game_channels` machinery (see `is_couple_chat` for the pattern of a flagged special channel with custom phase behavior in `channels.js` and `game-phases.js`). Grant view+send to dead wolves at death time (hook `killPlayer` in `players.js`, like `preserveCoupleChatAccess`). Medium.
 
-6. **`Wolf.perms_audit` - permission drift checker** (feedback #30-class; recurring bug theme). Generalize `handleFixJournals` (`journal.js`): compare every game channel's actual Discord permission overwrites against the expected matrix (town square, booth, memos, couple chats, dead chat, custom channels with `open_at_dawn`/`open_at_dusk`) and report mismatches, with a `fix` argument to repair. The expected matrix already exists implicitly in `channels.js` phase-change logic - extract it so audit and enforcement share one source of truth. Medium-large, high leverage: permission drift is the most recurring bug class in this codebase's history.
-
 ## Foundations (unlock multiple items)
 
-7. **Record game winners at `Wolf.end`** (from code review). `games` has no winner column, blocking all stats features. Add a migration (`winning_team` on `games`), prompt during `handleEnd`'s existing confirmation flow (`game-phases.js`). Enables future `Wolf.stats`/post-game reveal. Small.
+6. **Record game winners at `Wolf.end`** (from code review). `games` has no winner column, blocking all stats features. Add a migration (`winning_team` on `games`), prompt during `handleEnd`'s existing confirmation flow (`game-phases.js`). Enables future `Wolf.stats`/post-game reveal. Small.
 
-8. **Message activity tracking** (feedback #26, #27, #49, #67). `Wolf.ia` and `Wolf.speed_check` paginate the Discord API at query time (slow, rate-limited). The bot already receives every message (`messageCreate` in `index.js`). Add a counter table (`game_id`, `user_id`, `channel_id`, `day_number`, `message_count`, unique on the first four) incremented on each message in game channels, then: `Wolf.ia` reads it instantly, `Wolf.ia_history` shows per-day totals for the whole game (#27, #67), `Wolf.silent` (item 2) becomes a trivial query, and the IA window start becomes a per-server setting instead of the hardcoded 9:30 AM EST cutoff in `utils.js` (#49). Large-ish but the single highest-leverage bot change.
+7. **Message activity tracking** (feedback #26, #27, #49, #67). `Wolf.ia` and `Wolf.speed_check` paginate the Discord API at query time (slow, rate-limited). The bot already receives every message (`messageCreate` in `index.js`). Add a counter table (`game_id`, `user_id`, `channel_id`, `day_number`, `message_count`, unique on the first four) incremented on each message in game channels, then: `Wolf.ia` reads it instantly, `Wolf.ia_history` shows per-day totals for the whole game (#27, #67), `Wolf.silent` (item 2) becomes a trivial query, and the IA window start becomes a per-server setting instead of the hardcoded 9:30 AM EST cutoff in `utils.js` (#49). Large-ish but the single highest-leverage bot change.
 
-9. **Journal categories: active game vs. archive** (feedback #88). Journals of players in the active game live in one category; the rest live in "Journal Archives" categories; players get moved back on signup. All journal category logic is in `bot/src/handlers/journal.js` (balancing system, ~1900 lines - read its category-splitting logic first). Large; touches the most complex handler.
+8. **Journal categories: active game vs. archive** (feedback #88). Journals of players in the active game live in one category; the rest live in "Journal Archives" categories; players get moved back on signup. All journal category logic is in `bot/src/handlers/journal.js` (balancing system, ~1900 lines - read its category-splitting logic first). Large; touches the most complex handler.
 
 ## Frontend
 
-10. **Role shorthand + acronym glossary** (feedback #36, #33 - requested twice). Show common abbreviations on `/roles` (data may need a `shorthand` column on `roles` - migration + admin UI) plus a general glossary section. Small-medium.
+9. **Role shorthand + acronym glossary** (feedback #36, #33 - requested twice). Show common abbreviations on `/roles` (data may need a `shorthand` column on `roles` - migration + admin UI) plus a general glossary section. Small-medium.
 
-11. **Action priority / order-of-operations reference** (feedback #32). A section on `/roles` explaining night-action resolution order. Source material: `engine-generator/RULES.md` and `rules.json` (`orderOfOperations`). Content work more than code. Small.
+10. **Action priority / order-of-operations reference** (feedback #32). A section on `/roles` explaining night-action resolution order. Source material: `engine-generator/RULES.md` and `rules.json` (`orderOfOperations`). Content work more than code. Small.
 
-12. **Rename channels pre-game from the dashboard** (feedback #43). Let mods edit game channel names on the game page before `Wolf.start`; bot reads names at channel creation (`handleStart` in `game.js` builds names from prefix + fixed suffixes - would need to read overrides from `game_channels` or a new column). Medium.
+11. **Rename channels pre-game from the dashboard** (feedback #43). Let mods edit game channel names on the game page before `Wolf.start`; bot reads names at channel creation (`handleStart` in `game.js` builds names from prefix + fixed suffixes - would need to read overrides from `game_channels` or a new column). Medium.
 
 ## Feedback triage (verified 2026-09-20)
 
@@ -49,8 +53,9 @@ chronological order because `scripts/regenerate-feedback-md.py` writes it that w
 ranked view and survives regeneration. Rank = most relevant first. "Relevance" weighs whether the item is
 still unimplemented, how badly it hurts a live game, and how many times players asked for it.
 
-The 11 rows resolved in the 2026-09-20 pass were deleted from the `feedback` table, so they no longer
-appear in the snapshot: #22, #31, #53, #66, #69, #76, #77, #78, #80, #83, #87.
+The rows resolved in the 2026-09-20 pass were deleted from the `feedback` table, so they no longer appear
+in the snapshot: #22, #31, #53, #66, #69, #76, #77, #78, #80, #83, #87 (implemented or already working) and
+#92 (declined - see "Won't do").
 
 ### Shipped 2026-09-20
 
@@ -61,6 +66,27 @@ appear in the snapshot: #22, #31, #53, #66, #69, #76, #77, #78, #80, #83, #87.
 - **#96 - couple chat members can pin.** The invited-user permission pass was extracted into
   `applyInvitedUserPermissions` (`bot/src/handlers/game.js`) and now grants `PIN_PERMISSION` on top of
   `ViewChannel` when `game_channels.is_couple_chat` is set. Non-couple invited channels are unchanged.
+- **#79 - role messages say which game they belong to.** The journal role embed's footer is now
+  `<game name> Game <n> • Good luck and have fun!` (`sendRoleNotificationsToJournals`,
+  `bot/src/handlers/voting.js`), matching how the game category is named. Journals are reused across
+  games, so this is what makes an old role message identifiable months later.
+- **#30 - `Wolf.perms_audit [fix]`.** New `bot/src/handlers/permissions-audit.js` holds the expected
+  permission matrix for every game channel kind (results, memos, town square, voting booth, wolf chat,
+  dead chat, mod chat, custom channels, couple chats) in one place, instead of it being implied by
+  `handleStart`, `handleAddChannel` and `handleNext` separately. `Wolf.perms_audit` reports drift;
+  `Wolf.perms_audit fix` repairs it.
+
+  Two deliberate limits, both visible in the command's output. First, it models **ViewChannel and
+  SendMessages only** - the thread and reaction flags are set at creation and never toggled, so auditing
+  them is noise. Second, some cells are **advisory, never auto-fixed**: `Wolf.start dark` and
+  `Wolf.lockdown` both move the Alive role on town square/memos (and Alive's view of the voting booth),
+  and neither writes a column, so the bot genuinely cannot tell "locked down" from "broken". Those are
+  listed under "Not auditable (check by eye)" rather than reported as drift, because an audit that cries
+  wolf is an audit nobody runs. Persisting a lockdown/dark flag on `games` would let them become strict
+  later.
+
+  The audit also checks per-user couple chat access - every invited member should hold ViewChannel plus
+  pin rights - which covers the #31 and #96 failure modes directly.
 - **#93 - journal permissions repair themselves.** `handleFixJournals` was split into
   `fixJournalPermissions(guild, onProgress)` (`bot/src/handlers/journal.js`), and `index.js` now listens on
   `channelUpdate`/`channelCreate`. A journal moving categories, a journal category being renamed, or a new
@@ -70,8 +96,8 @@ appear in the snapshot: #22, #31, #53, #66, #69, #76, #77, #78, #80, #83, #87.
 
 ### Won't do
 
-- **#92, and the wolf half of #79 - send role messages to wolves' journals.** Declined; already discussed
-  and settled. Wolves get their role in wolf chat and nowhere else, and the journal skip in
+- **#92 (row deleted), and the wolf half of #79 - send role messages to wolves' journals.** Declined;
+  already discussed and settled. Wolves get their role in wolf chat and nowhere else, and the journal skip in
   `sendRoleNotificationsToJournals` (`bot/src/handlers/voting.js`) is intentional.
 
   Recording why the metagaming argument does not hold, so it does not get re-raised: the submitter's
@@ -84,62 +110,52 @@ appear in the snapshot: #22, #31, #53, #66, #69, #76, #77, #78, #80, #83, #87.
   would matter to - cannot see other players' journals at all. Sending the messages would hand spectators
   the wolf team *more* directly, not less.
 
-  The *other* half of #79 - putting the game number in the role-assignment embed - is unrelated, still
-  open, and is item 1 below.
+  The *other* half of #79 - putting the game number in the role-assignment embed - is unrelated, and
+  shipped separately; see above.
 
-### Tier 1 - still open, affects live games
+### Tier 1 - unimplemented, high leverage
 
-1. **#79 (game-number half) - stamp the game number on the role-assignment embed.** The embed in
-   `sendRoleNotificationsToJournals` has no game number, so a player scrolling their journal months later
-   cannot tell which game a role belonged to. Cheapest open item in this file and purely additive.
-2. **#30 - "actually fix the permission issue."** The concrete symptoms it spawned are now all closed
-   (#31 dead-couple view access, #82 couple chat day lockout, #96 pinning, #93 journal drift), but nothing
-   yet *verifies* the permission matrix - drift is still found by players, not by the bot. Keep it open as
-   the umbrella for roadmap item 6 (`Wolf.perms_audit`), which is now the only unaddressed piece.
-
-### Tier 2 - unimplemented, high leverage
-
-3. **#26 + #27 + #67 - per-day / whole-game activity tracking** (three separate requests, Oct 2025 - Mar
+1. **#26 + #27 + #67 - per-day / whole-game activity tracking** (three separate requests, Oct 2025 - Mar
    2026). Verified unimplemented: no `silent` or `ia_history` command exists, and `Wolf.ia` still paginates
-   the Discord API at query time. Roadmap foundation item 8; unlocks the other three.
-4. **#49 - configurable IA reset time** (Jan 2026). Verified: the 09:30 EST cutoff is hardcoded in
+   the Discord API at query time. Roadmap foundation item 7; unlocks the other three.
+2. **#49 - configurable IA reset time** (Jan 2026). Verified: the 09:30 EST cutoff is hardcoded in
    `handlers/utils.js`. Same foundation as #3, so it rides along cheaply.
-5. **#24 - move the @Alive ping warning into journals** (Sep 2025). Verified:
+3. **#24 - move the @Alive ping warning into journals** (Sep 2025). Verified:
    `alive-mention-detector.js` still replies in-channel, so the warning still FUDs town square. Note the
    detector only runs when `ENABLE_ALIVE_MENTION_DETECTION` is set.
-6. **#86 - `Wolf.assign`** (Jun 2026). Verified: no `assign` case in `werewolf-bot.js`; manual assignment is
+4. **#86 - `Wolf.assign`** (Jun 2026). Verified: no `assign` case in `werewolf-bot.js`; manual assignment is
    dashboard-only. Roadmap item 1.
-7. **#63 - rollback command** (Mar 2026). Verified: no `rollback` case. Now cheaper than when it was filed,
+5. **#63 - rollback command** (Mar 2026). Verified: no `rollback` case. Now cheaper than when it was filed,
    because `vote_history` exists to reconstruct a wiped day. Roadmap item 4.
-8. **#88 - active-game vs. archive journal categories** (Jun 2026). Verified: `handlers/journal.js` has no
+6. **#88 - active-game vs. archive journal categories** (Jun 2026). Verified: `handlers/journal.js` has no
    archive concept at all. Real mod pain, but it touches the most complex handler - hence below the cheaper
    wins.
-9. **#46 - wolf-team dead channel** (Jan 2026). Verified unimplemented; `is_couple_chat` is the pattern to
+7. **#46 - wolf-team dead channel** (Jan 2026). Verified unimplemented; `is_couple_chat` is the pattern to
    copy. Pure feature, no bug pressure.
-10. **#43 - rename channels from the dashboard pre-game** (Dec 2025). Verified: `manage-channels-modal.tsx`
+8. **#43 - rename channels from the dashboard pre-game** (Dec 2025). Verified: `manage-channels-modal.tsx`
     only invites users, and `add-channel-modal.tsx` names new custom channels; the fixed channels cannot be
-    renamed. Roadmap item 12.
-11. **#32 + #33 + #36 - action-priority reference, role shorthands, acronym glossary** (asked twice, Oct
+    renamed. Roadmap item 11.
+9. **#32 + #33 + #36 - action-priority reference, role shorthands, acronym glossary** (asked twice, Oct
     2025). Verified: no `shorthand`/`acronym`/`glossary`/order-of-operations content anywhere in `frontend/`.
     Content work, low risk, but nothing is blocked on it.
-12. **#57 - give dead players "Signed Up" too** (Feb 2026). Verified: `Wolf.scuff` deliberately only converts
+10. **#57 - give dead players "Signed Up" too** (Feb 2026). Verified: `Wolf.scuff` deliberately only converts
     Alive members and its confirmation embed explicitly promises not to touch Dead. Still valid as a
     request, but it asks to reverse a documented decision - needs a call from David before anyone
     implements it.
-13. **#95 - tolerate a space in command names (`ia self` = `iaself`)** (Aug 2026). Verified: dispatch splits
+11. **#95 - tolerate a space in command names (`ia self` = `iaself`)** (Aug 2026). Verified: dispatch splits
     on whitespace and matches `args[0]` only, and `iaself`/`ia` differ in permission tier, so `Wolf.ia self`
     is rejected for a normal player. Genuine papercut, but fixing it means aliasing across a permission
     boundary - do it deliberately, not as a quick regex.
-14. **#91 - don't create a mod chat per game** (Jul 2026). Verified: `handleStart` still builds
+12. **#91 - don't create a mod chat per game** (Jul 2026). Verified: `handleStart` still builds
     `<prefix><n>-mod-chat`. Flagging a conflict that has since grown: mod chat is now the delivery target for
     both the wolf-chat-add failure alert and the #93 journal auto-fix summary, so removing per-game mod chat
     needs a new home for mod alerts first. Low relevance until that is settled.
 
-### Tier 3 - low value or not actionable
+### Tier 2 - low value or not actionable
 
-15. **#99 - Mong's journal has its own category** (Sep 2026). The submitter says it causes no issues.
+13. **#99 - Mong's journal has its own category** (Sep 2026). The submitter says it causes no issues.
     Cosmetic artifact of the journal category-splitting logic; only worth touching while doing #88.
-16. **#35 - "fix the custom message on the site"** (Oct 2025). Not actionable as written - no target is
+14. **#35 - "fix the custom message on the site"** (Oct 2025). Not actionable as written - no target is
     identifiable, and the custom-name path it most likely referred to now works. Ask the submitter or
     delete.
 
@@ -149,7 +165,7 @@ appear in the snapshot: #22, #31, #53, #66, #69, #76, #77, #78, #80, #83, #87.
 
 Snapshot of the `feedback` table. Resolved items (implemented, already covered, out-of-scope, or non-actionable) were **removed from the database** on **2026-09-20**.
 
-**Total entries:** 26
+**Total entries:** 25
 
 ---
 
@@ -394,18 +410,6 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 **Feedback**
 
 > uhhh don’t have a modchat for each game
-
----
-
-## #92 - 2026-07-27T16:29:43.469673+00:00
-
-- **Display name:** Roxy 🏆🏆
-- **User ID:** `393594178061336576`
-- **Server ID:** `1466585500314767413`
-
-**Feedback**
-
-> send roles in journals for all players including wolves in wolfchat so people can't meta discord channel flashes on who has messages in their journal
 
 ---
 

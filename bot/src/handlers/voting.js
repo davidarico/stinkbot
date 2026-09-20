@@ -659,7 +659,7 @@ async sendRoleNotificationsToJournals(gameId, serverId) {
     try {
         // Get game information including theme flags
         const gameResult = await this.db.query(
-            'SELECT is_skinned, is_themed, wolf_chat_channel_id, mod_chat_channel_id FROM games WHERE id = $1',
+            'SELECT game_number, game_name, is_skinned, is_themed, wolf_chat_channel_id, mod_chat_channel_id FROM games WHERE id = $1',
             [gameId]
         );
 
@@ -669,6 +669,13 @@ async sendRoleNotificationsToJournals(gameId, serverId) {
         }
 
         const game = gameResult.rows[0];
+
+        // Label the role message with the game it belongs to so players can tell games
+        // apart when they scroll their journal back months later (feedback #79).
+        // Matches the game category's naming: "<game name> Game <n>", or "Game <n>".
+        const gameLabel = game.game_name
+            ? `${game.game_name} Game ${game.game_number}`
+            : `Game ${game.game_number}`;
 
         // Resolve the game's guild and wolf chat channel once up front so a single
         // transient fetch failure can't silently skip individual wolves below.
@@ -840,7 +847,7 @@ async sendRoleNotificationsToJournals(gameId, serverId) {
                     .setDescription(`**${displayRoleName}**!`)
                     .setColor(0x9B59B6)
                     .setTimestamp()
-                    .setFooter({ text: 'Good luck and have fun!' });
+                    .setFooter({ text: `${gameLabel} • Good luck and have fun!` });
 
                 // Add charges information if the player has charges
                 if (player.charges_left !== null && player.charges_left !== undefined && player.charges_left > 0) {

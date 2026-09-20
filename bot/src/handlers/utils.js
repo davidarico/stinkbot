@@ -211,6 +211,7 @@ async handleHelp(message) {
                 value: 
                     '`Wolf.recovery` - Migration from manual to bot control\n' +
                     '`Wolf.fix_journals` - 🔍 Fix journal permissions\n' +
+                    '`Wolf.perms_audit [fix]` - 🔍 Check game channel permissions against the expected matrix (add `fix` to repair)\n' +
                     '`Wolf.delete_category <category_name>` - 🧨 Delete a category and ALL channels inside it (requires confirmation)',
                 inline: false 
             },

@@ -393,6 +393,9 @@ class WerewolfBot {
                 case 'feedback':
                     await this.handleFeedback(message, args);
                     break;
+                case 'perms_audit':
+                    await this.handlePermsAudit(message, args);
+                    break;
                 case 'set_voting_booth':
                     await this.handleSetVotingBooth(message, args);
                     break;
@@ -448,6 +451,7 @@ Object.assign(WerewolfBot.prototype,
     require('./handlers/journal'),
     require('./handlers/archive'),
     require('./handlers/channels'),
+    require('./handlers/permissions-audit'),
     require('./handlers/recovery'),
     require('./handlers/speed-vote'),
     require('./handlers/utils'),

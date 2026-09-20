@@ -284,6 +284,96 @@ describe('Voting Handlers', () => {
         });
     });
 
+    describe('sendRoleNotificationsToJournals (journal role embed)', () => {
+        const GAME_ID = 1;
+        const SERVER_ID = 'guild-123';
+
+        let journalChannel;
+
+        const townPlayer = {
+            user_id: 'town-1-id',
+            username: 'Townie',
+            role_id: 5,
+            is_wolf: false,
+            role_name: 'Seer',
+            in_wolf_chat: false,
+            team: 'town',
+            custom_name: null,
+            charges_left: null,
+            win_by_number: null,
+        };
+
+        function setup(game) {
+            journalChannel = { id: 'journal-id', send: jest.fn().mockResolvedValue({ id: 'msg-1' }) };
+            bot = createTestBot({
+                guilds: {
+                    cache: new Map(),
+                    fetch: jest.fn().mockResolvedValue({
+                        id: SERVER_ID,
+                        members: { fetch: jest.fn().mockResolvedValue({ id: 'town-1-id' }) },
+                    }),
+                },
+                channels: { fetch: jest.fn().mockResolvedValue(journalChannel) },
+            });
+            bot.db.query = jest.fn()
+                .mockResolvedValueOnce({ rows: [game] })                          // game info
+                .mockResolvedValueOnce({ rows: [townPlayer] })                    // players
+                .mockResolvedValueOnce({ rows: [{ channel_id: 'journal-id' }] }); // journal lookup
+        }
+
+        // feedback #79: the role message has to say which game it belongs to, because
+        // journals are reused across games and players scroll them back months later.
+        it('stamps the named game on the role embed footer', async () => {
+            setup({
+                game_number: 534,
+                game_name: 'Origins',
+                is_skinned: false,
+                is_themed: false,
+                wolf_chat_channel_id: null,
+                mod_chat_channel_id: null,
+            });
+
+            await bot.sendRoleNotificationsToJournals(GAME_ID, SERVER_ID);
+
+            expect(journalChannel.send).toHaveBeenCalledTimes(1);
+            const embed = journalChannel.send.mock.calls[0][0].embeds[0];
+            expect(embed.data.footer.text).toBe('Origins Game 534 • Good luck and have fun!');
+        });
+
+        it('falls back to "Game <n>" when the server has no game name', async () => {
+            setup({
+                game_number: 12,
+                game_name: null,
+                is_skinned: false,
+                is_themed: false,
+                wolf_chat_channel_id: null,
+                mod_chat_channel_id: null,
+            });
+
+            await bot.sendRoleNotificationsToJournals(GAME_ID, SERVER_ID);
+
+            const embed = journalChannel.send.mock.calls[0][0].embeds[0];
+            expect(embed.data.footer.text).toBe('Game 12 • Good luck and have fun!');
+        });
+
+        it('still shows the role itself alongside the game label', async () => {
+            setup({
+                game_number: 7,
+                game_name: 'Origins',
+                is_skinned: false,
+                is_themed: false,
+                wolf_chat_channel_id: null,
+                mod_chat_channel_id: null,
+            });
+
+            await bot.sendRoleNotificationsToJournals(GAME_ID, SERVER_ID);
+
+            const embed = journalChannel.send.mock.calls[0][0].embeds[0];
+            expect(embed.data.title).toBe('🎭 Your Role Assignment');
+            expect(embed.data.description).toBe('**Seer**!');
+        });
+    });
+
     describe('sendRoleNotificationsToJournals (wolf chat adds)', () => {
         const GAME_ID = 1;
         const SERVER_ID = 'guild-123';
