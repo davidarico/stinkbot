@@ -58,7 +58,7 @@ Players submit feedback via `Wolf.feedback`, which lands in the `feedback` table
 
 Resolve feedback with `npm run feedback:resolve -- <id> [<id> ...] [--note "text"] [--dry-run] [--no-dm] [--json]` from the repo root (`bot/scripts/resolve-feedback.js`, logic in `bot/src/feedback-resolver.js`). It DMs the submitter (their original feedback quoted, plus the optional note), then deletes the row. Never delete `feedback` rows by hand. These DMs reach real players, so show the user the `--dry-run` output and wait for approval before a real run. Use `--no-dm` for spam, duplicates, or non-actionable items. A failed DM (closed DMs, no shared server) leaves the row in place and exits 1. `--json` keeps stdout machine-readable (logs go to stderr). It needs `DISCORD_TOKEN` for the production bot, read from `bot/.env`.
 
-When writing a `--note`, keep it as short as possible so it doesn't read like AI wrote it. Use short, plain sentences. No em dashes, no long or complex sentence structure. Example: "Added this. Players can use Wolf.lssv during the day now."
+When writing a `--note`, keep it as short as possible so it doesn't read like AI wrote it. The DM already quotes the feedback, so don't restate it. If the request was simply added, the note is just "Added this". Only add more when there's something the player wouldn't know (a catch, a different approach). Use short, plain sentences. No em dashes, no long or complex sentence structure.
 
 ## Conventions
 
