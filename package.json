@@ -15,7 +15,8 @@
     "frontend:dev": "npm run dev --workspace=frontend",
     "frontend:build": "npm run build --workspace=frontend",
     "db:migrate": "npm run migrate --workspace=database",
-    "db:seed": "npm run seed --workspace=database"
+    "db:seed": "npm run seed --workspace=database",
+    "feedback:resolve": "node bot/scripts/resolve-feedback.js"
   },
   "keywords": [
     "discord",
