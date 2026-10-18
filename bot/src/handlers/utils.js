@@ -123,7 +123,8 @@ async handleHelp(message) {
                 '`Wolf.feedback` - Submit feedback to Stinky\n' +
                 '`Wolf.votecount` - Vote totals only (no voter names; Day 2+ day phase)\n' +
                 '`Wolf.iaself` - Your message count (same defaults as `Wolf.ia`, yourself only)\n' +
-                '`Wolf.speed_check` - Message counts since last phase change (town square)',
+                '`Wolf.speed_check` - Message counts since last phase change (town square)\n' +
+                '`Wolf.lssv` - 🗳️ Longest standing second vote for today (Day 2+ day phase; mods also see who voted)',
             inline: false 
         }
     );
@@ -168,6 +169,7 @@ async handleHelp(message) {
                     '`Wolf.wolves_alive` - Count wolves who still have Alive (mods see names; Dead see count only)\n' +
                     '`Wolf.add_in @user` - Add someone to signups without them running `Wolf.in`\n' +
                     '`Wolf.not_voted` - Alive players with no vote yet today (Day 2+ day)\n' +
+                    '`Wolf.speed <number> [emoji]` - ⚡ Start a speed vote for Alive players; mod chat is pinged when the target is reached (`Wolf.speed abort` to cancel)\n' +
                 '`Wolf.lssv [day]` - 🗳️ Longest standing second vote: final votes in cast order (defaults to today)\n' +
                     '`Wolf.set_voting_booth <channel-name>` - 🗳️ Set voting booth channel for current game\n' +
                     '`Wolf.lockdown` - 🔒 Lock down townsquare and memos (alive players cannot speak)\n' +

@@ -165,7 +165,7 @@ in the snapshot: #22, #31, #53, #66, #69, #76, #77, #78, #80, #83, #87 (implemen
 
 Snapshot of the `feedback` table. Resolved items (implemented, already covered, out-of-scope, or non-actionable) were **removed from the database** on **2026-09-20**.
 
-**Total entries:** 25
+**Total entries:** 28
 
 ---
 
@@ -470,5 +470,41 @@ Snapshot of the `feedback` table. Resolved items (implemented, already covered, 
 **Feedback**
 
 > Mong's journal has his own category despite it being in the middle of the alphabet it doesn't cause issues it's just weird <:kermitlaugh:1467604295125045280>
+
+---
+
+## #100 - 2026-09-24T19:11:25.186855+00:00
+
+- **Display name:** Roxcouncil 🏆🏆
+- **User ID:** `393594178061336576`
+- **Server ID:** `1539787007939846216`
+
+**Feedback**
+
+> wolves in wolfchat should not be returned as possibilities in the bloodhound action calculator
+
+---
+
+## #101 - 2026-10-11T00:44:31.4722+00:00
+
+- **Display name:** Roxy off duty 🏆🏆
+- **User ID:** `393594178061336576`
+- **Server ID:** `1539787007939846216`
+
+**Feedback**
+
+> it would be great if players could check wolf.lssv during the day at least 🙏
+
+---
+
+## #102 - 2026-10-15T20:13:11.086129+00:00
+
+- **Display name:** Liam 🏆
+- **User ID:** `373804410360430592`
+- **Server ID:** `1539787007939846216`
+
+**Feedback**
+
+> add wolf speed to wolf help
 
 ---

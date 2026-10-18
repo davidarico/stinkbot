@@ -18,6 +18,13 @@ describe('LSSV Handler', () => {
         votes_to_hang: 4,
     };
 
+    // createMockMessage is a non-mod by default; mods get the full breakdown
+    const createModMessage = () => {
+        const msg = createMockMessage();
+        msg.member.permissions.has.mockReturnValue(true);
+        return msg;
+    };
+
     const players = [
         { user_id: 'v1', username: 'Alice' },
         { user_id: 'v2', username: 'Bob' },
@@ -29,14 +36,14 @@ describe('LSSV Handler', () => {
     describe('handleLssv', () => {
         it('replies with error when no active game found', async () => {
             bot.db.query = jest.fn().mockResolvedValue({ rows: [] });
-            const msg = createMockMessage();
+            const msg = createModMessage();
             await bot.handleLssv(msg, []);
             expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('No active game'));
         });
 
         it('rejects an invalid day argument', async () => {
             bot.db.query = jest.fn().mockResolvedValueOnce({ rows: [activeGame] });
-            const msg = createMockMessage();
+            const msg = createModMessage();
             await bot.handleLssv(msg, ['7']);
             expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('between 1 and 3'));
         });
@@ -45,7 +52,7 @@ describe('LSSV Handler', () => {
             bot.db.query = jest.fn()
                 .mockResolvedValueOnce({ rows: [activeGame] })
                 .mockResolvedValueOnce({ rows: [] }); // live votes
-            const msg = createMockMessage();
+            const msg = createModMessage();
             await bot.handleLssv(msg, []);
             expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('No votes have been cast yet today'));
         });
@@ -61,7 +68,7 @@ describe('LSSV Handler', () => {
                 .mockResolvedValueOnce({ rows: standingVotes })
                 .mockResolvedValueOnce({ rows: players });
 
-            const msg = createMockMessage();
+            const msg = createModMessage();
             await bot.handleLssv(msg, []);
 
             expect(msg.reply).toHaveBeenCalledWith({ embeds: [expect.anything()] });
@@ -99,7 +106,7 @@ describe('LSSV Handler', () => {
                 .mockResolvedValueOnce({ rows: historyRows })
                 .mockResolvedValueOnce({ rows: players });
 
-            const msg = createMockMessage();
+            const msg = createModMessage();
             await bot.handleLssv(msg, ['2']);
 
             const embed = msg.reply.mock.calls[0][0].embeds[0];
@@ -136,7 +143,7 @@ describe('LSSV Handler', () => {
                 .mockResolvedValueOnce({ rows: standingVotes })
                 .mockResolvedValueOnce({ rows: bigPlayers });
 
-            const msg = createMockMessage();
+            const msg = createModMessage();
             await bot.handleLssv(msg, []);
 
             expect(msg.reply).toHaveBeenCalledWith({ embeds: [expect.anything()] });
@@ -172,7 +179,7 @@ describe('LSSV Handler', () => {
                 .mockResolvedValueOnce({ rows: standingVotes })
                 .mockResolvedValueOnce({ rows: players });
 
-            const msg = createMockMessage();
+            const msg = createModMessage();
             await bot.handleLssv(msg, []);
 
             const embed = msg.reply.mock.calls[0][0].embeds[0];
@@ -191,7 +198,7 @@ describe('LSSV Handler', () => {
                 .mockResolvedValueOnce({ rows: standingVotes })
                 .mockResolvedValueOnce({ rows: players });
 
-            const msg = createMockMessage();
+            const msg = createModMessage();
             await bot.handleLssv(msg, []);
 
             const embed = msg.reply.mock.calls[0][0].embeds[0];
@@ -211,7 +218,7 @@ describe('LSSV Handler', () => {
                 .mockResolvedValueOnce({ rows: historyRows })
                 .mockResolvedValueOnce({ rows: players });
 
-            const msg = createMockMessage();
+            const msg = createModMessage();
             await bot.handleLssv(msg, ['3']);
 
             // Must not consult the wiped live votes table
@@ -234,7 +241,7 @@ describe('LSSV Handler', () => {
                 .mockResolvedValueOnce({ rows: [nightGame] })
                 .mockResolvedValueOnce({ rows: [] });
 
-            const msg = createMockMessage();
+            const msg = createModMessage();
             await bot.handleLssv(msg, []);
 
             expect(bot.db.query.mock.calls[1][0]).toContain('FROM vote_history');
@@ -246,9 +253,73 @@ describe('LSSV Handler', () => {
             bot.db.query = jest.fn()
                 .mockResolvedValueOnce({ rows: [activeGame] })
                 .mockResolvedValueOnce({ rows: [] });
-            const msg = createMockMessage();
+            const msg = createModMessage();
             await bot.handleLssv(msg, ['1']);
             expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('No final votes recorded for Day 1'));
+        });
+
+        describe('player view', () => {
+            const standingVotes = [
+                { voter_user_id: 'v1', target_user_id: 't1', cast_at: '2026-07-13T10:00:00Z' },
+                { voter_user_id: 'v2', target_user_id: 't1', cast_at: '2026-07-13T10:05:00Z' },
+                { voter_user_id: 'v3', target_user_id: 't2', cast_at: '2026-07-13T10:10:00Z' },
+            ];
+
+            it('shows only the second-vote ranking, without voter names', async () => {
+                bot.db.query = jest.fn()
+                    .mockResolvedValueOnce({ rows: [activeGame] })
+                    .mockResolvedValueOnce({ rows: standingVotes })
+                    .mockResolvedValueOnce({ rows: players });
+
+                const msg = createMockMessage();
+                await bot.handleLssv(msg, []);
+
+                const embed = msg.reply.mock.calls[0][0].embeds[0];
+                expect(embed.data.fields).toHaveLength(1);
+                expect(embed.data.fields[0].name).toBe('Second votes (earliest first)');
+                expect(embed.data.fields[0].value).toContain('Dave');
+                expect(embed.data.fields[0].value).toContain('2 votes');
+                const allText = embed.data.fields.map((f) => f.value).join('\n');
+                for (const voter of ['Alice', 'Bob', 'Carol']) {
+                    expect(allText).not.toContain(voter);
+                }
+                expect(embed.data.footer.text).toContain('hidden here on purpose');
+            });
+
+            it('accepts the current day as an explicit argument', async () => {
+                bot.db.query = jest.fn()
+                    .mockResolvedValueOnce({ rows: [activeGame] })
+                    .mockResolvedValueOnce({ rows: standingVotes })
+                    .mockResolvedValueOnce({ rows: players });
+
+                const msg = createMockMessage();
+                await bot.handleLssv(msg, ['3']);
+                expect(msg.reply).toHaveBeenCalledWith({ embeds: [expect.anything()] });
+            });
+
+            it('rejects past days', async () => {
+                bot.db.query = jest.fn().mockResolvedValueOnce({ rows: [activeGame] });
+                const msg = createMockMessage();
+                await bot.handleLssv(msg, ['2']);
+                expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('current day'));
+                expect(bot.db.query).toHaveBeenCalledTimes(1);
+            });
+
+            it('rejects the night phase', async () => {
+                bot.db.query = jest.fn().mockResolvedValueOnce({ rows: [{ ...activeGame, day_phase: 'night' }] });
+                const msg = createMockMessage();
+                await bot.handleLssv(msg, []);
+                expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('day phase'));
+                expect(bot.db.query).toHaveBeenCalledTimes(1);
+            });
+
+            it('rejects Day 1', async () => {
+                bot.db.query = jest.fn().mockResolvedValueOnce({ rows: [{ ...activeGame, day_number: 1 }] });
+                const msg = createMockMessage();
+                await bot.handleLssv(msg, []);
+                expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('Day 1'));
+                expect(bot.db.query).toHaveBeenCalledTimes(1);
+            });
         });
     });
 

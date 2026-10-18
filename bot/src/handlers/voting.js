@@ -516,6 +516,22 @@ async handleLssv(message, args) {
         }
     }
 
+    // Players get the second-vote ranking only, under the same rules as
+    // Wolf.votecount: current day, day phase, Day 2+. Who voted for whom
+    // stays mod-only.
+    const isMod = this.hasModeratorPermissions(message.member);
+    if (!isMod) {
+        if (game.day_phase === 'night') {
+            return message.reply('❌ LSSV is only available to players during the day phase.');
+        }
+        if (game.day_number < 2) {
+            return message.reply('❌ LSSV is not shown on Day 1.');
+        }
+        if (day !== game.day_number) {
+            return message.reply('❌ Players can only check LSSV for the current day - ask a mod for past days.');
+        }
+    }
+
     try {
         // Standing votes with the time each was cast, earliest first.
         // The live votes table is the standing set only while the day is still
@@ -591,12 +607,14 @@ async handleLssv(message, args) {
         const embed = new EmbedBuilder()
             .setTitle(`🗳️ LSSV - Day ${day}`)
             .setDescription('Longest standing second vote. Standing votes only - retracted and changed votes count from when the current vote was cast.')
-            .addFields(
-                ...chunkLinesToFields('Final votes in cast order', castOrderLines, 'No votes.'),
-                ...chunkLinesToFields('Second votes (earliest first)', lssvLines, 'No player has two or more standing votes.')
-            )
             .setColor(0x9B59B6)
             .setTimestamp();
+        if (isMod) {
+            embed.addFields(...chunkLinesToFields('Final votes in cast order', castOrderLines, 'No votes.'));
+        } else {
+            embed.setFooter({ text: 'Who voted for whom is hidden here on purpose - ask a mod if you need the full breakdown.' });
+        }
+        embed.addFields(...chunkLinesToFields('Second votes (earliest first)', lssvLines, 'No player has two or more standing votes.'));
 
         await message.reply({ embeds: [embed] });
     } catch (error) {

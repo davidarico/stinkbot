@@ -197,7 +197,7 @@ class WerewolfBot {
         const command = args.shift().toLowerCase();
 
         // Commands that anyone can use
-        const playerCommands = ['in', 'out', 'vote', 'retract', 'alive', 'peed', 'help', 'meme', 'wolf_list', 'mylo', 'feedback', 'my_journal', 'players', 'rename_journal', 'speed_check', 'votecount', 'iaself'];
+        const playerCommands = ['in', 'out', 'vote', 'retract', 'alive', 'peed', 'help', 'meme', 'wolf_list', 'mylo', 'feedback', 'my_journal', 'players', 'rename_journal', 'speed_check', 'votecount', 'iaself', 'lssv'];
         const superUserCommands = ['mod'];
 
         // Check permissions for admin-only commands
