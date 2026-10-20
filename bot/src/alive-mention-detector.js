@@ -190,10 +190,41 @@ class AliveMentionDetector {
             timestamp: new Date().toISOString()
         };
 
+        // Warn in the player's journal so the warning doesn't clutter town square (feedback #24)
+        const journal = await this.findJournalChannel(message);
+        if (journal) {
+            try {
+                await journal.send({
+                    content: `<@${message.author.id}> ${message.url}`,
+                    embeds: [warningEmbed]
+                });
+                return;
+            } catch (error) {
+                console.error('❌ Error sending warning to journal, falling back to reply:', error);
+            }
+        }
+
         try {
             await message.reply({ embeds: [warningEmbed] });
         } catch (error) {
             console.error('❌ Error sending warning:', error);
+        }
+    }
+
+    async findJournalChannel(message) {
+        if (!this.pool) return null;
+
+        try {
+            const result = await this.pool.query(
+                'SELECT channel_id FROM player_journals WHERE server_id = $1 AND user_id = $2',
+                [message.guild.id, message.author.id]
+            );
+            const channelId = result.rows[0]?.channel_id;
+            if (!channelId) return null;
+            return await message.guild.channels.fetch(channelId);
+        } catch (error) {
+            console.warn('[AliveMentionDetector] Journal lookup failed:', error.message);
+            return null;
         }
     }
 

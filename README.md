@@ -8,7 +8,7 @@ StinkBot runs Werewolf (mafia) games on Discord. This repo holds the bot, a web 
 bot/               Discord bot (discord.js)
 frontend/          Next.js app: mod dashboard, role reference, message archives
 database/          PostgreSQL migrations and schema tooling
-engine-generator/  Deterministic night-action engine (standalone, not yet integrated)
+engine-generator/  Deprecated night-action engine (unused)
 docs/              Cross-cutting technical docs
 scripts/           Maintenance scripts
 FAIL-OVER.md       Planned failover architecture

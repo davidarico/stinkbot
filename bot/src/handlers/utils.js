@@ -6,6 +6,9 @@ const moment = require('moment-timezone');
 // https://discord.com/developers/docs/topics/permissions
 const PIN_PERMISSION = 0x0008000000000000;
 
+// Stinky's Discord user ID; override with FEEDBACK_NOTIFY_USER_ID.
+const DEFAULT_FEEDBACK_NOTIFY_USER_ID = '162675596772638720';
+
 // The word "lynch" must never appear in user-facing bot output (feedback IDs 84/85).
 // Replacements match the game's existing terminology (e.g. the votes_to_hang setting
 // and "vote them out" in the default day message). Longer forms are listed first so
@@ -1086,6 +1089,8 @@ async handleFeedback(message, args) {
             await message.reply({ embeds: [embed] });
             
             console.log(`Feedback submitted by ${displayName} (${userId}) in server ${serverId}: ${feedbackText.substring(0, 100)}...`);
+
+            await this.notifyFeedbackOwner({ feedbackId, displayName, userId, message, feedbackText });
         } else {
             throw new Error('Failed to insert feedback into database');
         }
@@ -1093,6 +1098,27 @@ async handleFeedback(message, args) {
     } catch (error) {
         console.error('Error handling feedback command:', error);
         await message.reply('Sorry, there was an error submitting your feedback. Please try again later.');
+    }
+},
+
+// DM the bot owner whenever feedback lands. A failure here must never fail the submission.
+async notifyFeedbackOwner({ feedbackId, displayName, userId, message, feedbackText }) {
+    const ownerId = process.env.FEEDBACK_NOTIFY_USER_ID || DEFAULT_FEEDBACK_NOTIFY_USER_ID;
+    try {
+        const owner = await this.client.users.fetch(ownerId);
+        const embed = new EmbedBuilder()
+            .setTitle(`📬 New Feedback #${feedbackId}`)
+            .setDescription(feedbackText)
+            .addFields(
+                { name: 'From', value: `${displayName} (<@${userId}>)`, inline: true },
+                { name: 'Server', value: message.guild.name, inline: true },
+                { name: 'Message', value: message.url, inline: false }
+            )
+            .setColor(0x3498DB)
+            .setTimestamp();
+        await owner.send({ embeds: [embed] });
+    } catch (error) {
+        console.error(`❌ Failed to DM feedback #${feedbackId} to ${ownerId}:`, error.message);
     }
 },
 

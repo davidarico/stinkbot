@@ -6,6 +6,12 @@ This section is maintained by hand. Everything below the marker line is regenera
 
 ## Recently shipped
 
+- **@Alive ping warning goes to the player's journal** (feedback #24, shipped 2026-10-19). `sendWarning` in
+  `bot/src/alive-mention-detector.js` posts the warning in the pinger's journal (`player_journals`) with a
+  ping and a link to the message, and falls back to replying in town square when there is no journal.
+  Timeout notices still post in town square. Note the detector only runs with
+  `ENABLE_ALIVE_MENTION_DETECTION=true`, which production does not set.
+
 - **2026-09-20 batch** (feedback #94, #96, #93, #79, #30). Mods can no longer `Wolf.in`; couple chat members
   can pin; journal permissions reapply themselves on category changes; role messages carry the game name
   and number; and `Wolf.perms_audit [fix]` now checks every game channel against a shared expected
@@ -24,8 +30,6 @@ This section is maintained by hand. Everything below the marker line is regenera
 
 2. **`Wolf.silent` - alive players with zero messages today** (feedback #26). Needs the activity-tracking foundation (item 7) OR a slower interim version that paginates town-square history since `game.phase_change_at` like `handleSpeedCheck` does (`bot/src/handlers/speed-vote.js`). Prefer building item 7 first. Medium.
 
-3. **`Wolf.remind` - nudge non-voters in their journals** (feedback #24). Reuses `handleNotVoted`'s query (`voting.js`) to find alive players without a vote, then posts a reminder in each player's journal channel (`player_journals` table maps user → channel) instead of cluttering town square. Medium-small.
-
 4. **Rollback command** (feedback #63). Scope tightly: undo the **last** `Wolf.next` only. Restore `day_phase`/`day_number`/`phase_change_at` on `games`, and restore that day's standing votes into `votes` by replaying `vote_history` (each voter's last action for the day; skip voters whose last action was a retract - same reconstruction as `handleLssv`'s past-day path in `voting.js`). Announce the rollback in town square. Medium.
 
 5. **Wolf-team dead channel** (feedback #46). Optional channel where eliminated wolves keep chatting. Fits the existing `game_channels` machinery (see `is_couple_chat` for the pattern of a flagged special channel with custom phase behavior in `channels.js` and `game-phases.js`). Grant view+send to dead wolves at death time (hook `killPlayer` in `players.js`, like `preserveCoupleChatAccess`). Medium.
@@ -41,8 +45,6 @@ This section is maintained by hand. Everything below the marker line is regenera
 ## Frontend
 
 9. **Role shorthand + acronym glossary** (feedback #36, #33 - requested twice). Show common abbreviations on `/roles` (data may need a `shorthand` column on `roles` - migration + admin UI) plus a general glossary section. Small-medium.
-
-10. **Action priority / order-of-operations reference** (feedback #32). A section on `/roles` explaining night-action resolution order. Source material: `engine-generator/RULES.md` and `rules.json` (`orderOfOperations`). Content work more than code. Small.
 
 11. **Rename channels pre-game from the dashboard** (feedback #43). Let mods edit game channel names on the game page before `Wolf.start`; bot reads names at channel creation (`handleStart` in `game.js` builds names from prefix + fixed suffixes - would need to read overrides from `game_channels` or a new column). Medium.
 
@@ -120,9 +122,6 @@ in the snapshot: #22, #31, #53, #66, #69, #76, #77, #78, #80, #83, #87 (implemen
    the Discord API at query time. Roadmap foundation item 7; unlocks the other three.
 2. **#49 - configurable IA reset time** (Jan 2026). Verified: the 09:30 EST cutoff is hardcoded in
    `handlers/utils.js`. Same foundation as #3, so it rides along cheaply.
-3. **#24 - move the @Alive ping warning into journals** (Sep 2025). Verified:
-   `alive-mention-detector.js` still replies in-channel, so the warning still FUDs town square. Note the
-   detector only runs when `ENABLE_ALIVE_MENTION_DETECTION` is set.
 4. **#86 - `Wolf.assign`** (Jun 2026). Verified: no `assign` case in `werewolf-bot.js`; manual assignment is
    dashboard-only. Roadmap item 1.
 5. **#63 - rollback command** (Mar 2026). Verified: no `rollback` case. Now cheaper than when it was filed,
@@ -135,8 +134,8 @@ in the snapshot: #22, #31, #53, #66, #69, #76, #77, #78, #80, #83, #87 (implemen
 8. **#43 - rename channels from the dashboard pre-game** (Dec 2025). Verified: `manage-channels-modal.tsx`
     only invites users, and `add-channel-modal.tsx` names new custom channels; the fixed channels cannot be
     renamed. Roadmap item 11.
-9. **#32 + #33 + #36 - action-priority reference, role shorthands, acronym glossary** (asked twice, Oct
-    2025). Verified: no `shorthand`/`acronym`/`glossary`/order-of-operations content anywhere in `frontend/`.
+9. **#33 + #36 - role shorthands, acronym glossary** (asked twice, Oct
+    2025). Verified: no `shorthand`/`acronym`/`glossary` content anywhere in `frontend/`.
     Content work, low risk, but nothing is blocked on it.
 10. **#57 - give dead players "Signed Up" too** (Feb 2026). Verified: `Wolf.scuff` deliberately only converts
     Alive members and its confirmation embed explicitly promises not to touch Dead. Still valid as a

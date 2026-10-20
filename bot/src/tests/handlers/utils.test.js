@@ -196,6 +196,37 @@ describe('Utility Methods', () => {
         });
     });
 
+    describe('handleFeedback', () => {
+        let owner;
+
+        beforeEach(() => {
+            owner = { send: jest.fn().mockResolvedValue({}) };
+            bot.client.users = { fetch: jest.fn().mockResolvedValue(owner) };
+            bot.db.query.mockResolvedValue({ rows: [{ id: 42, created_at: new Date() }] });
+            jest.spyOn(console, 'log').mockImplementation(() => {});
+        });
+
+        it('DMs the owner when feedback is submitted', async () => {
+            const msg = createMockMessage({ url: 'https://discord.com/channels/g/c/m' });
+            await bot.handleFeedback(msg, ['please', 'add', 'this']);
+
+            expect(bot.client.users.fetch).toHaveBeenCalledWith('162675596772638720');
+            const embed = owner.send.mock.calls[0][0].embeds[0].data;
+            expect(embed.title).toContain('#42');
+            expect(embed.description).toBe('please add this');
+        });
+
+        it('still confirms the submission when the owner DM fails', async () => {
+            owner.send.mockRejectedValue(new Error('Cannot send messages to this user'));
+            jest.spyOn(console, 'error').mockImplementation(() => {});
+            const msg = createMockMessage();
+            await bot.handleFeedback(msg, ['please', 'add', 'this']);
+
+            expect(msg.reply.mock.calls[0][0].embeds[0].data.title).toContain('Feedback Submitted');
+            expect(msg.reply).toHaveBeenCalledTimes(1);
+        });
+    });
+
     describe('handleServer', () => {
         it('displays server stats and active game info', async () => {
             const config = { game_prefix: 'g', game_counter: 5, game_name: 'Origins' };
