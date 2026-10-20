@@ -110,6 +110,20 @@ describe('Utility Methods', () => {
             expect(reply).toMatchObject({ embeds: expect.any(Array) });
             expect(reply.embeds[0].data.title).toContain('Werewolf');
         });
+
+        it('stays within Discord embed limits for moderators', async () => {
+            bot.hasModeratorPermissions = jest.fn().mockReturnValue(true);
+            const msg = createMockMessage();
+            await bot.handleHelp(msg);
+            const { data } = msg.reply.mock.calls[0][0].embeds[0];
+            let total = data.title.length + data.description.length;
+            for (const field of data.fields) {
+                expect(field.value.length).toBeLessThanOrEqual(1024);
+                total += field.name.length + field.value.length;
+            }
+            expect(data.fields.length).toBeLessThanOrEqual(25);
+            expect(total).toBeLessThanOrEqual(6000);
+        });
     });
 
     describe('handleIA', () => {

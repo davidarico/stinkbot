@@ -163,6 +163,15 @@ async handleHelp(message) {
                 name: '🔧 Channel & Phase Management', 
                 value: 
                     '`Wolf.add_channel <n>` - Create additional channel in game category\n' +
+                    '`Wolf.set_voting_booth <channel-name>` - 🗳️ Set voting booth channel for current game\n' +
+                    '`Wolf.lockdown` - 🔒 Lock down townsquare and memos (alive players cannot speak)\n' +
+                    '`Wolf.lockdown lift` - 🔓 Lift lockdown and restore normal permissions\n' +
+                    '`Wolf.populate_journals [number]` - 🧪 Create test journals for testing',
+                inline: false 
+            },
+            { 
+                name: '🗳️ Voting & Players', 
+                value: 
                     '`Wolf.create_vote` - 🗳️ Manually create a voting message (voting booth only)\n' +
                     '`Wolf.get_votes` - 📊 Get current vote counts and **who** voted (mod)\n' +
                     '`Wolf.ratio` - Town / Wolf / Neutral seat counts from the saved role list\n' +
@@ -170,11 +179,7 @@ async handleHelp(message) {
                     '`Wolf.add_in @user` - Add someone to signups without them running `Wolf.in`\n' +
                     '`Wolf.not_voted` - Alive players with no vote yet today (Day 2+ day)\n' +
                     '`Wolf.speed <number> [emoji]` - ⚡ Start a speed vote for Alive players; mod chat is pinged when the target is reached (`Wolf.speed abort` to cancel)\n' +
-                '`Wolf.lssv [day]` - 🗳️ Longest standing second vote: final votes in cast order (defaults to today)\n' +
-                    '`Wolf.set_voting_booth <channel-name>` - 🗳️ Set voting booth channel for current game\n' +
-                    '`Wolf.lockdown` - 🔒 Lock down townsquare and memos (alive players cannot speak)\n' +
-                    '`Wolf.lockdown lift` - 🔓 Lift lockdown and restore normal permissions\n' +
-                    '`Wolf.populate_journals [number]` - 🧪 Create test journals for testing',
+                    '`Wolf.lssv [day]` - 🗳️ Longest standing second vote: final votes in cast order (defaults to today)',
                 inline: false 
             },
             { 
