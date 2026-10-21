@@ -16,12 +16,15 @@ import { shuffleArray } from "@/lib/utils"
 interface Player {
   username: string
   status: "alive" | "dead"
+  roleId?: number
+  alignment?: string
 }
 
 interface Role {
   id: number
   name: string
   alignment: "town" | "wolf" | "neutral"
+  inWolfChat?: boolean
 }
 
 interface BloodhoundCalculatorProps {
@@ -32,9 +35,18 @@ interface BloodhoundCalculatorProps {
 /**
  * Lightweight "generator" for Bloodhound-style night lines (feedback #17).
  * Does not implement full rules - picks among alive players for flavor text.
+ * Wolves in wolf chat are never sampled (feedback #100), matching the bot's
+ * wolf chat rule: a wolf whose role has in_wolf_chat set.
  */
 export function BloodhoundCalculator({ players, gameRoles }: BloodhoundCalculatorProps) {
-  const alive = useMemo(() => players.filter((p) => p.status === "alive"), [players])
+  const alive = useMemo(() => {
+    const wolfChatRoleIds = new Set(gameRoles.filter((r) => r.inWolfChat).map((r) => r.id))
+    return players.filter(
+      (p) =>
+        p.status === "alive" &&
+        !(p.alignment === "wolf" && p.roleId !== undefined && wolfChatRoleIds.has(p.roleId))
+    )
+  }, [players, gameRoles])
   const townRoles = useMemo(
     () => gameRoles.filter((r) => r.alignment === "town").sort((a, b) => a.name.localeCompare(b.name)),
     [gameRoles]
@@ -48,7 +60,7 @@ export function BloodhoundCalculator({ players, gameRoles }: BloodhoundCalculato
   const generate = () => {
     const role = townRoles.find((r) => String(r.id) === searchRoleId)
     if (!role || alive.length === 0) {
-      setOutput("Need at least one alive player and a town role to search for.")
+      setOutput("Need at least one alive non-wolf-chat player and a town role to search for.")
       return
     }
     const shuffled = shuffleArray(alive)

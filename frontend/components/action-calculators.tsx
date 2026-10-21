@@ -23,6 +23,7 @@ interface Role {
   name: string
   alignment: "town" | "wolf" | "neutral"
   description: string
+  inWolfChat?: boolean
 }
 
 interface ActionCalculatorsProps {
