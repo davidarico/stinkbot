@@ -73,6 +73,9 @@ client.on('messageCreate', async (message) => {
         await aliveMentionDetector.handleMessage(message);
     }
     
+    // Count the message toward the active game's activity totals (Wolf.ia and friends)
+    await werewolfBot.recordMessageActivity(message);
+
     const prefix = process.env.BOT_PREFIX || 'Wolf.';
     if (!message.content.toLowerCase().startsWith(prefix.toLowerCase())) return;
 

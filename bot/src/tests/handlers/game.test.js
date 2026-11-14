@@ -387,6 +387,8 @@ describe('Game Handlers', () => {
                 results_channel_id: null, memos_channel_id: null,
                 town_square_channel_id: null, voting_booth_channel_id: null,
                 wolf_chat_channel_id: null, signup_message_id: null,
+                // Dashboard rename (feedback #43): one override, the rest keep their defaults
+                channel_names: { town_square: 'village-green' },
             };
             const config = { game_prefix: 'g', game_counter: 1, game_name: null };
 
@@ -457,6 +459,10 @@ describe('Game Handlers', () => {
             expect(updateCall).toBeDefined();
             const lastReply = msg.reply.mock.calls.at(-1)[0];
             expect(lastReply.embeds[0].data.title).toBe('🎮 Game Started!');
+
+            const createdNames = msg.guild.channels.create.mock.calls.map(([options]) => options.name);
+            expect(createdNames).toEqual(['g1-results', 'g1-player-memos', 'g1-village-green', 'g1-voting-booth', 'g1-wolf-chat']);
+            expect(mockSignupChannel.setName).toHaveBeenCalledWith('g1-dead-chat');
         });
     });
 });

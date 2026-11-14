@@ -457,7 +457,7 @@ async handleJournalPinPerms(message) {
     // Get all journal categories
     const journalCategories = message.guild.channels.cache.filter(
         channel => channel.type === ChannelType.GuildCategory && 
-        (channel.name === 'Journals' || channel.name.startsWith('Journals ('))
+        (channel.name === 'Journals' || channel.name.startsWith('Journals (') || channel.name === this.ACTIVE_JOURNALS_CATEGORY)
     );
 
     if (journalCategories.size === 0) {
@@ -524,10 +524,10 @@ async fixJournalPermissions(guild, onProgress = null) {
         }
     };
 
-    // Get all journal categories
+    // Get all journal categories, including Active Journals (journal-active.js)
     const journalCategories = guild.channels.cache.filter(
         channel => channel.type === ChannelType.GuildCategory &&
-        (channel.name === 'Journals' || channel.name.startsWith('Journals ('))
+        (channel.name === 'Journals' || channel.name.startsWith('Journals (') || channel.name === this.ACTIVE_JOURNALS_CATEGORY)
     );
 
     if (journalCategories.size === 0) {

@@ -1,0 +1,23 @@
+# Throwaway Postgres for e2e runs. Never point the harness at Supabase or the Pi.
+name: stinkbot-e2e
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: stinkbot-e2e-db
+    environment:
+      POSTGRES_USER: stinkbot
+      POSTGRES_PASSWORD: stinkbot
+      POSTGRES_DB: stinkbot_e2e
+    ports:
+      - "127.0.0.1:54329:5432"
+    volumes:
+      - e2e-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stinkbot -d stinkbot_e2e"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  e2e-db:

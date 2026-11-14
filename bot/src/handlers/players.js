@@ -259,6 +259,8 @@ async killPlayer(message) {
         await this.assignRole(targetMember, 'Dead');
         // Dead couple members keep read access to their couple chat (feedback #31)
         await this.preserveCoupleChatAccess(message.guild, targetMember.id);
+        // Dead wolves move to the wolf dead chat, when the game has one (feedback #46)
+        await this.grantDeadWolfChatAccess(message.guild, targetMember.id);
     } else {
         return message.reply(`🪦 That user is not Alive in this game!`);
     }
@@ -307,6 +309,60 @@ async preserveCoupleChatAccess(guild, userId) {
         }
     } catch (error) {
         console.error('Error preserving couple chat access:', error);
+    }
+},
+
+// When a wolf dies, let them into the game's wolf dead chat. Does nothing for
+// non-wolves or for games without one (it is opt-in via Wolf.wolf_dead). (feedback #46)
+async grantDeadWolfChatAccess(guild, userId) {
+    try {
+        const gameResult = await this.db.query(
+            'SELECT id FROM games WHERE server_id = $1 AND status = $2 ORDER BY id DESC LIMIT 1',
+            [guild.id, 'active']
+        );
+
+        if (!gameResult.rows.length) {
+            return;
+        }
+
+        const gameId = gameResult.rows[0].id;
+
+        const chatResult = await this.db.query(
+            'SELECT channel_id, channel_name FROM game_channels WHERE game_id = $1 AND is_dead_wolf_chat = true AND channel_id IS NOT NULL',
+            [gameId]
+        );
+
+        if (!chatResult.rows.length) {
+            return;
+        }
+
+        const wolfResult = await this.db.query(
+            'SELECT 1 FROM players WHERE game_id = $1 AND user_id = $2 AND is_wolf = TRUE',
+            [gameId, userId]
+        );
+
+        if (!wolfResult.rows.length) {
+            return;
+        }
+
+        for (const chat of chatResult.rows) {
+            try {
+                const channel = await this.client.channels.fetch(chat.channel_id);
+                if (!channel) {
+                    continue;
+                }
+
+                await channel.permissionOverwrites.edit(userId, {
+                    ViewChannel: true,
+                    SendMessages: true
+                });
+                console.log(`Added dead wolf ${userId} to ${chat.channel_name}`);
+            } catch (error) {
+                console.error(`Error adding dead wolf ${userId} to ${chat.channel_name}:`, error);
+            }
+        }
+    } catch (error) {
+        console.error('Error granting wolf dead chat access:', error);
     }
 },
 

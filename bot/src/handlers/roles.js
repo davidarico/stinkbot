@@ -67,6 +67,21 @@ isPublicChannel(message) {
     return !channelName.includes('dead-chat') && !channelName.includes('mod-chat');
 },
 
+// Dead chat can be renamed from the dashboard (feedback #43), so the name check in
+// isPublicChannel can miss it. Dead chat is the signup channel of a started game.
+async isRenamedDeadChat(message) {
+    try {
+        const result = await this.db.query(
+            "SELECT 1 FROM games WHERE server_id = $1 AND signup_channel_id = $2 AND status IN ('active', 'ended') LIMIT 1",
+            [message.guild.id, message.channel.id]
+        );
+        return result.rows.length > 0;
+    } catch (error) {
+        console.error('Error checking for a renamed dead chat:', error);
+        return false;
+    }
+},
+
 async assignRole(member, roleName) {
     try {
         const role = member.guild.roles.cache.find(r => r.name === roleName);
@@ -185,7 +200,7 @@ async handleServerRoles(message) {
 },
 
 async handleRolesList(message) {
-    if (this.isPublicChannel(message)) {
+    if (this.isPublicChannel(message) && !(await this.isRenamedDeadChat(message))) {
         return message.reply('WOAH! You trying to scuff the game? Wrong channel buddy!');
     }
 
@@ -517,7 +532,7 @@ async handleRolesList(message) {
 },
 
 async handleRoleConfiguration(message) {
-    if (this.isPublicChannel(message)) {
+    if (this.isPublicChannel(message) && !(await this.isRenamedDeadChat(message))) {
         return message.reply('WOAH! You trying to scuff the game? Wrong channel buddy!');
     }
 

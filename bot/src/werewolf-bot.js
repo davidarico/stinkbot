@@ -149,7 +149,8 @@ class WerewolfBot {
     isJournalTreeChannel(channel) {
         if (!channel) return false;
         if (channel.type === ChannelType.GuildCategory) {
-            return channel.name === 'Journals' || channel.name.startsWith('Journals (');
+            return channel.name === 'Journals' || channel.name.startsWith('Journals (') ||
+                channel.name === this.ACTIVE_JOURNALS_CATEGORY;
         }
         return typeof channel.name === 'string' && channel.name.endsWith('-journal');
     }
@@ -160,6 +161,8 @@ class WerewolfBot {
 
             // A journal moved between categories (the case feedback #93 describes)
             if (this.isJournalTreeChannel(newChannel) && oldChannel?.parentId !== newChannel.parentId) {
+                // The bot's own Active Journals moves keep the journal's permissions intact
+                if (this.wasJournalMovedByBot(newChannel.id)) return;
                 this.scheduleJournalAutoFix(newChannel.guild, `${newChannel.name} moved categories`);
                 return;
             }
@@ -180,6 +183,8 @@ class WerewolfBot {
             if (!channel?.guild) return;
             if (channel.type !== ChannelType.GuildCategory) return;
             if (!this.isJournalTreeChannel(channel)) return;
+            // Created by the bot itself, empty, with permissions copied from the other journal categories
+            if (channel.name === this.ACTIVE_JOURNALS_CATEGORY) return;
             this.scheduleJournalAutoFix(channel.guild, `category ${channel.name} created`);
         } catch (error) {
             console.error('Error handling channel create:', error);
@@ -258,8 +263,14 @@ class WerewolfBot {
                 case 'next':
                     await this.handleNext(message);
                     break;
+                case 'rollback':
+                    await this.handleRollback(message);
+                    break;
                 case 'end':
                     await this.handleEnd(message);
+                    break;
+                case 'winner':
+                    await this.handleWinner(message, args);
                     break;
                 case 'help':
                     await this.handleHelp(message);
@@ -293,6 +304,9 @@ class WerewolfBot {
                     break;
                 case 'add_channel':
                     await this.handleAddChannel(message, args);
+                    break;
+                case 'wolf_dead':
+                    await this.handleWolfDead(message);
                     break;
                 case 'recovery':
                     await this.handleRecovery(message);
@@ -341,6 +355,12 @@ class WerewolfBot {
                     break;
                 case 'iaself':
                     await this.handleIA(message, args, { onlyUserId: message.author.id });
+                    break;
+                case 'ia_history':
+                    await this.handleIAHistory(message, args);
+                    break;
+                case 'silent':
+                    await this.handleSilent(message);
                     break;
                 case 'speed':
                     await this.handleSpeed(message, args);
@@ -449,11 +469,13 @@ Object.assign(WerewolfBot.prototype,
     require('./handlers/voting'),
     require('./handlers/players'),
     require('./handlers/journal'),
+    require('./handlers/journal-active'),
     require('./handlers/archive'),
     require('./handlers/channels'),
     require('./handlers/permissions-audit'),
     require('./handlers/recovery'),
     require('./handlers/speed-vote'),
+    require('./handlers/activity'),
     require('./handlers/utils'),
 );
 

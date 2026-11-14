@@ -1,5 +1,5 @@
 -- Werewolf Discord Bot Database Schema
--- Generated automatically on 2026-07-14T00:51:19.222Z
+-- Generated automatically on 2026-11-14T18:58:19.446Z
 -- This file shows the current database structure with table comments
 -- Run this after migrations to get the latest schema
 
@@ -43,6 +43,7 @@ CREATE TABLE game_channels (
     is_created BOOLEAN DEFAULT FALSE,
     invited_users JSONB,
     is_couple_chat BOOLEAN DEFAULT FALSE,
+    is_dead_wolf_chat BOOLEAN DEFAULT FALSE,
     UNIQUE(channel_id, game_id)
 );
 
@@ -114,7 +115,24 @@ CREATE TABLE games (
     theme_name VARCHAR(100) DEFAULT NULL,
     signups_closed BOOLEAN NOT NULL DEFAULT FALSE,
     dashboard_password_hash TEXT,
-    last_phase_pin_message_id VARCHAR(20)
+    last_phase_pin_message_id VARCHAR(20),
+    last_next_snapshot JSONB,
+    winning_team VARCHAR(20),
+    channel_names JSONB,
+    activity_tracked_since TIMESTAMPTZ,
+    UNIQUE(game_number, server_id)
+);
+
+CREATE TABLE message_activity (
+    id SERIAL PRIMARY KEY,
+    game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    channel_id VARCHAR(20) NOT NULL,
+    user_id VARCHAR(20) NOT NULL,
+    day_number INTEGER NOT NULL,
+    day_phase VARCHAR(10) NOT NULL,
+    bucket_start TIMESTAMPTZ NOT NULL,
+    message_count INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(bucket_start, channel_id, day_number, day_phase, game_id, user_id)
 );
 
 CREATE TABLE night_action (
@@ -146,7 +164,7 @@ CREATE TABLE players (
     status VARCHAR(20) NOT NULL DEFAULT 'alive',
     is_wolf BOOLEAN DEFAULT FALSE,
     signed_up_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    role_id INTEGER,
+    role_id INTEGER REFERENCES roles(id),
     skinned_role VARCHAR(100) DEFAULT NULL,
     is_dead BOOLEAN DEFAULT FALSE,
     is_framed BOOLEAN DEFAULT FALSE,
@@ -167,7 +185,7 @@ CREATE TABLE roles (
     standard_results_flavor TEXT,
     immunities TEXT,
     special_properties TEXT,
-    framer_interaction TEXT DEFAULT FALSE,
+    framer_interaction TEXT,
     team VARCHAR(50),
     in_wolf_chat BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -187,7 +205,9 @@ CREATE TABLE server_configs (
     game_name VARCHAR(100),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    server_name VARCHAR(255)
+    server_name VARCHAR(255),
+    ia_reset_time VARCHAR(5) NOT NULL DEFAULT '09:30',
+    active_journals BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE TABLE server_users (

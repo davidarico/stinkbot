@@ -95,6 +95,33 @@ const SPEEDWOLF_CATEGORY_CACHE_MS = 5 * 60 * 1000
 
 export type ArchiveScope = 'main' | 'baseball' | 'speedwolf'
 
+// The channels Wolf.start creates, with their default name suffixes. Mirrors
+// CORE_CHANNEL_DEFAULT_NAMES in bot/src/handlers/game.js - keep the two in sync.
+// Per-game overrides live in games.channel_names.
+export const CORE_CHANNELS = [
+  { key: 'results', label: 'Results', defaultName: 'results' },
+  { key: 'memos', label: 'Player Memos', defaultName: 'player-memos' },
+  { key: 'town_square', label: 'Town Square', defaultName: 'townsquare' },
+  { key: 'voting_booth', label: 'Voting Booth', defaultName: 'voting-booth' },
+  { key: 'wolf_chat', label: 'Wolf Chat', defaultName: 'wolf-chat' },
+  { key: 'dead_chat', label: 'Dead Chat', defaultName: 'dead-chat' },
+] as const
+
+// Names the bot gives channels outside CORE_CHANNELS (created at Wolf.create).
+const RESERVED_CHANNEL_NAMES = ['mod-chat', 'breakdown', 'signups']
+
+// Same shape Discord forces on text channel names.
+export function sanitizeChannelSuffix(input: string): string {
+  return input
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9_-]/g, '')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 50)
+}
+
 export class DatabaseService {
   private pool: Pool
   // Message archives live in a separate self-hosted Postgres (Pi behind DuckDNS)
@@ -705,6 +732,89 @@ export class DatabaseService {
       }
     } catch (error) {
       console.error('Error updating game settings:', error)
+      throw error
+    }
+  }
+
+  async getCoreChannelNames(gameId: string) {
+    try {
+      const result = await this.pool.query(
+        `SELECT g.status, g.game_number, g.channel_names, sc.game_prefix
+         FROM games g
+         LEFT JOIN server_configs sc ON sc.server_id = g.server_id
+         WHERE g.id = $1`,
+        [parseInt(gameId)]
+      )
+      const row = result.rows[0]
+      if (!row) return null
+
+      const overrides: Record<string, string> = row.channel_names || {}
+      return {
+        prefix: `${row.game_prefix ?? 'g'}${row.game_number}-`,
+        // Wolf.start reads the names once, so they are only editable during signups.
+        editable: row.status === 'signup',
+        channels: CORE_CHANNELS.map(channel => ({
+          key: channel.key,
+          label: channel.label,
+          defaultName: channel.defaultName,
+          name: overrides[channel.key] || channel.defaultName,
+        })),
+      }
+    } catch (error) {
+      console.error('Error fetching core channel names:', error)
+      throw error
+    }
+  }
+
+  async updateCoreChannelNames(gameId: string, names: Record<string, string>) {
+    try {
+      const overrides: Record<string, string> = {}
+      const finalNames: string[] = []
+
+      for (const channel of CORE_CHANNELS) {
+        const requested = typeof names?.[channel.key] === 'string' ? sanitizeChannelSuffix(names[channel.key]) : ''
+        const name = requested || channel.defaultName
+        if (name !== channel.defaultName) overrides[channel.key] = name
+        finalNames.push(name)
+      }
+
+      if (new Set(finalNames).size !== finalNames.length) {
+        return { success: false, error: 'Channel names must be unique' }
+      }
+      const reserved = finalNames.find(name => RESERVED_CHANNEL_NAMES.includes(name))
+      if (reserved) {
+        return { success: false, error: `"${reserved}" is used by another game channel` }
+      }
+
+      // Wolf.start looks channels up by name, so a core channel can't share a name with
+      // one of the game's extra channels (stored with the prefix, e.g. "g1-memes").
+      const extraChannels = await this.pool.query(
+        `SELECT gc.channel_name, sc.game_prefix, g.game_number
+         FROM game_channels gc
+         JOIN games g ON g.id = gc.game_id
+         LEFT JOIN server_configs sc ON sc.server_id = g.server_id
+         WHERE gc.game_id = $1`,
+        [parseInt(gameId)]
+      )
+      const taken = extraChannels.rows.find(row =>
+        finalNames.some(name => row.channel_name === `${row.game_prefix ?? 'g'}${row.game_number}-${name}`)
+      )
+      if (taken) {
+        return { success: false, error: `"${taken.channel_name}" is already one of this game's extra channels` }
+      }
+
+      // The status check lives in the UPDATE so a game that starts mid-edit can't be renamed.
+      const result = await this.pool.query(
+        `UPDATE games SET channel_names = $1 WHERE id = $2 AND status = 'signup' RETURNING id`,
+        [Object.keys(overrides).length > 0 ? JSON.stringify(overrides) : null, parseInt(gameId)]
+      )
+      if (result.rows.length === 0) {
+        return { success: false, error: 'Channel names can only be changed before the game starts' }
+      }
+
+      return { success: true }
+    } catch (error) {
+      console.error('Error updating core channel names:', error)
       throw error
     }
   }

@@ -47,7 +47,7 @@ const DARK_ONLY = 'depends on `Wolf.start dark`, which is not persisted';
 /**
  * Expected role -> permission map for one channel.
  *
- * @param {string} kind        results | memos | town_square | voting_booth | wolf_chat | dead_chat | mod_chat | custom | couple_chat
+ * @param {string} kind        results | memos | town_square | voting_booth | wolf_chat | dead_chat | mod_chat | custom | couple_chat | dead_wolf_chat
  * @param {object} state       { phase: 'day'|'night', dayNumber: number, openAtDawn: bool, openAtDusk: bool }
  * @returns {object} roleName -> { PermissionName: { value: bool|null, strict: bool, reason?: string } }
  */
@@ -136,6 +136,18 @@ function expectedForChannel(kind, state = {}) {
                 Mod: strict(true, true),
             };
 
+        case 'dead_wolf_chat':
+            return {
+                '@everyone': strict(false, false),
+                // Dead wolves get a per-user overwrite; living players never see it. Alive's
+                // SendMessages still follows the phase like any game_channels row, so only
+                // ViewChannel is checked.
+                Alive: { ViewChannel: { value: false, strict: true } },
+                Dead: strict(true, false),
+                Spectator: strict(true, false),
+                Mod: strict(true, true),
+            };
+
         case 'custom':
             return {
                 '@everyone': strict(false, false),
@@ -189,14 +201,14 @@ async collectGameChannels(game) {
     add(game.mod_chat_channel_id, 'mod_chat', 'Mod Chat');
 
     const customResult = await this.db.query(
-        'SELECT channel_id, channel_name, open_at_dawn, open_at_dusk, is_couple_chat, invited_users FROM game_channels WHERE game_id = $1 AND channel_id IS NOT NULL AND is_created = true',
+        'SELECT channel_id, channel_name, open_at_dawn, open_at_dusk, is_couple_chat, is_dead_wolf_chat, invited_users FROM game_channels WHERE game_id = $1 AND channel_id IS NOT NULL AND is_created = true',
         [game.id]
     );
 
     for (const row of customResult.rows) {
         channels.push({
             id: row.channel_id,
-            kind: row.is_couple_chat ? 'couple_chat' : 'custom',
+            kind: row.is_couple_chat ? 'couple_chat' : (row.is_dead_wolf_chat ? 'dead_wolf_chat' : 'custom'),
             label: row.channel_name,
             openAtDawn: row.open_at_dawn,
             openAtDusk: row.open_at_dusk,
@@ -328,9 +340,54 @@ async auditGamePermissions(guild, game, { fix = false } = {}) {
                 drift.push(finding);
             }
         }
+
+        // Dead wolves need to see and talk in the wolf dead chat (feedback #46).
+        if (entry.kind === 'dead_wolf_chat') {
+            const deadWolfIds = await this.getDeadWolfIds(guild, game, roleIds.Dead);
+            for (const userId of deadWolfIds) {
+                for (const permissionName of [VIEW, 'SendMessages']) {
+                    const actual = this.readOverwrite(channel, userId, permissionName);
+                    if (actual === true) continue;
+
+                    const finding = {
+                        channel: channel.name,
+                        channelId: channel.id,
+                        role: `<@${userId}>`,
+                        permission: permissionName,
+                        expected: true,
+                        actual,
+                        fixed: false,
+                    };
+
+                    if (fix) {
+                        try {
+                            await channel.permissionOverwrites.edit(userId, { [permissionName]: true });
+                            finding.fixed = true;
+                        } catch (error) {
+                            finding.error = error?.message || String(error);
+                        }
+                    }
+
+                    drift.push(finding);
+                }
+            }
+        }
     }
 
     return { checked, drift, advisories, missing };
+},
+
+// Wolves in this game who currently hold the Dead role.
+async getDeadWolfIds(guild, game, deadRoleId) {
+    if (!deadRoleId) return [];
+    const wolvesResult = await this.db.query(
+        'SELECT user_id FROM players WHERE game_id = $1 AND is_wolf = TRUE',
+        [game.id]
+    );
+    await guild.members.fetch().catch(() => null);
+    return wolvesResult.rows
+        .map(row => row.user_id)
+        .filter(userId => guild.members.cache.get(userId)?.roles?.cache?.has(deadRoleId));
 },
 
 userCanPin(channel, userId) {

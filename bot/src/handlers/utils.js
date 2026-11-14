@@ -153,12 +153,14 @@ async handleHelp(message) {
                     '`Wolf.server_roles` - 🎭 Create all game roles\n' +
                     '`Wolf.create` - Create a new game with signup channel\n' +
                     '`Wolf.start [dark]` - Start the game and create all channels (use `dark` to hide Townsquare, Memos, and Voting Booth from Alive role)\n' +
-                    '`Wolf.settings` - View/change game and channel settings (votes_to_hang, messages)\n' +
+                    '`Wolf.settings` - View/change game and channel settings (votes_to_hang, messages, ia_reset, active_journals)\n' +
                     '`Wolf.channel_config` - View additional channel settings\n' +
                     '`Wolf.signups [open|close]` - Open or close signups\n' +
                     '`Wolf.remove_signup <@user or user ID>` - Remove a player from signups (suspended, left server, over capacity, etc.)\n' +
                     '`Wolf.next` - Move to the next phase (day/night)\n' +
-                    '`Wolf.end` - End the current game (requires confirmation)\n' +
+                    '`Wolf.rollback` - ⏪ Undo the last `Wolf.next` (restores votes)\n' +
+                    '`Wolf.end` - End the current game and record the winner\n' +
+                    '`Wolf.winner <team>` - Set the winner of the last ended game\n' +
                     '`Wolf.scuff` - Rewind an active game back to signup (requires confirmation)', 
                 inline: false 
             },
@@ -166,6 +168,7 @@ async handleHelp(message) {
                 name: '🔧 Channel & Phase Management', 
                 value: 
                     '`Wolf.add_channel <n>` - Create additional channel in game category\n' +
+                    '`Wolf.wolf_dead` - 🪦 Create a chat for dead wolves (they join it when killed)\n' +
                     '`Wolf.set_voting_booth <channel-name>` - 🗳️ Set voting booth channel for current game\n' +
                     '`Wolf.lockdown` - 🔒 Lock down townsquare and memos (alive players cannot speak)\n' +
                     '`Wolf.lockdown lift` - 🔓 Lift lockdown and restore normal permissions\n' +
@@ -213,6 +216,8 @@ async handleHelp(message) {
                 value: 
                     '`Wolf.server` - 🖥️ Display detailed server information\n' +
                     '`Wolf.ia [channel] <YYYY-MM-DD HH:MM>` - Message count per player since date (EST). BOTH date and channel are optional.\n' +
+                    '`Wolf.ia_history [channel] [min]` - Messages per player for every day of the game (`min` marks days under it)\n' +
+                    '`Wolf.silent` - Alive players with no messages today\n' +
                     '`Wolf.speed_check` - See messages counts since phase change',
                 inline: false 
             },
@@ -429,26 +434,19 @@ async handleIA(message, args, opts = {}) {
         }
     }
 
-    console.log(dateParts);
-    console.log(channelArg);
+    // The IA window starts at the server's reset time (Wolf.settings ia_reset, Eastern).
+    // With no date given, that is the most recent reset - the window the tracker covers.
+    const resetTime = await this.getIaResetTime(serverId);
+    const usingDefaultWindow = !dateParts.length;
 
-    // Default start time behavior: if no date provided, use current date in EST/EDT (with the 9:30 AM cutoff)
-    if (!dateParts.length) {
-        const now = moment.tz("America/New_York");
-        const cutoffTime = moment.tz("America/New_York").hour(9).minute(30).second(0).millisecond(0);
-
-        // If it's before 9:30 AM EST today, search from 9:30 AM yesterday
-        const searchDate = now.isBefore(cutoffTime)
-            ? now.subtract(1, 'day').format('YYYY-MM-DD')
-            : now.format('YYYY-MM-DD');
-
-        dateParts = [searchDate, '09:30'];
+    if (usingDefaultWindow) {
+        dateParts = [this.currentIaWindowStart(resetTime).format('YYYY-MM-DD'), resetTime];
     } else if (dateParts.length === 1) {
-        // Date provided without time => default time to 09:30
+        // Date provided without time => default time to the reset time
         if (!looksLikeDate(dateParts[0])) {
             return message.reply('❌ Invalid date format. Please use: `Wolf.ia [channel] YYYY-MM-DD [HH:MM]` (EST timezone)\nExamples:\n- `Wolf.ia 2024-12-01`\n- `Wolf.ia town-square 2024-12-01 14:30`');
         }
-        dateParts = [dateParts[0], '09:30'];
+        dateParts = [dateParts[0], resetTime];
     } else {
         // If time is present, validate it (and ignore any extra parts beyond date+time)
         if (!looksLikeDate(dateParts[0]) || !looksLikeTime(dateParts[1])) {
@@ -483,8 +481,6 @@ async handleIA(message, args, opts = {}) {
             if (!channelArg) {
                 return await this.client.channels.fetch(game.town_square_channel_id);
             }
-
-            console.log("channelArg:", channelArg);
 
             // Support channel mention (<#id>), raw ID, "#name", or "name"
             const mentionMatch = channelArg.match(/^<#(\d+)>$/);
@@ -530,7 +526,6 @@ async handleIA(message, args, opts = {}) {
         };
 
         const activityChannel = await resolveActivityChannel();
-        console.log("activityChannel:", activityChannel);
         if (!activityChannel) {
             return message.reply(channelArg
                 ? `❌ Channel not found: \`${channelArg}\`. Try \`Wolf.ia #channel-name\` or \`Wolf.ia 123456789012345678\`.`
@@ -566,108 +561,7 @@ async handleIA(message, args, opts = {}) {
             return message.reply('❌ Alive role not found. Please use `Wolf.server_roles` to set up roles.');
         }
 
-        // OPTIMIZATION: Fetch all guild members at once instead of individual calls
-        try {
-            await message.guild.members.fetch();
-        } catch (error) {
-            console.log('Could not fetch all guild members, falling back to individual fetches');
-            // Fallback to original method if bulk fetch fails
-            const alivePlayers = [];
-            for (const player of playersResult.rows) {
-                try {
-                    const member = await message.guild.members.fetch(player.user_id);
-                    if (member && member.roles.cache.has(aliveRole.id)) {
-                        alivePlayers.push(player);
-                    }
-                } catch (error) {
-                    console.error(`Error checking role for player ${player.username}:`, error);
-                    // Skip this player if we can't fetch them
-                }
-            }
-            
-            if (alivePlayers.length === 0) {
-                return message.reply(onlyUserId ? '❌ You do not have the Alive role (or you are not in this game).' : '❌ No alive players found in the current game.');
-            }
-
-            // Randomize the player order to prevent role inference
-            const shuffledPlayers = [...alivePlayers];
-            for (let i = shuffledPlayers.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [shuffledPlayers[i], shuffledPlayers[j]] = [shuffledPlayers[j], shuffledPlayers[i]];
-            }
-
-            // Initialize message count object
-            const messageCounts = {};
-            shuffledPlayers.forEach(player => {
-                messageCounts[player.user_id] = {
-                    username: player.username,
-                    count: 0
-                };
-            });
-
-            // Fetch messages from the selected channel since the specified date
-            let allMessages = [];
-            let lastMessageId = null;
-            
-            // Discord API limits us to 100 messages per request, so we need to paginate
-            while (true) {
-                const options = { limit: 100 };
-                if (lastMessageId) {
-                    options.before = lastMessageId;
-                }
-
-                const messages = await activityChannel.messages.fetch(options);
-                
-                if (messages.size === 0) break;
-
-                // Filter messages by date and add to our collection
-                const filteredMessages = messages.filter(msg => 
-                    msg.createdAt >= utcDate && 
-                    !msg.author.bot && 
-                    messageCounts.hasOwnProperty(msg.author.id)
-                );
-
-                allMessages.push(...filteredMessages.values());
-                
-                // Check if we've gone past our date range
-                const oldestMessage = messages.last();
-                if (oldestMessage.createdAt < utcDate) {
-                    break;
-                }
-
-                lastMessageId = oldestMessage.id;
-            }
-
-            // Count messages per player
-            allMessages.forEach(msg => {
-                if (messageCounts[msg.author.id]) {
-                    messageCounts[msg.author.id].count++;
-                }
-            });
-
-            // Sort players by message count (highest first)
-            const sortedPlayers = Object.values(messageCounts)
-                .sort((a, b) => b.count - a.count);
-
-            const totalMessages = allMessages.length;
-            const embeds = this._buildActivityReportEmbeds(
-                sortedPlayers,
-                totalMessages,
-                activityChannel,
-                dateTimeStr,
-                onlyUserId
-            );
-            return await this._replyEmbedsWithinLimit(message, embeds);
-        }
-
-        // Use cached members for much faster processing
-        const alivePlayers = [];
-        for (const player of playersResult.rows) {
-            const member = message.guild.members.cache.get(player.user_id);
-            if (member && member.roles.cache.has(aliveRole.id)) {
-                alivePlayers.push(player);
-            }
-        }
+        const alivePlayers = await this.filterAlivePlayers(message.guild, playersResult.rows, aliveRole);
 
         if (alivePlayers.length === 0) {
             return message.reply(onlyUserId ? '❌ You do not have the Alive role (or you are not in this game).' : '❌ No alive players found in the current game.');
@@ -680,60 +574,20 @@ async handleIA(message, args, opts = {}) {
             [shuffledPlayers[i], shuffledPlayers[j]] = [shuffledPlayers[j], shuffledPlayers[i]];
         }
 
-        // Initialize message count object
-        const messageCounts = {};
-        shuffledPlayers.forEach(player => {
-            messageCounts[player.user_id] = {
-                username: player.username,
-                count: 0
-            };
-        });
-
-        // Fetch messages from the selected channel since the specified date
-        let allMessages = [];
-        let lastMessageId = null;
-        
-        // Discord API limits us to 100 messages per request, so we need to paginate
-        while (true) {
-            const options = { limit: 100 };
-            if (lastMessageId) {
-                options.before = lastMessageId;
-            }
-
-            const messages = await activityChannel.messages.fetch(options);
-            
-            if (messages.size === 0) break;
-
-            // Filter messages by date and add to our collection
-            const filteredMessages = messages.filter(msg => 
-                msg.createdAt >= utcDate && 
-                !msg.author.bot && 
-                messageCounts.hasOwnProperty(msg.author.id)
-            );
-
-            allMessages.push(...filteredMessages.values());
-            
-            // Check if we've gone past our date range
-            const oldestMessage = messages.last();
-            if (oldestMessage.createdAt < utcDate) {
-                break;
-            }
-
-            lastMessageId = oldestMessage.id;
-        }
-
-        // Count messages per player
-        allMessages.forEach(msg => {
-            if (messageCounts[msg.author.id]) {
-                messageCounts[msg.author.id].count++;
-            }
-        });
+        // The default window is answered from the live counters when they cover all of it.
+        // Custom dates, and games that were already running when tracking shipped, still
+        // page through the channel.
+        const playerIds = shuffledPlayers.map(player => player.user_id);
+        const counts = usingDefaultWindow && this.isActivityTrackedSince(game, utcDate, activityChannel)
+            ? await this.countTrackedMessages(game.id, [activityChannel.id], { since: utcDate })
+            : await this.countMessagesByPaging(activityChannel, utcDate, playerIds);
 
         // Sort players by message count (highest first)
-        const sortedPlayers = Object.values(messageCounts)
+        const sortedPlayers = shuffledPlayers
+            .map(player => ({ username: player.username, count: counts.get(player.user_id) || 0 }))
             .sort((a, b) => b.count - a.count);
 
-        const totalMessages = allMessages.length;
+        const totalMessages = sortedPlayers.reduce((sum, player) => sum + player.count, 0);
         const embeds = this._buildActivityReportEmbeds(
             sortedPlayers,
             totalMessages,

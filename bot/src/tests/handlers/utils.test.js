@@ -137,6 +137,7 @@ describe('Utility Methods', () => {
             };
             bot.db.query = jest.fn()
                 .mockResolvedValueOnce({ rows: [game] })
+                .mockResolvedValueOnce({ rows: [] })  // server_configs ia_reset_time
                 .mockResolvedValueOnce({ rows: [{ user_id: 'user-1', username: 'Alice' }] });
 
             const mockChannel = {
@@ -169,6 +170,7 @@ describe('Utility Methods', () => {
             bot.db.query = jest.fn()
                 .mockResolvedValueOnce({ rows: [game] })
                 .mockResolvedValueOnce({ rows: [{ '1': 1 }] })  // selfInGame check
+                .mockResolvedValueOnce({ rows: [] })  // server_configs ia_reset_time
                 .mockResolvedValueOnce({ rows: [{ user_id: 'user-123', username: 'Alice' }] });
 
             const mockChannel = {

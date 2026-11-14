@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
-import { Users, Plus, X, Trash2 } from "lucide-react"
+import { Users, Plus, X, Trash2, Save } from "lucide-react"
 
 interface Player {
   id: number
@@ -29,6 +29,18 @@ interface GameChannel {
   invited_users?: string[]
 }
 
+// The channels Wolf.start creates. Their names can be changed until the game starts.
+interface CoreChannelNames {
+  prefix: string
+  editable: boolean
+  channels: Array<{
+    key: string
+    label: string
+    defaultName: string
+    name: string
+  }>
+}
+
 interface ManageChannelsModalProps {
   gameId: string
   isOpen: boolean
@@ -43,6 +55,9 @@ export function ManageChannelsModal({ gameId, isOpen, onClose }: ManageChannelsM
   const [selectedUserId, setSelectedUserId] = useState<string>("")
   const [channelToDelete, setChannelToDelete] = useState<GameChannel | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [coreChannels, setCoreChannels] = useState<CoreChannelNames | null>(null)
+  const [coreNameDrafts, setCoreNameDrafts] = useState<Record<string, string>>({})
+  const [savingCoreNames, setSavingCoreNames] = useState(false)
 
   useEffect(() => {
     if (isOpen) {
@@ -62,6 +77,12 @@ export function ManageChannelsModal({ gameId, isOpen, onClose }: ManageChannelsM
         setChannels(channelsData)
       }
 
+      // Load the names of the channels Wolf.start creates
+      const coreResponse = await fetch(`/api/games/${gameId}/channel-names`)
+      if (coreResponse.ok) {
+        applyCoreChannels(await coreResponse.json())
+      }
+
       // Load players
       const playersResponse = await fetch(`/api/games/${gameId}/players`)
       if (playersResponse.ok) {
@@ -77,6 +98,54 @@ export function ManageChannelsModal({ gameId, isOpen, onClose }: ManageChannelsM
       })
     } finally {
       setLoading(false)
+    }
+  }
+
+  const applyCoreChannels = (data: CoreChannelNames) => {
+    setCoreChannels(data)
+    setCoreNameDrafts(Object.fromEntries(data.channels.map(channel => [channel.key, channel.name])))
+  }
+
+  // Same shape Discord forces on text channel names
+  const sanitizeCoreName = (input: string) =>
+    input.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9_-]/g, "").slice(0, 50)
+
+  const coreNamesChanged = coreChannels
+    ? coreChannels.channels.some(channel => (coreNameDrafts[channel.key] ?? "") !== channel.name)
+    : false
+
+  const saveCoreChannelNames = async () => {
+    try {
+      setSavingCoreNames(true)
+      const response = await fetch(`/api/games/${gameId}/channel-names`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ names: coreNameDrafts })
+      })
+      const data = await response.json()
+
+      if (response.ok) {
+        applyCoreChannels(data)
+        toast({
+          title: "Success",
+          description: "Channel names saved. They apply when the game starts.",
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: data.error || "Failed to save channel names",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error('Error saving channel names:', error)
+      toast({
+        title: "Error",
+        description: "Failed to save channel names",
+        variant: "destructive",
+      })
+    } finally {
+      setSavingCoreNames(false)
     }
   }
 
@@ -239,9 +308,66 @@ export function ManageChannelsModal({ gameId, isOpen, onClose }: ManageChannelsM
           </div>
         ) : (
           <div className="space-y-6">
+            {coreChannels && (
+              <Card className="bg-card border-border">
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between text-white">
+                    <span>Game Channels</span>
+                    {!coreChannels.editable && (
+                      <Badge variant="secondary" className="text-xs bg-secondary text-muted-foreground">
+                        Locked - game started
+                      </Badge>
+                    )}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    {coreChannels.editable
+                      ? "Rename the channels the bot creates at game start. Leave a name empty to use the default."
+                      : "These names can only be changed before the game starts."}
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {coreChannels.channels.map((channel) => (
+                      <div key={channel.key} className="space-y-1">
+                        <label htmlFor={`core-channel-${channel.key}`} className="text-sm font-medium text-white">
+                          {channel.label}
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-muted-foreground font-mono">{coreChannels.prefix}</span>
+                          <Input
+                            id={`core-channel-${channel.key}`}
+                            value={coreNameDrafts[channel.key] ?? ""}
+                            onChange={(e) =>
+                              setCoreNameDrafts(prev => ({ ...prev, [channel.key]: sanitizeCoreName(e.target.value) }))
+                            }
+                            placeholder={channel.defaultName}
+                            disabled={!coreChannels.editable || savingCoreNames}
+                            className="bg-secondary border-border text-white font-mono"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {coreChannels.editable && (
+                    <div className="flex justify-end">
+                      <Button
+                        size="sm"
+                        onClick={saveCoreChannelNames}
+                        disabled={!coreNamesChanged || savingCoreNames}
+                        className="gap-1.5"
+                      >
+                        <Save className="w-4 h-4" />
+                        {savingCoreNames ? "Saving..." : "Save Names"}
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
             {channels.length === 0 ? (
               <div className="text-center py-8">
-                <p className="text-muted-foreground">No channels found for this game.</p>
+                <p className="text-muted-foreground">No extra channels added to this game.</p>
               </div>
             ) : (
               channels.map((channel) => {

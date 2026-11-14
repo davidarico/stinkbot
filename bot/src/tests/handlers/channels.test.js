@@ -19,7 +19,9 @@ describe('Channel & Settings Handlers', () => {
             };
             bot.db.query = jest.fn()
                 .mockResolvedValueOnce({ rows: [game] })  // active game
-                .mockResolvedValueOnce({ rows: [] });      // game_channels
+                .mockResolvedValueOnce({ rows: [] })      // game_channels
+                .mockResolvedValueOnce({ rows: [{ ia_reset_time: '00:00' }] })   // server_configs (IA reset)
+                .mockResolvedValueOnce({ rows: [{ active_journals: true }] });   // server_configs (active journals)
 
             const msg = createMockMessage();
             await bot.handleSettings(msg, []);
@@ -27,6 +29,9 @@ describe('Channel & Settings Handlers', () => {
             const reply = msg.reply.mock.calls[0][0];
             expect(reply).toMatchObject({ embeds: expect.any(Array) });
             expect(reply.embeds[0].data.title).toBe('⚙️ Game Settings');
+            const fields = reply.embeds[0].data.fields;
+            expect(fields.find(f => f.name === 'IA Reset Time').value).toContain('00:00 ET');
+            expect(fields.find(f => f.name === 'Active Journals').value).toContain('On');
         });
 
         it('updates a setting when key=value is provided', async () => {

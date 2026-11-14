@@ -264,9 +264,12 @@ async handleAddChannel(message, args) {
 
         // Position the channel between voting booth and wolf chat
         try {
-            // Find the wolf chat channel to position our new channel before it
-            const wolfChatChannel = category.children.cache.find(channel => 
-                channel.name.includes('-wolf-chat')
+            // Find the wolf chat channel to position our new channel before it. Matched by
+            // id first because the dashboard can rename it (feedback #43).
+            const wolfChatChannel = category.children.cache.find(channel =>
+                game.wolf_chat_channel_id
+                    ? channel.id === game.wolf_chat_channel_id
+                    : channel.name.includes('-wolf-chat')
             );
             
             if (wolfChatChannel) {
@@ -304,6 +307,132 @@ async handleAddChannel(message, args) {
     }
 },
 
+// Optional channel where eliminated wolves can keep talking to each other (feedback #46).
+// Living wolves can't see it; dead wolves get a per-user overwrite here and from Wolf.kill.
+async handleWolfDead(message) {
+    const serverId = message.guild.id;
+
+    const gameResult = await this.db.query(
+        'SELECT * FROM games WHERE server_id = $1 AND status = $2',
+        [serverId, 'active']
+    );
+
+    if (!gameResult.rows.length) {
+        return message.reply('❌ No active game found.');
+    }
+
+    const game = gameResult.rows[0];
+
+    const existingResult = await this.db.query(
+        'SELECT channel_id FROM game_channels WHERE game_id = $1 AND is_dead_wolf_chat = true AND channel_id IS NOT NULL',
+        [game.id]
+    );
+    if (existingResult.rows.length) {
+        return message.reply(`❌ This game already has a wolf dead chat: <#${existingResult.rows[0].channel_id}>`);
+    }
+
+    const aliveRole = message.guild.roles.cache.find(r => r.name === 'Alive');
+    const deadRole = message.guild.roles.cache.find(r => r.name === 'Dead');
+    const spectatorRole = message.guild.roles.cache.find(r => r.name === 'Spectator');
+    const modRole = message.guild.roles.cache.find(r => r.name === 'Mod');
+
+    const missingRoles = [['Alive', aliveRole], ['Dead', deadRole], ['Spectator', spectatorRole], ['Mod', modRole]]
+        .filter(([, role]) => !role)
+        .map(([name]) => name);
+    if (missingRoles.length > 0) {
+        return message.reply(`❌ Missing required roles: ${missingRoles.join(', ')}. Run \`Wolf.server_roles\` first.`);
+    }
+
+    const configResult = await this.db.query(
+        'SELECT * FROM server_configs WHERE server_id = $1',
+        [serverId]
+    );
+    const config = configResult.rows[0];
+    const fullChannelName = `${config.game_prefix}${game.game_number}-wolf-dead`;
+
+    try {
+        const category = await this.client.channels.fetch(game.category_id);
+        const newChannel = await message.guild.channels.create({
+            name: fullChannelName,
+            type: ChannelType.GuildText,
+            parent: category.id,
+            permissionOverwrites: [
+                {
+                    id: message.guild.roles.everyone.id,
+                    deny: ['ViewChannel', 'SendMessages', 'CreatePrivateThreads', 'CreatePublicThreads']
+                },
+                {
+                    id: modRole.id,
+                    allow: ['ViewChannel', 'SendMessages']
+                },
+                {
+                    id: spectatorRole.id,
+                    allow: ['ViewChannel'],
+                    deny: ['SendMessages']
+                },
+                {
+                    id: aliveRole.id,
+                    deny: ['ViewChannel', 'SendMessages']
+                },
+                {
+                    id: deadRole.id,
+                    allow: ['ViewChannel'],
+                    deny: ['SendMessages']
+                }
+            ]
+        });
+
+        // Sit directly under wolf chat
+        try {
+            const wolfChatChannel = game.wolf_chat_channel_id
+                ? await this.client.channels.fetch(game.wolf_chat_channel_id)
+                : null;
+            if (wolfChatChannel) {
+                await newChannel.setPosition(wolfChatChannel.position + 1);
+            }
+        } catch (positionError) {
+            console.error('Error positioning wolf dead chat:', positionError);
+        }
+
+        await this.db.query(
+            'INSERT INTO game_channels (game_id, channel_id, channel_name, day_message, night_message, is_created, is_dead_wolf_chat) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+            [game.id, newChannel.id, fullChannelName, game.day_message, game.night_message, true, true]
+        );
+
+        // Wolves who died before the channel existed
+        const wolvesResult = await this.db.query(
+            'SELECT user_id FROM players WHERE game_id = $1 AND is_wolf = TRUE',
+            [game.id]
+        );
+        await message.guild.members.fetch().catch(() => null);
+        let added = 0;
+        for (const wolf of wolvesResult.rows) {
+            const member = message.guild.members.cache.get(wolf.user_id);
+            if (!member || !member.roles.cache.has(deadRole.id)) continue;
+            try {
+                await newChannel.permissionOverwrites.edit(member.id, {
+                    ViewChannel: true,
+                    SendMessages: true
+                });
+                added++;
+            } catch (error) {
+                console.error(`Error adding dead wolf ${wolf.user_id} to wolf dead chat:`, error);
+            }
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle('🪦 Wolf Dead Chat Created')
+            .setDescription(`<#${newChannel.id}> is ready. Wolves are added automatically when they die via \`Wolf.kill\`.`)
+            .addFields({ name: 'Dead wolves added now', value: `${added}`, inline: true })
+            .setColor(0x00AE86);
+
+        await message.reply({ embeds: [embed] });
+    } catch (error) {
+        console.error('Error creating wolf dead chat:', error);
+        await message.reply('❌ An error occurred while creating the wolf dead chat.');
+    }
+},
+
 async handleSettings(message, args) {
     const serverId = message.guild.id;
 
@@ -327,10 +456,15 @@ async handleSettings(message, args) {
             [game.id]
         );
 
+        const iaResetTime = await this.getIaResetTime(serverId);
+        const activeJournals = await this.isActiveJournalsEnabled(serverId);
+
         const embed = new EmbedBuilder()
             .setTitle('⚙️ Game Settings')
             .setDescription('Current game settings for this server:')
             .addFields(
+                { name: 'IA Reset Time', value: `${iaResetTime} ET (server-wide)\n*To change: \`Wolf.settings ia_reset 00:00\`*`, inline: false },
+                { name: 'Active Journals', value: `${activeJournals ? 'On' : 'Off'} (server-wide) - groups the current players' journals in one category\n*To change: \`Wolf.settings active_journals on\`*`, inline: false },
                 { name: 'Votes to Hang', value: `${game.votes_to_hang}\n*To change: \`Wolf.settings votes_to_hang 3\`*`, inline: false },
                 { name: 'Default Day Message', value: `${game.day_message}\n*To change: \`Wolf.settings day_message Your message here\`*`, inline: false },
                 { name: 'Default Night Message', value: `${game.night_message}\n*To change: \`Wolf.settings night_message Your message here\`*`, inline: false },
@@ -462,7 +596,36 @@ async handleSettings(message, args) {
     }
 
     // Handle global game settings
-    if (firstArg === 'votes_to_hang') {
+    if (firstArg === 'ia_reset') {
+        // Server-wide: the time of day (Eastern) the Wolf.ia window starts (feedback #49)
+        const newTime = this.parseIaResetTime(args[1]);
+        if (!newTime) {
+            return message.reply('❌ Please provide a time on the hour or half hour, in Eastern time. Example: `Wolf.settings ia_reset 00:00`');
+        }
+
+        await this.db.query(
+            'UPDATE server_configs SET ia_reset_time = $1 WHERE server_id = $2',
+            [newTime, serverId]
+        );
+
+        const embed = new EmbedBuilder()
+            .setTitle('⚙️ Setting Updated')
+            .setDescription(`✅ **IA Reset Time** has been updated to **${newTime} ET**. \`Wolf.ia\` now counts messages from ${newTime} each day.`)
+            .setColor(0x27AE60)
+            .setTimestamp();
+
+        await message.reply({ embeds: [embed] });
+
+    } else if (firstArg === 'active_journals') {
+        // Server-wide: keep the current game's journals together in one category (feedback #88)
+        const value = (args[1] || '').toLowerCase();
+        if (value !== 'on' && value !== 'off') {
+            return message.reply('❌ Usage: `Wolf.settings active_journals on` or `Wolf.settings active_journals off`');
+        }
+
+        await this.setActiveJournals(message, value === 'on');
+
+    } else if (firstArg === 'votes_to_hang') {
         const value = args[1];
         if (!value) {
             return message.reply('❌ Please provide a value for votes_to_hang. Example: `Wolf.settings votes_to_hang 3`');
@@ -539,7 +702,7 @@ async handleSettings(message, args) {
         await message.reply({ embeds: [embed] });
 
     } else {
-        return message.reply('❌ Unknown setting. Available settings:\n• `votes_to_hang`\n• `day_message`, `night_message` (default messages)\n• `wolf day_message`, `wolf night_message` (wolf chat specific)\n• `<channel_name> day_message`, `<channel_name> night_message` (channel-specific)');
+        return message.reply('❌ Unknown setting. Available settings:\n• `votes_to_hang`\n• `ia_reset` (server-wide IA window start, e.g. `00:00`)\n• `active_journals on|off` (server-wide)\n• `day_message`, `night_message` (default messages)\n• `wolf day_message`, `wolf night_message` (wolf chat specific)\n• `<channel_name> day_message`, `<channel_name> night_message` (channel-specific)');
     }
 },
 
@@ -589,7 +752,7 @@ async handleSetVotingBooth(message, args) {
 },
 
 async handleChannelConfig(message) {
-    if (this.isPublicChannel(message)) {
+    if (this.isPublicChannel(message) && !(await this.isRenamedDeadChat(message))) {
         return message.reply('WOAH! You trying to scuff the game? Wrong channel buddy!');
     }
 

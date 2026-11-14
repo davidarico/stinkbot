@@ -419,6 +419,7 @@ async handleAddIn(message, args) {
         [game.id, targetMember.id, displayName]
     );
     await this.ensureUserHasJournal(message, targetMember.user);
+    await this.activateJournal(message.guild, targetMember.id);
     // Live games use the Alive role; signups use Signed Up.
     await this.assignRole(targetMember, inProgress ? 'Alive' : 'Signed Up');
     await this.removeRole(targetMember, 'Spectator');

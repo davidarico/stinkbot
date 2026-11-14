@@ -3,6 +3,29 @@
 const { ChannelType, EmbedBuilder } = require('discord.js');
 const moment = require('moment-timezone');
 
+const WINNING_TEAM_LABELS = { town: 'Town', wolf: 'Wolves', neutral: 'Neutral', draw: 'Draw' };
+
+// Maps what a mod types to a games.winning_team value, or null if it isn't a team.
+function parseWinningTeam(input) {
+    switch (String(input || '').trim().toLowerCase()) {
+        case 'town':
+        case 'village':
+        case 'villagers':
+            return 'town';
+        case 'wolf':
+        case 'wolves':
+            return 'wolf';
+        case 'neutral':
+        case 'neutrals':
+            return 'neutral';
+        case 'draw':
+        case 'tie':
+            return 'draw';
+        default:
+            return null;
+    }
+}
+
 module.exports = {
 
 async handleNext(message) {
@@ -62,11 +85,22 @@ async handleNext(message) {
         );
     }
 
+    // Snapshot of the phase being left, so Wolf.rollback can undo this exact phase change
+    // (feedback #63). Only the most recent Wolf.next can be rolled back.
+    const rollbackSnapshot = {
+        day_phase: game.day_phase,
+        day_number: game.day_number,
+        phase_change_at: game.phase_change_at,
+        voting_message_id: game.voting_message_id || null,
+        last_phase_pin_message_id: game.last_phase_pin_message_id || null
+    };
+
     // Update game phase with explicit UTC timestamp
     await this.db.query(
-        'UPDATE games SET day_phase = $1, day_number = $2, phase_change_at = $3 WHERE id = $4',
-        [newPhase, newDay, new Date().toISOString(), game.id]
+        'UPDATE games SET day_phase = $1, day_number = $2, phase_change_at = $3, last_next_snapshot = $5 WHERE id = $4',
+        [newPhase, newDay, new Date().toISOString(), game.id, JSON.stringify(rollbackSnapshot)]
     );
+    this.invalidateActivityGameCache(serverId);
 
     // Use custom messages or defaults
     const phaseMessage = newPhase === 'day' ? game.day_message : game.night_message;
@@ -173,85 +207,15 @@ async handleNext(message) {
     }
 
 
-    const aliveRole = message.guild.roles.cache.find(r => r.name === 'Alive');
-    // If it's a new day, create new voting message and allow voting
+    // If it's a new day, create new voting message
     const votingChannel = await this.client.channels.fetch(game.voting_booth_channel_id);
-    if (newPhase === 'day') {
-        // Only create a new voting message for day 2+ (day 1 doesn't have voting)
-        if (newDay >= 2) {
-            console.log(`[DEBUG] Creating voting message for Day ${newDay} in game ${game.id}`);
-            await this.createVotingMessage(game.id, votingChannel);
-        }
-
-        // Allow voting during day phase (but only for day 2+)
-        if (newDay >= 2) {
-            await votingChannel.permissionOverwrites.edit(aliveRole.id, {
-                SendMessages: true
-            });
-        } else {
-            // Day 1 - keep voting booth read-only
-            await votingChannel.permissionOverwrites.edit(aliveRole.id, {
-                SendMessages: false
-            });
-        }
-    }
-    else {
-        // Close voting booth channel for the night phase
-        await votingChannel.permissionOverwrites.edit(aliveRole.id, {
-            SendMessages: false
-        });
+    // Only create a new voting message for day 2+ (day 1 doesn't have voting)
+    if (newPhase === 'day' && newDay >= 2) {
+        console.log(`[DEBUG] Creating voting message for Day ${newDay} in game ${game.id}`);
+        await this.createVotingMessage(game.id, votingChannel);
     }
 
-    // Handle game channel permissions based on open_at_dawn and open_at_dusk flags
-    try {
-        // Get all game channels for this game
-        const gameChannelsResult = await this.db.query(
-            'SELECT channel_id, open_at_dawn, open_at_dusk, is_couple_chat FROM game_channels WHERE game_id = $1',
-            [game.id]
-        );
-
-        for (const channelData of gameChannelsResult.rows) {
-            try {
-                const channel = await this.client.channels.fetch(channelData.channel_id);
-                if (!channel) {
-                    console.log(`[DEBUG] Channel ${channelData.channel_id} not found, skipping permission update`);
-                    continue;
-                }
-
-                let shouldAllowSendMessages = false;
-                let shouldAllowAddReactions = false;
-
-                if (channelData.is_couple_chat) {
-                    // Couple chat is a night-only channel (feedback #82): always closed during
-                    // the day and open at night, regardless of the open_at_dawn/open_at_dusk
-                    // flags (which default to TRUE in the schema and aren't reliably set for
-                    // manually-created couple chats). Members keep ViewChannel either way.
-                    shouldAllowSendMessages = newPhase === 'night';
-                    shouldAllowAddReactions = newPhase === 'night';
-                } else if (newPhase === 'day') {
-                    // During day phase, check open_at_dawn flag
-                    shouldAllowSendMessages = channelData.open_at_dawn;
-                    shouldAllowAddReactions = channelData.open_at_dawn;
-                } else {
-                    // During night phase, check open_at_dusk flag
-                    shouldAllowSendMessages = channelData.open_at_dusk;
-                    shouldAllowAddReactions = channelData.open_at_dusk;
-                }
-
-                // Update Alive role permissions for this channel
-                await channel.permissionOverwrites.edit(aliveRole.id, {
-                    SendMessages: shouldAllowSendMessages,
-                    AddReactions: shouldAllowAddReactions
-                });
-
-                console.log(`[DEBUG] Updated channel ${channel.name} permissions: Alive role can send messages = ${shouldAllowSendMessages} (${newPhase} phase)`);
-            } catch (error) {
-                console.error(`Error updating permissions for channel ${channelData.channel_id}:`, error);
-            }
-        }
-    } catch (error) {
-        console.error('Error handling game channel permissions:', error);
-    }
+    await this.applyPhasePermissions(message.guild, game, newPhase, newDay, votingChannel);
 
     // Create separate voting results embed for the moderator who issued the command
     let modReplyEmbed = embed;
@@ -334,6 +298,259 @@ async handleNext(message) {
     await message.reply({ embeds: [modReplyEmbed] });
 },
 
+// Undo the most recent Wolf.next (feedback #63). Wolf.next stores a snapshot of the phase
+// it left in games.last_next_snapshot; this restores it, puts that day's standing votes
+// back, fixes pins and channel permissions, and tells town square.
+async handleRollback(message) {
+    const serverId = message.guild.id;
+
+    const gameResult = await this.db.query(
+        'SELECT * FROM games WHERE server_id = $1 AND status = $2',
+        [serverId, 'active']
+    );
+
+    if (!gameResult.rows.length) {
+        return message.reply('❌ No active game found.');
+    }
+
+    const game = gameResult.rows[0];
+    const snapshot = game.last_next_snapshot;
+
+    if (!snapshot || !snapshot.day_phase) {
+        return message.reply('❌ Nothing to roll back. Only the most recent `Wolf.next` can be undone, and only once.');
+    }
+
+    const currentLabel = `${game.day_phase} ${game.day_number}`;
+    const restoredLabel = `${snapshot.day_phase} ${snapshot.day_number}`;
+    // Rolling back a day start throws away the votes cast since; rolling back a nightfall
+    // brings the wiped votes back.
+    const undoingDayStart = game.day_phase === 'day';
+
+    const confirmEmbed = new EmbedBuilder()
+        .setTitle('⚠️ Confirm Rollback')
+        .setDescription(
+            [
+                `This will undo the last \`Wolf.next\` and take the game from **${currentLabel}** back to **${restoredLabel}**.`,
+                '',
+                '**It will:**',
+                undoingDayStart
+                    ? `- Delete the Day ${game.day_number} voting message and any votes already cast on it`
+                    : `- Restore the Day ${snapshot.day_number} votes and reopen the voting booth`,
+                '- Reset channel permissions and the pinned phase message',
+                '- Announce the rollback in town square',
+                '',
+                '**It will NOT:**',
+                '- Delete the phase messages already posted, or undo kills and role changes',
+                '',
+                'Type `confirm` to proceed or `cancel` to abort.',
+            ].join('\n')
+        )
+        .setColor(0xE67E22);
+
+    await message.reply({ embeds: [confirmEmbed] });
+
+    const filter = (m) =>
+        m.author.id === message.author.id &&
+        ['confirm', 'cancel'].includes(m.content.toLowerCase());
+    const collected = await message.channel.awaitMessages({ filter, max: 1, time: 30000 });
+
+    if (!collected.size || collected.first().content.toLowerCase() === 'cancel') {
+        return message.reply('❌ Rollback cancelled.');
+    }
+
+    const votingChannel = await this.client.channels.fetch(game.voting_booth_channel_id);
+    let restoredVotes = 0;
+
+    if (undoingDayStart) {
+        // The voting message Wolf.next just created belongs to a day that hasn't started
+        if (game.voting_message_id && game.voting_message_id !== snapshot.voting_message_id) {
+            try {
+                const staleVotingMessage = await votingChannel.messages.fetch(game.voting_message_id);
+                await staleVotingMessage.delete();
+            } catch (error) {
+                console.error(`Error deleting voting message ${game.voting_message_id} during rollback:`, error);
+            }
+        }
+
+        await this.db.query('DELETE FROM votes WHERE game_id = $1', [game.id]);
+        // Drop the undone day from vote_history too, otherwise those votes would count as
+        // standing when the day is played for real.
+        await this.db.query(
+            'DELETE FROM vote_history WHERE game_id = $1 AND day_number = $2',
+            [game.id, game.day_number]
+        );
+    } else {
+        // Rebuild the standing votes Wolf.next wiped: each voter's last action that day
+        // stands, unless it was a retract (same reconstruction as Wolf.lssv for past days).
+        await this.db.query('DELETE FROM votes WHERE game_id = $1', [game.id]);
+        const restoreResult = await this.db.query(
+            `INSERT INTO votes (game_id, voter_user_id, target_user_id, day_number, voted_at)
+             SELECT game_id, voter_user_id, target_user_id, day_number, created_at
+             FROM (
+                 SELECT DISTINCT ON (voter_user_id) game_id, voter_user_id, target_user_id, day_number, action, created_at
+                 FROM vote_history
+                 WHERE game_id = $1 AND day_number = $2
+                 ORDER BY voter_user_id, created_at DESC, id DESC
+             ) last_action
+             WHERE action = 'vote'`,
+            [game.id, snapshot.day_number]
+        );
+        restoredVotes = restoreResult.rowCount || 0;
+    }
+
+    await this.db.query(
+        `UPDATE games SET day_phase = $1, day_number = $2, phase_change_at = $3, voting_message_id = $4,
+                last_phase_pin_message_id = $5, last_next_snapshot = NULL
+         WHERE id = $6`,
+        [snapshot.day_phase, snapshot.day_number, snapshot.phase_change_at || new Date().toISOString(),
+            snapshot.voting_message_id, snapshot.last_phase_pin_message_id, game.id]
+    );
+    this.invalidateActivityGameCache(serverId);
+
+    // Messages sent during the undone phase belong to the restored one. Fold their
+    // counts back so Wolf.speed_check and Wolf.silent don't lose them.
+    try {
+        await this.db.query(
+            `INSERT INTO message_activity (game_id, channel_id, user_id, day_number, day_phase, bucket_start, message_count)
+             SELECT game_id, channel_id, user_id, $4, $5, bucket_start, message_count
+             FROM message_activity
+             WHERE game_id = $1 AND day_number = $2 AND day_phase = $3
+             ON CONFLICT (game_id, channel_id, user_id, day_number, day_phase, bucket_start)
+             DO UPDATE SET message_count = message_activity.message_count + EXCLUDED.message_count`,
+            [game.id, game.day_number, game.day_phase, snapshot.day_number, snapshot.day_phase]
+        );
+        await this.db.query(
+            'DELETE FROM message_activity WHERE game_id = $1 AND day_number = $2 AND day_phase = $3',
+            [game.id, game.day_number, game.day_phase]
+        );
+    } catch (error) {
+        console.error('Error moving message activity back to the restored phase:', error);
+    }
+
+    const restoredGame = {
+        ...game,
+        day_phase: snapshot.day_phase,
+        day_number: snapshot.day_number,
+        voting_message_id: snapshot.voting_message_id
+    };
+
+    await this.applyPhasePermissions(message.guild, restoredGame, snapshot.day_phase, snapshot.day_number, votingChannel);
+
+    // Show the restored votes on the day's voting message again
+    if (snapshot.day_phase === 'day' && snapshot.day_number >= 2) {
+        await this.updateVotingMessage(restoredGame);
+    }
+
+    const title = '⏪ Phase Rolled Back';
+    const color = snapshot.day_phase === 'day' ? 0xF1C40F : 0x2C3E50;
+
+    if (game.town_square_channel_id) {
+        try {
+            const townSquare = await this.client.channels.fetch(game.town_square_channel_id);
+
+            // Swap the pinned phase message back to the restored phase's
+            if (game.last_phase_pin_message_id) {
+                try {
+                    const currentPin = await townSquare.messages.fetch(game.last_phase_pin_message_id);
+                    await currentPin.unpin();
+                } catch (error) {
+                    console.error(`Error unpinning phase message ${game.last_phase_pin_message_id} during rollback:`, error);
+                }
+            }
+            if (snapshot.last_phase_pin_message_id) {
+                try {
+                    const previousPin = await townSquare.messages.fetch(snapshot.last_phase_pin_message_id);
+                    await previousPin.pin();
+                } catch (error) {
+                    console.error(`Error re-pinning phase message ${snapshot.last_phase_pin_message_id} during rollback:`, error);
+                }
+            }
+
+            const announceEmbed = new EmbedBuilder()
+                .setTitle(title)
+                .setDescription(`The last phase change was undone. It is **${restoredLabel}** again.`)
+                .setColor(color);
+            await townSquare.send({ embeds: [announceEmbed] });
+        } catch (error) {
+            console.error('Error announcing rollback in town square:', error);
+        }
+    }
+
+    let summary = `Rolled back from **${currentLabel}** to **${restoredLabel}**.`;
+    if (!undoingDayStart && snapshot.day_number >= 2) {
+        summary += `\n\n🗳️ Restored **${restoredVotes}** standing vote${restoredVotes === 1 ? '' : 's'} for Day ${snapshot.day_number}.`;
+    }
+
+    const replyEmbed = new EmbedBuilder()
+        .setTitle(title)
+        .setDescription(summary)
+        .setColor(color);
+
+    await message.reply({ embeds: [replyEmbed] });
+},
+
+// Open or close the voting booth and the extra game channels for a phase. Shared by
+// Wolf.next and Wolf.rollback so both leave channels in the same state.
+async applyPhasePermissions(guild, game, phase, dayNumber, votingChannel) {
+    const aliveRole = guild.roles.cache.find(r => r.name === 'Alive');
+
+    // Voting is only open during the day, and only from day 2 (day 1 doesn't have voting)
+    await votingChannel.permissionOverwrites.edit(aliveRole.id, {
+        SendMessages: phase === 'day' && dayNumber >= 2
+    });
+
+    // Handle game channel permissions based on open_at_dawn and open_at_dusk flags
+    try {
+        // Get all game channels for this game
+        const gameChannelsResult = await this.db.query(
+            'SELECT channel_id, open_at_dawn, open_at_dusk, is_couple_chat FROM game_channels WHERE game_id = $1',
+            [game.id]
+        );
+
+        for (const channelData of gameChannelsResult.rows) {
+            try {
+                const channel = await this.client.channels.fetch(channelData.channel_id);
+                if (!channel) {
+                    console.log(`[DEBUG] Channel ${channelData.channel_id} not found, skipping permission update`);
+                    continue;
+                }
+
+                let shouldAllowSendMessages = false;
+                let shouldAllowAddReactions = false;
+
+                if (channelData.is_couple_chat) {
+                    // Couple chat is a night-only channel (feedback #82): always closed during
+                    // the day and open at night, regardless of the open_at_dawn/open_at_dusk
+                    // flags (which default to TRUE in the schema and aren't reliably set for
+                    // manually-created couple chats). Members keep ViewChannel either way.
+                    shouldAllowSendMessages = phase === 'night';
+                    shouldAllowAddReactions = phase === 'night';
+                } else if (phase === 'day') {
+                    // During day phase, check open_at_dawn flag
+                    shouldAllowSendMessages = channelData.open_at_dawn;
+                    shouldAllowAddReactions = channelData.open_at_dawn;
+                } else {
+                    // During night phase, check open_at_dusk flag
+                    shouldAllowSendMessages = channelData.open_at_dusk;
+                    shouldAllowAddReactions = channelData.open_at_dusk;
+                }
+
+                // Update Alive role permissions for this channel
+                await channel.permissionOverwrites.edit(aliveRole.id, {
+                    SendMessages: shouldAllowSendMessages,
+                    AddReactions: shouldAllowAddReactions
+                });
+
+                console.log(`[DEBUG] Updated channel ${channel.name} permissions: Alive role can send messages = ${shouldAllowSendMessages} (${phase} phase)`);
+            } catch (error) {
+                console.error(`Error updating permissions for channel ${channelData.channel_id}:`, error);
+            }
+        }
+    } catch (error) {
+        console.error('Error handling game channel permissions:', error);
+    }
+},
+
 async handleEnd(message) {
     const serverId = message.guild.id;
 
@@ -365,11 +582,25 @@ async handleEnd(message) {
 
     const game = gameResult.rows[0];
 
+    // Record who won so stats features have something to read. A game that never
+    // left signups has no winner, and not answering just leaves it unset.
+    let winningTeam = null;
+    if (game.status === 'active') {
+        await message.reply('🏆 Who won? Type `town`, `wolves`, `neutral` or `draw` (or `skip` to leave it unset).');
+        const winnerFilter = (m) => m.author.id === message.author.id &&
+            (m.content.trim().toLowerCase() === 'skip' || parseWinningTeam(m.content) !== null);
+        const winnerCollected = await message.channel.awaitMessages({ filter: winnerFilter, max: 1, time: 60000 });
+        if (winnerCollected.size) {
+            winningTeam = parseWinningTeam(winnerCollected.first().content);
+        }
+    }
+
     // Update game status
     await this.db.query(
-        'UPDATE games SET status = $1 WHERE id = $2',
-        ['ended', game.id]
+        'UPDATE games SET status = $1, winning_team = $2 WHERE id = $3',
+        ['ended', winningTeam, game.id]
     );
+    this.invalidateActivityGameCache(serverId);
 
     // Reset all members to Spectator role
     let resetMembersCount = 0;
@@ -449,12 +680,48 @@ async handleEnd(message) {
         console.error('Error updating channel permissions:', error);
     }
 
+    // The game is over, so nobody's journal is "active" any more (feedback #88)
+    const archivedJournals = await this.archiveAllActiveJournals(message.guild);
+
+    let endDescription = 'The game has been officially ended.';
+    if (archivedJournals > 0) {
+        endDescription += `\n\n📔 Moved ${archivedJournals} journal${archivedJournals === 1 ? '' : 's'} back to the journal archive.`;
+    }
+    if (winningTeam) {
+        endDescription += `\n\n🏆 **Winner:** ${WINNING_TEAM_LABELS[winningTeam]}`;
+    } else if (game.status === 'active') {
+        endDescription += '\n\nNo winner recorded. Set it later with `Wolf.winner <town|wolves|neutral|draw>`.';
+    }
+
     const successEmbed = new EmbedBuilder()
         .setTitle('🏁 Game Ended')
-        .setDescription('The game has been officially ended.')
+        .setDescription(endDescription)
         .setColor(0x95A5A6);
 
     await message.reply({ embeds: [successEmbed] });
+},
+
+// Set or correct the winner of the most recently ended game.
+async handleWinner(message, args) {
+    const winningTeam = parseWinningTeam(args.join(' '));
+    if (!winningTeam) {
+        return message.reply('❌ Usage: `Wolf.winner <town|wolves|neutral|draw>`');
+    }
+
+    const gameResult = await this.db.query(
+        'SELECT id, game_number, game_name FROM games WHERE server_id = $1 AND status = $2 ORDER BY id DESC LIMIT 1',
+        [message.guild.id, 'ended']
+    );
+
+    if (!gameResult.rows.length) {
+        return message.reply('❌ No ended game found.');
+    }
+
+    const game = gameResult.rows[0];
+    await this.db.query('UPDATE games SET winning_team = $1 WHERE id = $2', [winningTeam, game.id]);
+
+    const gameLabel = game.game_name ? `${game.game_name} Game ${game.game_number}` : `Game ${game.game_number}`;
+    await message.reply(`🏆 Recorded **${WINNING_TEAM_LABELS[winningTeam]}** as the winner of ${gameLabel}.`);
 },
 
 async handleScuff(message) {
@@ -507,6 +774,7 @@ async handleScuff(message) {
         'UPDATE games SET status = $1, signups_closed = $2 WHERE id = $3',
         ['signup', false, game.id]
     );
+    this.invalidateActivityGameCache(serverId);
 
     const aliveRole = message.guild.roles.cache.find(r => r.name === 'Alive');
     const signedUpRole = message.guild.roles.cache.find(r => r.name === 'Signed Up');

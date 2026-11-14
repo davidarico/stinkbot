@@ -88,15 +88,18 @@ Setup and game management:
 | `Wolf.start [dark]` | Start the game and create channels; `dark` hides town square, memos, and voting booth from the Alive role |
 | `Wolf.signups [open\|close]` | Open or close signups |
 | `Wolf.next` | Advance to the next phase (day/night) |
-| `Wolf.end` | End the current game (requires confirmation) |
+| `Wolf.rollback` | Undo the most recent `Wolf.next` (restores that day's votes; requires confirmation) |
+| `Wolf.end` | End the current game (requires confirmation) and record the winner |
+| `Wolf.winner <town\|wolves\|neutral\|draw>` | Set or correct the winner of the last ended game |
 | `Wolf.scuff` | Rewind an active game back to signup (requires confirmation) |
-| `Wolf.settings` | View or change game settings (votes to hang, phase messages) |
+| `Wolf.settings` | View or change game settings (votes to hang, phase messages) and the server-wide `ia_reset` and `active_journals` |
 
 Channels and voting:
 
 | Command | Description |
 |---------|-------------|
 | `Wolf.add_channel <name>` | Create an extra channel in the game category |
+| `Wolf.wolf_dead` | Create a chat for dead wolves; wolves join it when killed |
 | `Wolf.channel_config` | View additional channel settings |
 | `Wolf.set_voting_booth <channel-name>` | Point the current game at a different voting booth channel |
 | `Wolf.create_vote` | Manually create a voting message |
@@ -134,6 +137,8 @@ Analysis, maintenance, and recovery:
 | Command | Description |
 |---------|-------------|
 | `Wolf.ia [channel] <YYYY-MM-DD HH:MM>` | Per-player message counts since a date (EST); both arguments optional |
+| `Wolf.ia_history [channel] [min]` | Messages per player for every day of the game; `min` marks days under it |
+| `Wolf.silent` | Living players with no messages in the public game channels today |
 | `Wolf.server` | Server information for debugging |
 | `Wolf.archive <category-name>` | Archive a game category (see below) |
 | `Wolf.archive_local <category-name>` | Archive to a local JSON file (dev only) |

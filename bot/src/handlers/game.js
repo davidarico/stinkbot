@@ -7,6 +7,18 @@ const moment = require('moment-timezone');
 // so it is referenced by raw value here, matching journal.js/voting.js/utils.js.
 const PIN_PERMISSION = 0x0008000000000000;
 
+// Default suffixes of the channels Wolf.start creates. games.channel_names can override
+// any of them per game (set from the dashboard's Manage Channels modal, which keeps its
+// own copy of this list in frontend/lib/database.ts).
+const CORE_CHANNEL_DEFAULT_NAMES = {
+    results: 'results',
+    memos: 'player-memos',
+    town_square: 'townsquare',
+    voting_booth: 'voting-booth',
+    wolf_chat: 'wolf-chat',
+    dead_chat: 'dead-chat'
+};
+
 module.exports = {
 
 async getServerChannelCapacity(serverId, guild, plannedNewChannels = 0) {
@@ -365,7 +377,7 @@ async handleCreate(message) {
     try {
         const journalCategories = message.guild.channels.cache.filter(
             channel => channel.type === ChannelType.GuildCategory && 
-            (channel.name === 'Journals' || channel.name.startsWith('Journals ('))
+            (channel.name === 'Journals' || channel.name.startsWith('Journals (') || channel.name === this.ACTIVE_JOURNALS_CATEGORY)
         );
 
         if (journalCategories.size > 0) {
@@ -417,7 +429,7 @@ async handleCreate(message) {
             await message.guild.channels.fetch();
             const finalJournalCategories = message.guild.channels.cache.filter(
                 channel => channel.type === ChannelType.GuildCategory && 
-                (channel.name === 'Journals' || channel.name.startsWith('Journals ('))
+                (channel.name === 'Journals' || channel.name.startsWith('Journals (') || channel.name === this.ACTIVE_JOURNALS_CATEGORY)
             );
             
             const finalPositions = Array.from(finalJournalCategories.values())
@@ -550,8 +562,10 @@ async handleSignUp(message) {
         [game.id, user.id, displayName]
     );
 
-    // Check if user has a journal, create one if they don't
-    this.ensureUserHasJournal(message, user);
+    // Check if user has a journal, create one if they don't, then group it with the other
+    // players' journals when the server uses Active Journals (feedback #88)
+    Promise.resolve(this.ensureUserHasJournal(message, user))
+        .then(() => this.activateJournal(message.guild, user.id));
 
     // Assign "Signed Up" role
     await this.assignRole(message.member, 'Signed Up');
@@ -604,6 +618,9 @@ async handleSignOut(message) {
     
     // Update signup message with current players
     await this.updateSignupMessage(game);
+
+    // No longer in the game, so their journal leaves Active Journals (feedback #88)
+    await this.archiveJournal(message.guild, userId);
 },
 
 async handleRemoveSignup(message, args) {
@@ -659,6 +676,9 @@ async handleRemoveSignup(message, args) {
 
     // Update signup message with current players
     await this.updateSignupMessage(game);
+
+    // No longer in the game, so their journal leaves Active Journals (feedback #88)
+    await this.archiveJournal(message.guild, targetUserId);
 },
 
 async updateSignupMessage(game) {
@@ -762,6 +782,9 @@ async handleStart(message, args = []) {
     }
 
     const game = gameResult.rows[0];
+    // Taken before any channel exists so message activity tracking (activity.js) can tell
+    // it has counted these channels from their first message.
+    const startedAt = new Date().toISOString();
     const aliveRole = message.guild.roles.cache.find(r => r.name === 'Alive');
     const deadRole = message.guild.roles.cache.find(r => r.name === 'Dead');
     const spectatorRole = message.guild.roles.cache.find(r => r.name === 'Spectator');
@@ -795,6 +818,12 @@ async handleStart(message, args = []) {
         [serverId]
     );
     const config = configResult.rows[0];
+
+    // Core channel names: prefix + game number + a suffix the mods can change from the
+    // dashboard before the game starts (games.channel_names, feedback #43).
+    const channelNameOverrides = game.channel_names || {};
+    const coreChannelName = (key) =>
+        `${config.game_prefix}${game.game_number}-${channelNameOverrides[key] || CORE_CHANNEL_DEFAULT_NAMES[key]}`;
 
     // Create/reuse game channels in the specified order
     const category = await this.client.channels.fetch(game.category_id);
@@ -938,11 +967,11 @@ async handleStart(message, args = []) {
     // Plus any DB-queued channels tracked as game_channels.is_created=false (counted in getServerChannelCapacity)
     // We only count core channels that are missing, since we now reuse existing channels by id/name.
     const corePlan = [
-        { label: 'Results', name: `${config.game_prefix}${game.game_number}-results`, preferredId: game.results_channel_id },
-        { label: 'Player Memos', name: `${config.game_prefix}${game.game_number}-player-memos`, preferredId: game.memos_channel_id },
-        { label: 'Town Square', name: `${config.game_prefix}${game.game_number}-townsquare`, preferredId: game.town_square_channel_id },
-        { label: 'Voting Booth', name: `${config.game_prefix}${game.game_number}-voting-booth`, preferredId: game.voting_booth_channel_id },
-        { label: 'Wolf Chat', name: `${config.game_prefix}${game.game_number}-wolf-chat`, preferredId: game.wolf_chat_channel_id },
+        { label: 'Results', name: coreChannelName('results'), preferredId: game.results_channel_id },
+        { label: 'Player Memos', name: coreChannelName('memos'), preferredId: game.memos_channel_id },
+        { label: 'Town Square', name: coreChannelName('town_square'), preferredId: game.town_square_channel_id },
+        { label: 'Voting Booth', name: coreChannelName('voting_booth'), preferredId: game.voting_booth_channel_id },
+        { label: 'Wolf Chat', name: coreChannelName('wolf_chat'), preferredId: game.wolf_chat_channel_id },
     ];
     let plannedNewChannels = 0;
     for (const c of corePlan) {
@@ -978,7 +1007,7 @@ async handleStart(message, args = []) {
     // 2. Results - Only Mod can type, everyone else can see but not type
     const results = await ensureTextChannel({
         label: 'Results',
-        name: `${config.game_prefix}${game.game_number}-results`,
+        name: coreChannelName('results'),
         preferredId: game.results_channel_id,
         permissionOverwrites: [
             {
@@ -1013,7 +1042,7 @@ async handleStart(message, args = []) {
     // 3. Player-memos - Alive can see and type (unless dark mode), Dead can see but not type, Spectators can see but not type, Mods can see and type
     const memos = await ensureTextChannel({
         label: 'Player Memos',
-        name: `${config.game_prefix}${game.game_number}-player-memos`,
+        name: coreChannelName('memos'),
         preferredId: game.memos_channel_id,
         permissionOverwrites: [
             {
@@ -1048,7 +1077,7 @@ async handleStart(message, args = []) {
     // 4. Townsquare - Alive can see and type (unless dark mode), Dead can see but not type, Spectators can see but not type, Mods can see and type
     const townSquare = await ensureTextChannel({
         label: 'Town Square',
-        name: `${config.game_prefix}${game.game_number}-townsquare`,
+        name: coreChannelName('town_square'),
         preferredId: game.town_square_channel_id,
         permissionOverwrites: [
             {
@@ -1084,7 +1113,7 @@ async handleStart(message, args = []) {
     // 5. Voting-Booth (starts locked for night phase) - All can see but none can type initially (unless dark mode, then Alive cannot see)
     const votingBooth = await ensureTextChannel({
         label: 'Voting Booth',
-        name: `${config.game_prefix}${game.game_number}-voting-booth`,
+        name: coreChannelName('voting_booth'),
         preferredId: game.voting_booth_channel_id,
         permissionOverwrites: [
             {
@@ -1121,7 +1150,7 @@ async handleStart(message, args = []) {
     // 7. Wolf-Chat - Mods can see and type, Spectators can see but not type, Alive cannot see but can type (for wolves), everyone else cannot see
     const wolfChat = await ensureTextChannel({
         label: 'Wolf Chat',
-        name: `${config.game_prefix}${game.game_number}-wolf-chat`,
+        name: coreChannelName('wolf_chat'),
         preferredId: game.wolf_chat_channel_id,
         permissionOverwrites: [
             {
@@ -1154,7 +1183,7 @@ async handleStart(message, args = []) {
     } catch (e) {}
 
     // Rename signup channel to dead-chat and apply dead chat permissions
-    await signupChannel.setName(`${config.game_prefix}${game.game_number}-dead-chat`);
+    await signupChannel.setName(coreChannelName('dead_chat'));
     
     // Apply dead chat permissions to the renamed signup channel
     // Dead can see and type, Alive cannot see, Spectators can see and type, Mods can see and type
@@ -1307,10 +1336,12 @@ async handleStart(message, args = []) {
             memos_channel_id = $3,
             results_channel_id = $4,
             voting_booth_channel_id = $5,
-            phase_change_at = $6
+            phase_change_at = $6,
+            activity_tracked_since = COALESCE(activity_tracked_since, $8)
          WHERE id = $7`,
-        [townSquare.id, wolfChat.id, memos.id, results.id, votingBooth.id, new Date().toISOString(), game.id]
+        [townSquare.id, wolfChat.id, memos.id, results.id, votingBooth.id, new Date().toISOString(), game.id, startedAt]
     );
+    this.invalidateActivityGameCache(serverId);
     log('Updated game row with core channel IDs + set active');
 
     // Pin a town-square anchor so players/mods can scroll back to the start of the game (feedback #40)

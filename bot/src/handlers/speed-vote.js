@@ -47,134 +47,7 @@ async handleSpeedCheck(message) {
             return message.reply('❌ Alive role not found. Please use `Wolf.server_roles` to set up roles.');
         }
 
-        // OPTIMIZATION: Fetch all guild members at once instead of individual calls
-        try {
-            await message.guild.members.fetch();
-        } catch (error) {
-            console.log('Could not fetch all guild members, falling back to individual fetches');
-            // Fallback to original method if bulk fetch fails
-            const alivePlayers = [];
-            for (const player of playersResult.rows) {
-                try {
-                    const member = await message.guild.members.fetch(player.user_id);
-                    if (member && member.roles.cache.has(aliveRole.id)) {
-                        alivePlayers.push(player);
-                    }
-                } catch (error) {
-                    console.error(`Error checking role for player ${player.username}:`, error);
-                    // Skip this player if we can't fetch them
-                }
-            }
-            
-            if (alivePlayers.length === 0) {
-                return message.reply('❌ No alive players found in the current game.');
-            }
-
-            // Randomize the player order to prevent role inference
-            const shuffledPlayers = [...alivePlayers];
-            for (let i = shuffledPlayers.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [shuffledPlayers[i], shuffledPlayers[j]] = [shuffledPlayers[j], shuffledPlayers[i]];
-            }
-
-            // Initialize message count object
-            const messageCounts = {};
-            shuffledPlayers.forEach(player => {
-                messageCounts[player.user_id] = {
-                    username: player.username,
-                    count: 0
-                };
-            });
-
-            // Use phase_change_at as the start time (TIMESTAMPTZ is automatically UTC)
-            const phaseChangeDate = new Date(game.phase_change_at);
-            
-            // Debug logging
-            console.log(`Speed check debug:
-                - Phase change at (raw from DB): ${game.phase_change_at}
-                - Phase change as Date: ${phaseChangeDate.toISOString()}
-                - Phase change in EST: ${moment.utc(game.phase_change_at).tz("America/New_York").format('YYYY-MM-DD HH:mm:ss')}
-                - Current time: ${new Date().toISOString()}
-                - Time difference: ${(new Date() - phaseChangeDate) / (1000 * 60)} minutes`);
-
-            // Fetch messages from the town square since the phase change
-            let allMessages = [];
-            let lastMessageId = null;
-            
-            // Discord API limits us to 100 messages per request, so we need to paginate
-            while (true) {
-                const options = { limit: 100 };
-                if (lastMessageId) {
-                    options.before = lastMessageId;
-                }
-
-                const messages = await townSquareChannel.messages.fetch(options);
-                
-                if (messages.size === 0) break;
-
-                // Filter messages by date and add to our collection
-                const filteredMessages = messages.filter(msg => 
-                    msg.createdAt >= phaseChangeDate && 
-                    !msg.author.bot && 
-                    messageCounts.hasOwnProperty(msg.author.id)
-                );
-
-                allMessages.push(...filteredMessages.values());
-                
-                // Check if we've gone past our date range
-                const oldestMessage = messages.last();
-                if (oldestMessage.createdAt < phaseChangeDate) {
-                    break;
-                }
-
-                lastMessageId = oldestMessage.id;
-            }
-
-            // Count messages per player
-            allMessages.forEach(msg => {
-                if (messageCounts[msg.author.id]) {
-                    messageCounts[msg.author.id].count++;
-                }
-            });
-
-            // Sort players by message count (highest first)
-            const sortedPlayers = Object.values(messageCounts)
-                .sort((a, b) => b.count - a.count);
-
-            // Convert UTC time to EST for display - TIMESTAMPTZ is already UTC
-            const estTime = moment.utc(game.phase_change_at).tz("America/New_York").format('YYYY-MM-DD HH:mm:ss');
-            
-            // Create the response embed
-            const totalMessages = allMessages.length;
-            const playerList = sortedPlayers.length > 0 
-                ? sortedPlayers.map((player, index) => 
-                    `${index + 1}. **${player.username}**: ${player.count} messages`
-                ).join('\n')
-                : `No messages found from alive players since phase change.\n\n**Debug info:**\n• Phase started: ${estTime} EST\n• Current time: ${moment.utc().tz("America/New_York").format('YYYY-MM-DD HH:mm:ss')} EST\n• Messages need to be sent AFTER the phase start time`;
-
-            const currentPhase = game.day_phase === 'day' ? '🌞 Day' : '🌙 Night';
-            
-            const embed = new EmbedBuilder()
-                .setTitle('⚡ Speed Check - Current Phase Activity')
-                .setDescription(`Message count per alive player since **${currentPhase} ${game.day_number}** started\n\n**Phase started:** ${estTime} EST`)
-                .addFields(
-                    { name: `Alive Player Activity (${sortedPlayers.length} players)`, value: playerList },
-                    { name: 'Summary', value: `**Total messages**: ${totalMessages}\n**Channel**: ${townSquareChannel.name}`, inline: false }
-                )
-                .setColor(game.day_phase === 'day' ? 0xF1C40F : 0x2C3E50)
-                .setTimestamp();
-
-            return await message.reply({ embeds: [embed] });
-        }
-
-        // Use cached members for much faster processing
-        const alivePlayers = [];
-        for (const player of playersResult.rows) {
-            const member = message.guild.members.cache.get(player.user_id);
-            if (member && member.roles.cache.has(aliveRole.id)) {
-                alivePlayers.push(player);
-            }
-        }
+        const alivePlayers = await this.filterAlivePlayers(message.guild, playersResult.rows, aliveRole);
 
         if (alivePlayers.length === 0) {
             return message.reply('❌ No alive players found in the current game.');
@@ -187,83 +60,32 @@ async handleSpeedCheck(message) {
             [shuffledPlayers[i], shuffledPlayers[j]] = [shuffledPlayers[j], shuffledPlayers[i]];
         }
 
-        // Initialize message count object
-        const messageCounts = {};
-        shuffledPlayers.forEach(player => {
-            messageCounts[player.user_id] = {
-                username: player.username,
-                count: 0
-            };
-        });
-
         // Use phase_change_at as the start time (TIMESTAMPTZ is automatically UTC)
         const phaseChangeDate = new Date(game.phase_change_at);
-        
-        // Debug logging
-        console.log(`Speed check debug:
-            - Phase change at (raw from DB): ${game.phase_change_at}
-            - Phase change as Date: ${phaseChangeDate.toISOString()}
-            - Phase change in EST: ${moment.utc(game.phase_change_at).tz("America/New_York").format('YYYY-MM-DD HH:mm:ss')}
-            - Current time: ${new Date().toISOString()}
-            - Time difference: ${(new Date() - phaseChangeDate) / (1000 * 60)} minutes`);
 
-        // Fetch messages from the town square since the phase change
-        let allMessages = [];
-        let lastMessageId = null;
-        
-        // Discord API limits us to 100 messages per request, so we need to paginate
-        while (true) {
-            const options = { limit: 100 };
-            if (lastMessageId) {
-                options.before = lastMessageId;
-            }
-
-            const messages = await townSquareChannel.messages.fetch(options);
-            
-            if (messages.size === 0) break;
-
-            // Filter messages by date and add to our collection
-            const filteredMessages = messages.filter(msg => 
-                msg.createdAt >= phaseChangeDate && 
-                !msg.author.bot && 
-                messageCounts.hasOwnProperty(msg.author.id)
-            );
-
-            allMessages.push(...filteredMessages.values());
-            
-            // Check if we've gone past our date range
-            const oldestMessage = messages.last();
-            if (oldestMessage.createdAt < phaseChangeDate) {
-                break;
-            }
-
-            lastMessageId = oldestMessage.id;
-        }
-
-        // Count messages per player
-        allMessages.forEach(msg => {
-            if (messageCounts[msg.author.id]) {
-                messageCounts[msg.author.id].count++;
-            }
-        });
+        // Messages are tagged with the phase they were sent in, so the live counters answer
+        // this directly when they cover the whole phase. Otherwise page the channel.
+        const playerIds = shuffledPlayers.map(player => player.user_id);
+        const counts = this.isActivityTrackedSince(game, phaseChangeDate, townSquareChannel)
+            ? await this.countTrackedMessages(game.id, [townSquareChannel.id], { dayNumber: game.day_number, dayPhase: game.day_phase })
+            : await this.countMessagesByPaging(townSquareChannel, phaseChangeDate, playerIds);
 
         // Sort players by message count (highest first)
-        const sortedPlayers = Object.values(messageCounts)
+        const sortedPlayers = shuffledPlayers
+            .map(player => ({ username: player.username, count: counts.get(player.user_id) || 0 }))
             .sort((a, b) => b.count - a.count);
 
         // Convert UTC time to EST for display - TIMESTAMPTZ is already UTC
         const estTime = moment.utc(game.phase_change_at).tz("America/New_York").format('YYYY-MM-DD HH:mm:ss');
-        
+
         // Create the response embed
-        const totalMessages = allMessages.length;
-        const playerList = sortedPlayers.length > 0 
-            ? sortedPlayers.map((player, index) => 
-                `${index + 1}. **${player.username}**: ${player.count} messages`
-            ).join('\n')
-            : `No messages found from alive players since phase change.\n\n**Debug info:**\n• Phase started: ${estTime} EST\n• Current time: ${moment.utc().tz("America/New_York").format('YYYY-MM-DD HH:mm:ss')} EST\n• Messages need to be sent AFTER the phase start time`;
+        const totalMessages = sortedPlayers.reduce((sum, player) => sum + player.count, 0);
+        const playerList = sortedPlayers.map((player, index) =>
+            `${index + 1}. **${player.username}**: ${player.count} messages`
+        ).join('\n');
 
         const currentPhase = game.day_phase === 'day' ? '🌞 Day' : '🌙 Night';
-        
+
         const embed = new EmbedBuilder()
             .setTitle('⚡ Speed Check - Current Phase Activity')
             .setDescription(`Message count per alive player since **${currentPhase} ${game.day_number}** started\n\n**Phase started:** ${estTime} EST`)

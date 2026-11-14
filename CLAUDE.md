@@ -9,6 +9,7 @@ A Discord bot ("StinkBot") that runs Werewolf/mafia games, plus a Next.js fronte
 ## Monorepo shape
 
 - npm workspaces: `bot`, `frontend`, `database`. Run workspace scripts from the repo root (`npm run bot:dev`, `npm run db:migrate`, etc.).
+- `e2e/` is **not** a workspace either: the local-DB + dev-server harness described under Bot.
 - `engine-generator/` is **deprecated**. It was a standalone TypeScript night-action calculator, never wired into the bot or frontend, and is not a workspace. Neither app calculates night actions at all; mods resolve them by hand. Don't build on it or treat its `RULES.md`/`rules.json` as the current game rules.
 - The frontend's old OpenAI night-action calculation is gone, but the `openai` dependency in `frontend/package.json` and the root `package.json` still lingers unused.
 
@@ -21,6 +22,11 @@ A Discord bot ("StinkBot") that runs Werewolf/mafia games, plus a Next.js fronte
   - `npm run test:unit` (from `bot/`) - Jest, tests in `bot/src/tests/`, mocks in `bot/src/tests/helpers/` (mock-discord, mock-db, bot-factory). This is the suite to run and extend.
   - `npm test` runs `bot/test/test-bot.js`, a legacy connectivity check against real Discord/Postgres. Not a unit test suite.
 - `src/database.js` loads env from the first existing of `database/.env`, `.env`, `bot/.env` (dev only) so the bot and migrations always see the same `DATABASE_URL`. `DATABASE_URL` is required; the `PG_*` variables are deprecated. Supabase TLS is auto-relaxed in dev when the URL looks like Supabase; override with `DATABASE_SSL_REJECT_UNAUTHORIZED`.
+- **Verify bot changes end to end with `e2e/`** (`npm run e2e -- ...`, see `e2e/README.md`). It runs real commands against Dave's Dev Deck with a local Docker Postgres and reports everything the bot posted and logged, including the `console.error` lines handlers otherwise swallow. Unit tests alone missed the `Wolf.help` 1024-char embed field crash; a single `run "Wolf.help"` would have caught it. After changing a command, run it there (as mod and with `--player`) before calling it done.
+- Message activity: `recordMessageActivity` (`handlers/activity.js`, called from `messageCreate` in `index.js`) counts every human message in an active game's category into `message_activity`, in half-hour buckets tagged with game day and phase. `Wolf.ia` (default window only), `Wolf.speed_check`, `Wolf.ia_history` and `Wolf.silent` read it; they fall back to paging Discord when `games.activity_tracked_since` doesn't cover the window. The active game is cached per server for 60s, so anything that changes a game's status, day or phase must call `invalidateActivityGameCache`. The IA window start is `server_configs.ia_reset_time` (Eastern, on the hour or half hour).
+- `Wolf.rollback` undoes only the most recent `Wolf.next`, from the snapshot `handleNext` writes to `games.last_next_snapshot`. `applyPhasePermissions` (game-phases.js) is the shared place both use to open/close channels for a phase.
+- Active journals (`handlers/journal-active.js`, opt-in via `server_configs.active_journals`): players' journals move into an "Active Journals" category on signup and back on sign-out or `Wolf.end`. That category deliberately doesn't match the "Journals" naming scheme, so journal.js balancing ignores it. Moves use `lockPermissions: false` and are flagged so the journal auto-fix watcher skips them.
+- Core channel names come from `games.channel_names` overrides (set in the dashboard during signups) over `CORE_CHANNEL_DEFAULT_NAMES` in game.js, mirrored by `CORE_CHANNELS` in `frontend/lib/database.ts`. Don't find core channels by name; use the ids on `games`.
 - SQLite (`bot/data/alive_mentions.db`) is only for @Alive mention rate-limiting (`alive-mention-detector.js`, gated by `ENABLE_ALIVE_MENTION_DETECTION`). Ephemeral state, not game data.
 - The archive command (`Wolf.archive`) writes messages to the `archive_messages` table in the dedicated archive database (see Archives section), uploads Discord images to the hardcoded S3 bucket `stinkwolf-images` (message ID as filename), and optionally drops a JSON backup in `AWS_S3_BUCKET_NAME`.
 
@@ -33,8 +39,8 @@ Archive search was migrated from OpenSearch to Postgres full-text search on `arc
 ## Database (`database/`)
 
 - Migrations are paired files: `<timestamp>_name.sql` + `.rollback.sql`. Create with `npm run migrate:create "description"` from `database/`. Never edit an applied migration.
-- `database/current_schema.sql` is **generated** (`npm run schema:generate`) and can lag behind migrations (it currently still shows `kanban_tasks`, which a July 2026 migration dropped). Regenerate it after adding migrations; when in doubt, trust the migrations directory.
-- Schema highlights: `games` (status/phase/day, per-game dashboard password hash), `players`, `votes`, `game_channels`, `game_role` + `roles` (role catalog, per-server via `server_id`), `game_meta` (cross-night JSONB state), `game_speed`, `player_journals`, `server_configs`, `server_users` (member sync), `feedback`, `banned_users`, `admin_settings`, `night_action`.
+- `database/current_schema.sql` is **generated** (`npm run schema:generate`) and can lag behind migrations. Regenerate it after adding migrations; when in doubt, trust the migrations directory.
+- Schema highlights: `games` (status/phase/day, per-game dashboard password hash), `players`, `votes`, `game_channels`, `game_role` + `roles` (role catalog, per-server via `server_id`), `game_meta` (cross-night JSONB state), `game_speed`, `player_journals`, `server_configs`, `server_users` (member sync), `feedback`, `banned_users`, `admin_settings`, `night_action`, `message_activity` (live message counters). `games.winning_team` is set at `Wolf.end` / `Wolf.winner`. `game_channels.is_dead_wolf_chat` marks the optional `Wolf.wolf_dead` channel (same pattern as `is_couple_chat`).
 - `votes` is a live working set - `Wolf.next` deletes all of a game's votes at phase change. `vote_history` is the durable append-only log (every vote/retract event, written by `logVoteAction` in voting.js); use it for anything that needs past days (e.g. `Wolf.lssv`).
 
 ## Frontend (`frontend/`)

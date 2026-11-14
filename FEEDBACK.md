@@ -9,34 +9,23 @@ Items are ordered easiest first. Size: S = an hour or two, M = a day, L = severa
 
 ## Open items
 
-1. **#63 - rollback the last `Wolf.next`** (M). Restore `day_phase`/`day_number`/`phase_change_at` on
-   `games`, and rebuild that day's standing votes into `votes` from `vote_history` (each voter's last
-   action that day, skipping retracts; same reconstruction as `handleLssv`'s past-day path in `voting.js`).
-   Re-pin the previous phase message (`games.last_phase_pin_message_id`). Announce in town square.
+Nothing open that doesn't need a decision first (see below).
 
-2. **#46 - wolf-team dead channel** (M). Optional channel where eliminated wolves keep talking. Copy the
-   `is_couple_chat` pattern in `game_channels` (`channels.js`, `game-phases.js`), and grant access at death
-   in `killPlayer` (`players.js`), like `preserveCoupleChatAccess`. Add it to the permission matrix in
-   `bot/src/handlers/permissions-audit.js`.
+## Built, waiting on deploy
 
-3. **#43 - rename game channels from the dashboard before the game starts** (M). The fixed channels are
-   named in `handleStart` (`bot/src/handlers/game.js`) from prefix + fixed suffixes. The dashboard
-   (`manage-channels-modal.tsx`, `add-channel-modal.tsx`) can't rename them. Needs a place to store
-   overrides that `handleStart` reads.
+Code and migrations (`database/migrations/20261114T12*`) are written and tested but not deployed. Apply
+the migrations to production **before** pushing the bot, then resolve these rows and delete this section.
 
-4. **#26 + #27 + #67 + #49 - message activity tracking** (L, the highest-leverage bot change). `Wolf.ia` and
-   `Wolf.speed_check` page through the Discord API at query time. Add a counter table (`game_id`, `user_id`,
-   `channel_id`, `day_number`, `message_count`, unique on the first four) incremented from `messageCreate`
-   in `index.js`. Then:
-   - `Wolf.ia` reads it instantly.
-   - `Wolf.ia_history` shows per-day totals for the whole game (#27, #67).
-   - `Wolf.silent` lists alive players with no messages today (#26).
-   - The IA window start becomes a per-server setting instead of the hardcoded 9:30 AM EST cutoff in
-     `handlers/utils.js` (#49 wants midnight).
+- **#63** - `Wolf.rollback` undoes the last `Wolf.next`.
+- **#46** - `Wolf.wolf_dead` creates a chat for dead wolves; they join it when killed.
+- **#43** - core channel names are editable in the dashboard's Manage Channels modal during signups.
+- **#26** - `Wolf.silent`. **#27, #67** - `Wolf.ia_history [channel] [min]`.
+- **#49** - `Wolf.settings ia_reset 00:00` (hour or half hour only, so "0001" is `00:00`).
+- **#88** - `Wolf.settings active_journals on` (opt-in per server; the archive categories keep the name
+  "Journals").
 
-5. **#88 - active-game vs. archive journal categories** (L). Active players' journals in one category,
-   everyone else's in "Journal Archives", moved back on signup. All logic is in `bot/src/handlers/journal.js`
-   (largest handler; read its category balancing first).
+`npm run feedback:resolve -- 63 46 43 26 27 67 49 88 --dry-run` first. #49 and #88 need a note saying which
+setting to turn on.
 
 ## Needs a decision from David first
 
@@ -44,11 +33,6 @@ Items are ordered easiest first. Size: S = an hour or two, M = a day, L = severa
   confirmation embed says it won't touch Dead. Reversing that is David's call.
 - **#91 - no per-game mod chat.** Mod chat is now where the wolf-chat-add failure alert and the journal
   auto-fix summary are posted, so removing it needs a new home for mod alerts first.
-
-## Not from feedback
-
-- **Record the winner at `Wolf.end`** (S-M). `games` has no winner column, which blocks any stats feature.
-  Add `winning_team` via migration and ask for it in `handleEnd`'s confirmation flow (`game-phases.js`).
 
 ## Won't do
 
