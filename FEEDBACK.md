@@ -22,130 +22,32 @@ Nothing open. New feedback lands in the snapshot below.
 
 # Feedback
 
-Snapshot of the `feedback` table. Resolved items (implemented, already covered, out-of-scope, or non-actionable) were **removed from the database** on **2026-10-20**.
+Snapshot of the `feedback` table. Resolved items (implemented, already covered, out-of-scope, or non-actionable) were **removed from the database** on **2026-11-14**.
 
-**Total entries:** 10
-
----
-
-## #26 - 2025-10-05T21:48:46.83244+00:00
-
-- **Display name:** SortaCreativeDanny
-- **User ID:** `117857003145134081`
-- **Server ID:** `1354597610656366683`
-
-**Feedback**
-
-> A command that returns a list of alive players who have not messaged in townsqure or voting booth that day. If that's too hard, a list of alive players voted that day would suffice -- Whether retracted or otherwise. The goal here being to have a command that narrows down who hasn't been online for speed purposes.
+**Total entries:** 2
 
 ---
 
-## #27 - 2025-10-05T21:49:22.221522+00:00
+## #106 - 2026-11-04T16:03:03.470909+00:00
 
-- **Display name:** SlightlyChurnedMitch
-- **User ID:** `376604325973196821`
-- **Server ID:** `1354597610656366683`
-
-**Feedback**
-
-> An inactive list that includes the entire games history. Hopefully that is possible
-
----
-
-## #43 - 2025-12-17T22:56:06.267532+00:00
-
-- **Display name:** Stinky
-- **User ID:** `162675596772638720`
-- **Server ID:** `1395040693138886857`
-
-**Feedback**
-
-> allow changing of all channel names on the site before the game starts
-
----
-
-## #46 - 2026-01-03T22:37:14.457753+00:00
-
-- **Display name:** Elevator
-- **User ID:** `1248024419201450075`
-- **Server ID:** `1395040693138886857`
-
-**Feedback**
-
-> can we get wolf dead in this game?
-
----
-
-## #49 - 2026-01-09T18:00:09.790594+00:00
-
-- **Display name:** 500 Games of Mully
-- **User ID:** `156069627972026368`
-- **Server ID:** `1395040693138886857`
-
-**Feedback**
-
-> set IA reset to start at 0001
->
-> Talking in the morning should count towards it
-
----
-
-## #57 - 2026-02-03T02:06:15.433796+00:00
-
-- **Display name:** ElevatorClassic 👻🐪🐪
-- **User ID:** `1248024419201450075`
-- **Server ID:** `1354597610656366683`
-
-**Feedback**
-
-> add signed up to all dead players too not just alive
-
----
-
-## #63 - 2026-03-18T00:21:04.783847+00:00
-
-- **Display name:** Stinky
-- **User ID:** `162675596772638720`
-- **Server ID:** `1466585500314767413`
-
-**Feedback**
-
-> add rollback command
-
----
-
-## #67 - 2026-03-29T18:10:00.358975+00:00
-
-- **Display name:** Hannibad Mulligan
-- **User ID:** `156069627972026368`
-- **Server ID:** `1466585500314767413`
-
-**Feedback**
-
-> the wolf ia command tracks who violated IA standards on previous days
-
----
-
-## #88 - 2026-06-25T13:59:24.427355+00:00
-
-- **Display name:** Oryx the African Antelope 🏆🏆
+- **Display name:** Roxy Hurricane 🏆🏆🏆
 - **User ID:** `393594178061336576`
-- **Server ID:** `1466585500314767413`
+- **Server ID:** `1539787007939846216`
 
 **Feedback**
 
-> it would be really neat if the bot put the journals in one section for people in an active game and the other section could be journal archives, then if they sign up for the next game bot couple move them back.
+> wolf.add_in is a mod only command so it should work even if signups are closed 🙏
 
 ---
 
-## #91 - 2026-07-26T15:33:38.021072+00:00
+## #107 - 2026-11-08T17:54:08.613819+00:00
 
-- **Display name:** Raf👑 👑 🏆🏆🏆🏆
-- **User ID:** `410499132755542018`
-- **Server ID:** `1466585500314767413`
+- **Display name:** Roxy Houricane 🏆🏆🏆
+- **User ID:** `393594178061336576`
+- **Server ID:** `1539787007939846216`
 
 **Feedback**
 
-> uhhh don’t have a modchat for each game
+> wolf.scuff isn't resetting roles
 
 ---
