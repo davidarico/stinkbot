@@ -24,30 +24,6 @@ Nothing open. New feedback lands in the snapshot below.
 
 Snapshot of the `feedback` table. Resolved items (implemented, already covered, out-of-scope, or non-actionable) were **removed from the database** on **2026-11-14**.
 
-**Total entries:** 2
-
----
-
-## #106 - 2026-11-04T16:03:03.470909+00:00
-
-- **Display name:** Roxy Hurricane 🏆🏆🏆
-- **User ID:** `393594178061336576`
-- **Server ID:** `1539787007939846216`
-
-**Feedback**
-
-> wolf.add_in is a mod only command so it should work even if signups are closed 🙏
-
----
-
-## #107 - 2026-11-08T17:54:08.613819+00:00
-
-- **Display name:** Roxy Houricane 🏆🏆🏆
-- **User ID:** `393594178061336576`
-- **Server ID:** `1539787007939846216`
-
-**Feedback**
-
-> wolf.scuff isn't resetting roles
+**Total entries:** 0
 
 ---
