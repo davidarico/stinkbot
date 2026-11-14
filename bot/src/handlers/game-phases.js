@@ -747,11 +747,10 @@ async handleScuff(message) {
                 '',
                 '**It will:**',
                 `- Set game **#${game.game_number}** \`status\` to \`signup\` and set \`signups_closed = false\``,
-                '- For every member with the **Alive** role: remove **Alive** and add **Signed Up**',
+                '- For every member with the **Alive** or **Dead** role: remove it and add **Signed Up**',
                 '',
                 '**It will NOT do:**',
                 '- Delete/recreate channels, rename channels, or undo any channel permission changes',
-                '- Touch members with the **Dead** role (unless they also have Alive)',
                 '',
                 'Type `confirm` to proceed or `cancel` to abort.',
             ].join('\n')
@@ -777,6 +776,7 @@ async handleScuff(message) {
     this.invalidateActivityGameCache(serverId);
 
     const aliveRole = message.guild.roles.cache.find(r => r.name === 'Alive');
+    const deadRole = message.guild.roles.cache.find(r => r.name === 'Dead');
     const signedUpRole = message.guild.roles.cache.find(r => r.name === 'Signed Up');
 
     if (!aliveRole || !signedUpRole) {
@@ -793,15 +793,19 @@ async handleScuff(message) {
         console.warn('[DEBUG] Could not fetch all guild members for scuff; using cached members only.');
     }
 
-    const aliveMembers = message.guild.members.cache.filter(
-        m => !m.user.bot && m.roles.cache.has(aliveRole.id)
+    // Dead players are back in the game too once it rewinds to signups (feedback #57)
+    const gameMembers = message.guild.members.cache.filter(
+        m => !m.user.bot && (m.roles.cache.has(aliveRole.id) || (deadRole && m.roles.cache.has(deadRole.id)))
     );
 
-    for (const [, member] of aliveMembers) {
+    for (const [, member] of gameMembers) {
         processed++;
         try {
             if (member.roles.cache.has(aliveRole.id)) {
                 await member.roles.remove(aliveRole);
+            }
+            if (deadRole && member.roles.cache.has(deadRole.id)) {
+                await member.roles.remove(deadRole);
             }
             if (!member.roles.cache.has(signedUpRole.id)) {
                 await member.roles.add(signedUpRole);
@@ -816,7 +820,7 @@ async handleScuff(message) {
     }
 
     await message.reply(
-        `✅ Scuffed game #${game.game_number}: set status back to \`signup\` and updated roles for **${updated}/${processed}** Alive members` +
+        `✅ Scuffed game #${game.game_number}: set status back to \`signup\` and updated roles for **${updated}/${processed}** Alive and Dead members` +
         (failed ? ` (**${failed}** failed)` : '') +
         '.'
     );

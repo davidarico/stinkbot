@@ -143,6 +143,63 @@ describe('Game Handlers', () => {
             const lastReply = msg.reply.mock.calls.at(-1)[0];
             expect(lastReply.embeds[0].data.title).toBe('🎮 New Game Created!');
         });
+
+        // feedback #91: Wolf.settings mod_chat off
+        function setupCreateWithServerModChannel(modChannelFetch) {
+            const config = { game_prefix: 'g', game_counter: 1, game_name: null, mod_channel_id: 'server-mods' };
+            bot.db.query = jest.fn()
+                .mockResolvedValueOnce({ rows: [config] })
+                .mockResolvedValueOnce({ rows: [] })
+                .mockResolvedValueOnce({ rows: [{ total: 0 }] })
+                .mockResolvedValueOnce({ rows: [{ id: 99 }] })
+                .mockResolvedValue({ rows: [] });
+            bot.client.channels = { fetch: modChannelFetch };
+
+            let seq = 0;
+            const msg = createMockMessage();
+            msg.guild.roles.cache.find = jest.fn().mockReturnValue({ id: 'mod-role-id', name: 'Mod' });
+            msg.guild.channels.create = jest.fn().mockImplementation(() => {
+                const n = ++seq;
+                return Promise.resolve({
+                    id: `created-${n}`, type: n === 1 ? 4 : 0, position: n,
+                    setPosition: jest.fn().mockResolvedValue(undefined),
+                    send: jest.fn().mockResolvedValue({ id: `msg-${n}`, pin: jest.fn().mockResolvedValue(undefined) }),
+                });
+            });
+            msg.guild.channels.cache.filter = jest.fn()
+                .mockReturnValueOnce({ size: 0, sort: jest.fn().mockReturnValue({ size: 0, first: jest.fn() }) })
+                .mockReturnValue({ size: 0 });
+            return msg;
+        }
+
+        it('uses the server mod channel instead of creating a mod chat when mod chats are off', async () => {
+            const serverMods = {
+                id: 'server-mods',
+                send: jest.fn().mockResolvedValue({ id: 'pw-msg', pin: jest.fn().mockResolvedValue(undefined) }),
+            };
+            const msg = setupCreateWithServerModChannel(jest.fn().mockResolvedValue(serverMods));
+
+            await bot.handleCreate(msg);
+
+            // category + breakdown + signup, no mod-chat
+            const createdNames = msg.guild.channels.create.mock.calls.map(([options]) => options.name);
+            expect(createdNames).toHaveLength(3);
+            expect(createdNames.some(name => name.includes('mod-chat'))).toBe(false);
+
+            const insert = bot.db.query.mock.calls.find(([sql]) => sql.includes('INSERT INTO games'));
+            expect(insert[1]).toContain('server-mods');
+            // The dashboard password goes to the server mod channel
+            expect(serverMods.send.mock.calls[0][0].embeds[0].data.title).toBe('🌐 Game Management Information');
+        });
+
+        it('falls back to creating a mod chat when the server mod channel is gone', async () => {
+            const msg = setupCreateWithServerModChannel(jest.fn().mockRejectedValue(new Error('Unknown Channel')));
+
+            await bot.handleCreate(msg);
+
+            const createdNames = msg.guild.channels.create.mock.calls.map(([options]) => options.name);
+            expect(createdNames).toContain('g1-mod-chat');
+        });
     });
 
     describe('handleSignUp', () => {

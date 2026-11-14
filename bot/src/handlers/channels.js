@@ -2,6 +2,9 @@
 
 const { PermissionFlagsBits, ChannelType, EmbedBuilder } = require('discord.js');
 
+// Wolf.settings keys that live on server_configs rather than on the current game
+const SERVER_SETTINGS = ['ia_reset', 'active_journals', 'mod_chat'];
+
 module.exports = {
 
 async handleDeleteCategory(message, args) {
@@ -433,8 +436,111 @@ async handleWolfDead(message) {
     }
 },
 
+// The server-wide rows of the Wolf.settings embed
+async getServerSettingFields(serverId) {
+    const iaResetTime = await this.getIaResetTime(serverId);
+    const activeJournals = await this.isActiveJournalsEnabled(serverId);
+    const modChannelId = await this.getServerModChannelId(serverId);
+
+    return [
+        { name: 'IA Reset Time', value: `${iaResetTime} ET (server-wide)\n*To change: \`Wolf.settings ia_reset 00:00\`*`, inline: false },
+        { name: 'Active Journals', value: `${activeJournals ? 'On' : 'Off'} (server-wide) - groups the current players' journals in one category\n*To change: \`Wolf.settings active_journals on\`*`, inline: false },
+        {
+            name: 'Mod Chat',
+            value: modChannelId
+                ? `Off (server-wide) - new games use <#${modChannelId}> instead of their own mod chat\n*To change: \`Wolf.settings mod_chat on\`*`
+                : 'On (server-wide) - every new game gets its own mod chat\n*To change: run `Wolf.settings mod_chat off` in your private mod channel*',
+            inline: false
+        },
+    ];
+},
+
+// The channel a server uses instead of per-game mod chats, or null when every game gets
+// its own (the default). Set with Wolf.settings mod_chat off. (feedback #91)
+async getServerModChannelId(serverId) {
+    try {
+        const result = await this.db.query(
+            'SELECT mod_channel_id FROM server_configs WHERE server_id = $1',
+            [serverId]
+        );
+        return result.rows[0]?.mod_channel_id || null;
+    } catch (error) {
+        console.error('Error loading the server mod channel setting:', error);
+        return null;
+    }
+},
+
+async handleServerSetting(message, args) {
+    const serverId = message.guild.id;
+
+    if (!this.hasModeratorPermissions(message.member)) {
+        return message.reply('❌ You need moderator permissions to change game settings.');
+    }
+
+    const setting = args[0].toLowerCase();
+
+    if (setting === 'ia_reset') {
+        // The time of day (Eastern) the Wolf.ia window starts (feedback #49)
+        const newTime = this.parseIaResetTime(args[1]);
+        if (!newTime) {
+            return message.reply('❌ Please provide a time on the hour or half hour, in Eastern time. Example: `Wolf.settings ia_reset 00:00`');
+        }
+
+        await this.db.query(
+            'UPDATE server_configs SET ia_reset_time = $1 WHERE server_id = $2',
+            [newTime, serverId]
+        );
+
+        const embed = new EmbedBuilder()
+            .setTitle('⚙️ Setting Updated')
+            .setDescription(`✅ **IA Reset Time** has been updated to **${newTime} ET**. \`Wolf.ia\` now counts messages from ${newTime} each day.`)
+            .setColor(0x27AE60)
+            .setTimestamp();
+
+        return message.reply({ embeds: [embed] });
+    }
+
+    const value = (args[1] || '').toLowerCase();
+    if (value !== 'on' && value !== 'off') {
+        return message.reply(`❌ Usage: \`Wolf.settings ${setting} on\` or \`Wolf.settings ${setting} off\``);
+    }
+
+    if (setting === 'active_journals') {
+        // Keep the current game's journals together in one category (feedback #88)
+        return this.setActiveJournals(message, value === 'on');
+    }
+
+    // mod_chat: whether Wolf.create makes a mod chat for every game (feedback #91)
+    if (value === 'on') {
+        await this.db.query(
+            'UPDATE server_configs SET mod_channel_id = NULL WHERE server_id = $1',
+            [serverId]
+        );
+        return message.reply('✅ Mod chat turned **on**. Every new game gets its own mod chat again.');
+    }
+
+    // With no per-game mod chat, the dashboard password and mod alerts (speed votes,
+    // wolf chat problems, journal fixes) still need somewhere private to go. That is the
+    // channel this is run in, so it must not be one everyone can read.
+    const everyoneCanView = message.channel.permissionsFor(message.guild.roles.everyone)?.has('ViewChannel');
+    if (everyoneCanView) {
+        return message.reply('❌ Run this in your private mod channel. The dashboard password and mod alerts for new games will be posted where you run it, and everyone can see this channel.');
+    }
+
+    await this.db.query(
+        'UPDATE server_configs SET mod_channel_id = $1 WHERE server_id = $2',
+        [message.channel.id, serverId]
+    );
+    return message.reply(`✅ Mod chat turned **off**. New games won't get their own mod chat. Their dashboard password and mod alerts will be posted here in <#${message.channel.id}>. The current game keeps its mod chat.`);
+},
+
 async handleSettings(message, args) {
     const serverId = message.guild.id;
+
+    // Server-wide settings don't belong to a game, so they work with or without one
+    if (args.length > 0 && SERVER_SETTINGS.includes(args[0].toLowerCase())) {
+        return this.handleServerSetting(message, args);
+    }
 
     // Get active game
     const gameResult = await this.db.query(
@@ -443,6 +549,15 @@ async handleSettings(message, args) {
     );
 
     if (!gameResult.rows.length) {
+        if (args.length === 0) {
+            const embed = new EmbedBuilder()
+                .setTitle('⚙️ Server Settings')
+                .setDescription('No active game. These settings apply to every game on this server:')
+                .addFields(...await this.getServerSettingFields(serverId))
+                .setColor(0x3498DB)
+                .setTimestamp();
+            return message.reply({ embeds: [embed] });
+        }
         return message.reply('❌ No active game found.');
     }
 
@@ -456,15 +571,11 @@ async handleSettings(message, args) {
             [game.id]
         );
 
-        const iaResetTime = await this.getIaResetTime(serverId);
-        const activeJournals = await this.isActiveJournalsEnabled(serverId);
-
         const embed = new EmbedBuilder()
             .setTitle('⚙️ Game Settings')
             .setDescription('Current game settings for this server:')
             .addFields(
-                { name: 'IA Reset Time', value: `${iaResetTime} ET (server-wide)\n*To change: \`Wolf.settings ia_reset 00:00\`*`, inline: false },
-                { name: 'Active Journals', value: `${activeJournals ? 'On' : 'Off'} (server-wide) - groups the current players' journals in one category\n*To change: \`Wolf.settings active_journals on\`*`, inline: false },
+                ...await this.getServerSettingFields(serverId),
                 { name: 'Votes to Hang', value: `${game.votes_to_hang}\n*To change: \`Wolf.settings votes_to_hang 3\`*`, inline: false },
                 { name: 'Default Day Message', value: `${game.day_message}\n*To change: \`Wolf.settings day_message Your message here\`*`, inline: false },
                 { name: 'Default Night Message', value: `${game.night_message}\n*To change: \`Wolf.settings night_message Your message here\`*`, inline: false },
@@ -596,36 +707,7 @@ async handleSettings(message, args) {
     }
 
     // Handle global game settings
-    if (firstArg === 'ia_reset') {
-        // Server-wide: the time of day (Eastern) the Wolf.ia window starts (feedback #49)
-        const newTime = this.parseIaResetTime(args[1]);
-        if (!newTime) {
-            return message.reply('❌ Please provide a time on the hour or half hour, in Eastern time. Example: `Wolf.settings ia_reset 00:00`');
-        }
-
-        await this.db.query(
-            'UPDATE server_configs SET ia_reset_time = $1 WHERE server_id = $2',
-            [newTime, serverId]
-        );
-
-        const embed = new EmbedBuilder()
-            .setTitle('⚙️ Setting Updated')
-            .setDescription(`✅ **IA Reset Time** has been updated to **${newTime} ET**. \`Wolf.ia\` now counts messages from ${newTime} each day.`)
-            .setColor(0x27AE60)
-            .setTimestamp();
-
-        await message.reply({ embeds: [embed] });
-
-    } else if (firstArg === 'active_journals') {
-        // Server-wide: keep the current game's journals together in one category (feedback #88)
-        const value = (args[1] || '').toLowerCase();
-        if (value !== 'on' && value !== 'off') {
-            return message.reply('❌ Usage: `Wolf.settings active_journals on` or `Wolf.settings active_journals off`');
-        }
-
-        await this.setActiveJournals(message, value === 'on');
-
-    } else if (firstArg === 'votes_to_hang') {
+    if (firstArg === 'votes_to_hang') {
         const value = args[1];
         if (!value) {
             return message.reply('❌ Please provide a value for votes_to_hang. Example: `Wolf.settings votes_to_hang 3`');
@@ -702,7 +784,7 @@ async handleSettings(message, args) {
         await message.reply({ embeds: [embed] });
 
     } else {
-        return message.reply('❌ Unknown setting. Available settings:\n• `votes_to_hang`\n• `ia_reset` (server-wide IA window start, e.g. `00:00`)\n• `active_journals on|off` (server-wide)\n• `day_message`, `night_message` (default messages)\n• `wolf day_message`, `wolf night_message` (wolf chat specific)\n• `<channel_name> day_message`, `<channel_name> night_message` (channel-specific)');
+        return message.reply('❌ Unknown setting. Available settings:\n• `votes_to_hang`\n• `ia_reset` (server-wide IA window start, e.g. `00:00`)\n• `active_journals on|off`, `mod_chat on|off` (server-wide)\n• `day_message`, `night_message` (default messages)\n• `wolf day_message`, `wolf night_message` (wolf chat specific)\n• `<channel_name> day_message`, `<channel_name> night_message` (channel-specific)');
     }
 },
 
@@ -752,7 +834,7 @@ async handleSetVotingBooth(message, args) {
 },
 
 async handleChannelConfig(message) {
-    if (this.isPublicChannel(message) && !(await this.isRenamedDeadChat(message))) {
+    if (this.isPublicChannel(message) && !(await this.isPrivateGameChannel(message))) {
         return message.reply('WOAH! You trying to scuff the game? Wrong channel buddy!');
     }
 

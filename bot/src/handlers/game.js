@@ -236,22 +236,36 @@ async handleCreate(message) {
         return message.reply('❌ Mod role not found. Run `Wolf.server_roles` first.');
     }
 
-    const modChatName = `${config.game_prefix}${config.game_counter}-mod-chat`;
-    const modChat = await message.guild.channels.create({
-        name: modChatName,
-        type: ChannelType.GuildText,
-        parent: category.id,
-        permissionOverwrites: [
-            {
-                id: message.guild.roles.everyone.id,
-                deny: ['ViewChannel', 'SendMessages']
-            },
-            {
-                id: modRole.id,
-                allow: ['ViewChannel', 'SendMessages']
-            }
-        ]
-    });
+    // Servers that turned per-game mod chats off (Wolf.settings mod_chat off, feedback #91)
+    // use one standing mod channel for every game. If that channel is gone, fall back to
+    // making a mod chat so the dashboard password still has somewhere private to go.
+    let modChat = null;
+    if (config.mod_channel_id) {
+        modChat = await this.client.channels.fetch(config.mod_channel_id).catch(() => null);
+        if (!modChat) {
+            console.warn(`Server mod channel ${config.mod_channel_id} not found - creating a mod chat for this game instead`);
+        }
+    }
+    const usingServerModChannel = Boolean(modChat);
+
+    if (!modChat) {
+        const modChatName = `${config.game_prefix}${config.game_counter}-mod-chat`;
+        modChat = await message.guild.channels.create({
+            name: modChatName,
+            type: ChannelType.GuildText,
+            parent: category.id,
+            permissionOverwrites: [
+                {
+                    id: message.guild.roles.everyone.id,
+                    deny: ['ViewChannel', 'SendMessages']
+                },
+                {
+                    id: modRole.id,
+                    allow: ['ViewChannel', 'SendMessages']
+                }
+            ]
+        });
+    }
 
     // Create breakdown channel
     const breakdownName = `${config.game_prefix}${config.game_counter}-breakdown`;
@@ -321,7 +335,7 @@ async handleCreate(message) {
             { name: 'Category', value: categoryName, inline: true },
             { name: 'Signup Channel', value: `<#${signupChannel.id}>`, inline: true },
             { name: '🌐 Management URL', value: `${managementUrl}`, inline: false },
-            { name: '🔑 Password', value: 'Posted in the private mod chat.', inline: true },
+            { name: '🔑 Password', value: usingServerModChannel ? `Posted in <#${modChat.id}>.` : 'Posted in the private mod chat.', inline: true },
             { name: '🆔 Game ID', value: `\`${gameId}\``, inline: true }
         )
         .setColor(0x00AE86);
@@ -331,7 +345,7 @@ async handleCreate(message) {
     // Post management information in mod chat and pin it
     const modManagementEmbed = new EmbedBuilder()
         .setTitle('🌐 Game Management Information')
-        .setDescription('Use this information to manage the game through the website.')
+        .setDescription(`Use this information to manage ${categoryName} through the website.`)
         .addFields(
             { name: '🌐 Management URL', value: modManagementUrl, inline: false },
             { name: '🔑 Password', value: `\`${dashboardPassword}\``, inline: true },

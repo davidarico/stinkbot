@@ -501,6 +501,53 @@ describe('Game Phase Handlers', () => {
         });
     });
 
+    describe('handleScuff with dead players (feedback #57)', () => {
+        it('moves Dead players back to Signed Up along with the living', async () => {
+            bot.db.query = jest.fn()
+                .mockResolvedValueOnce({ rows: [{ id: 1, game_number: 3, status: 'active' }] })
+                .mockResolvedValue({ rows: [] });
+
+            const msg = createMockMessage();
+            msg.channel.awaitMessages = jest.fn().mockResolvedValue({
+                size: 1,
+                first: jest.fn().mockReturnValue({ content: 'confirm' }),
+            });
+            const roleMap = [
+                { id: 'alive-id', name: 'Alive' },
+                { id: 'dead-id', name: 'Dead' },
+                { id: 'signedup-id', name: 'Signed Up' },
+            ];
+            msg.guild.roles.cache.find = jest.fn().mockImplementation(fn => roleMap.find(fn) || null);
+
+            const makeMember = (name, roleIds) => ({
+                displayName: name,
+                user: { bot: false },
+                guild: msg.guild,
+                roles: {
+                    cache: { has: jest.fn().mockImplementation(id => roleIds.includes(id)) },
+                    add: jest.fn().mockResolvedValue(undefined),
+                    remove: jest.fn().mockResolvedValue(undefined),
+                },
+            });
+            const alive = makeMember('Alive Anna', ['alive-id']);
+            const dead = makeMember('Dead Dan', ['dead-id']);
+            const spectator = makeMember('Spectator Sam', []);
+            const members = [alive, dead, spectator];
+            msg.guild.members.cache = {
+                filter: (fn) => new Map(members.filter(fn).map((m, i) => [`m-${i}`, m])),
+            };
+
+            await bot.handleScuff(msg);
+
+            expect(dead.roles.remove).toHaveBeenCalledWith(roleMap[1]);
+            expect(dead.roles.add).toHaveBeenCalledWith(roleMap[2]);
+            expect(alive.roles.remove).toHaveBeenCalledWith(roleMap[0]);
+            expect(alive.roles.add).toHaveBeenCalledWith(roleMap[2]);
+            expect(spectator.roles.add).not.toHaveBeenCalled();
+            expect(msg.reply).toHaveBeenLastCalledWith(expect.stringContaining('**2/2** Alive and Dead members'));
+        });
+    });
+
     describe('handleRefresh', () => {
         it('refuses to run outside of development mode', async () => {
             const savedEnv = process.env.NODE_ENV;

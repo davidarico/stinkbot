@@ -252,6 +252,11 @@ async auditGamePermissions(guild, game, { fix = false } = {}) {
             missing.push(`${entry.label} (\`${entry.id}\`) could not be fetched`);
             continue;
         }
+        // A server-wide mod channel (Wolf.settings mod_chat off) stands in for the game's
+        // mod chat but isn't the bot's to manage, so its permissions are left alone.
+        if (entry.kind === 'mod_chat' && game.category_id && channel.parentId !== game.category_id) {
+            continue;
+        }
         checked++;
 
         const expected = expectedForChannel(entry.kind, {

@@ -91,8 +91,8 @@ Setup and game management:
 | `Wolf.rollback` | Undo the most recent `Wolf.next` (restores that day's votes; requires confirmation) |
 | `Wolf.end` | End the current game (requires confirmation) and record the winner |
 | `Wolf.winner <town\|wolves\|neutral\|draw>` | Set or correct the winner of the last ended game |
-| `Wolf.scuff` | Rewind an active game back to signup (requires confirmation) |
-| `Wolf.settings` | View or change game settings (votes to hang, phase messages) and the server-wide `ia_reset` and `active_journals` |
+| `Wolf.scuff` | Rewind an active game back to signup; Alive and Dead players become Signed Up (requires confirmation) |
+| `Wolf.settings` | View or change game settings (votes to hang, phase messages) and the server-wide `ia_reset`, `active_journals` and `mod_chat` (`mod_chat off`, run in a private mod channel, stops new games getting their own mod chat) |
 
 Channels and voting:
 

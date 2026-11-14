@@ -21,7 +21,8 @@ describe('Channel & Settings Handlers', () => {
                 .mockResolvedValueOnce({ rows: [game] })  // active game
                 .mockResolvedValueOnce({ rows: [] })      // game_channels
                 .mockResolvedValueOnce({ rows: [{ ia_reset_time: '00:00' }] })   // server_configs (IA reset)
-                .mockResolvedValueOnce({ rows: [{ active_journals: true }] });   // server_configs (active journals)
+                .mockResolvedValueOnce({ rows: [{ active_journals: true }] })    // server_configs (active journals)
+                .mockResolvedValueOnce({ rows: [{ mod_channel_id: null }] });    // server_configs (mod chat)
 
             const msg = createMockMessage();
             await bot.handleSettings(msg, []);
@@ -32,6 +33,58 @@ describe('Channel & Settings Handlers', () => {
             const fields = reply.embeds[0].data.fields;
             expect(fields.find(f => f.name === 'IA Reset Time').value).toContain('00:00 ET');
             expect(fields.find(f => f.name === 'Active Journals').value).toContain('On');
+        });
+
+        describe('server-wide mod_chat setting (feedback #91)', () => {
+            function makeModMessage(everyoneCanView) {
+                const msg = createMockMessage();
+                msg.member.permissions.has = jest.fn().mockReturnValue(true);
+                msg.channel.permissionsFor = jest.fn().mockReturnValue({ has: jest.fn().mockReturnValue(everyoneCanView) });
+                return msg;
+            }
+
+            it('turns mod chats off and remembers the channel it was run in, without needing a game', async () => {
+                bot.db.query = jest.fn().mockResolvedValue({ rows: [] });
+                const msg = makeModMessage(false);
+
+                await bot.handleSettings(msg, ['mod_chat', 'off']);
+
+                expect(bot.db.query).toHaveBeenCalledTimes(1);
+                expect(bot.db.query).toHaveBeenCalledWith(
+                    expect.stringContaining('UPDATE server_configs SET mod_channel_id = $1'),
+                    ['channel-123', 'guild-123']
+                );
+                expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('turned **off**'));
+            });
+
+            it('refuses to use a channel everyone can read', async () => {
+                bot.db.query = jest.fn();
+                const msg = makeModMessage(true);
+
+                await bot.handleSettings(msg, ['mod_chat', 'off']);
+
+                expect(bot.db.query).not.toHaveBeenCalled();
+                expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('private mod channel'));
+            });
+
+            it('turns mod chats back on', async () => {
+                bot.db.query = jest.fn().mockResolvedValue({ rows: [] });
+                const msg = makeModMessage(false);
+
+                await bot.handleSettings(msg, ['mod_chat', 'on']);
+
+                expect(bot.db.query.mock.calls[0][0]).toContain('mod_channel_id = NULL');
+            });
+
+            it('is mod-only', async () => {
+                bot.db.query = jest.fn();
+                const msg = createMockMessage();
+
+                await bot.handleSettings(msg, ['mod_chat', 'off']);
+
+                expect(bot.db.query).not.toHaveBeenCalled();
+                expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('moderator permissions'));
+            });
         });
 
         it('updates a setting when key=value is provided', async () => {

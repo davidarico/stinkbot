@@ -9,30 +9,7 @@ Items are ordered easiest first. Size: S = an hour or two, M = a day, L = severa
 
 ## Open items
 
-Nothing open that doesn't need a decision first (see below).
-
-## Built, waiting on deploy
-
-Code and migrations (`database/migrations/20261114T12*`) are written and tested but not deployed. Apply
-the migrations to production **before** pushing the bot, then resolve these rows and delete this section.
-
-- **#63** - `Wolf.rollback` undoes the last `Wolf.next`.
-- **#46** - `Wolf.wolf_dead` creates a chat for dead wolves; they join it when killed.
-- **#43** - core channel names are editable in the dashboard's Manage Channels modal during signups.
-- **#26** - `Wolf.silent`. **#27, #67** - `Wolf.ia_history [channel] [min]`.
-- **#49** - `Wolf.settings ia_reset 00:00` (hour or half hour only, so "0001" is `00:00`).
-- **#88** - `Wolf.settings active_journals on` (opt-in per server; the archive categories keep the name
-  "Journals").
-
-`npm run feedback:resolve -- 63 46 43 26 27 67 49 88 --dry-run` first. #49 and #88 need a note saying which
-setting to turn on.
-
-## Needs a decision from David first
-
-- **#57 - give dead players "Signed Up" too.** `Wolf.scuff` only converts Alive on purpose, and its
-  confirmation embed says it won't touch Dead. Reversing that is David's call.
-- **#91 - no per-game mod chat.** Mod chat is now where the wolf-chat-add failure alert and the journal
-  auto-fix summary are posted, so removing it needs a new home for mod alerts first.
+Nothing open. New feedback lands in the snapshot below.
 
 ## Won't do
 

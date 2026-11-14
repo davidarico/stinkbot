@@ -67,17 +67,21 @@ isPublicChannel(message) {
     return !channelName.includes('dead-chat') && !channelName.includes('mod-chat');
 },
 
-// Dead chat can be renamed from the dashboard (feedback #43), so the name check in
-// isPublicChannel can miss it. Dead chat is the signup channel of a started game.
-async isRenamedDeadChat(message) {
+// The name check in isPublicChannel misses two private channels: a dead chat renamed from
+// the dashboard (feedback #43; dead chat is the signup channel of a started game) and a
+// server-wide mod channel used instead of per-game mod chats (feedback #91).
+async isPrivateGameChannel(message) {
     try {
         const result = await this.db.query(
-            "SELECT 1 FROM games WHERE server_id = $1 AND signup_channel_id = $2 AND status IN ('active', 'ended') LIMIT 1",
+            `SELECT 1 FROM games
+             WHERE server_id = $1
+               AND ((signup_channel_id = $2 AND status IN ('active', 'ended')) OR mod_chat_channel_id = $2)
+             LIMIT 1`,
             [message.guild.id, message.channel.id]
         );
         return result.rows.length > 0;
     } catch (error) {
-        console.error('Error checking for a renamed dead chat:', error);
+        console.error('Error checking for a private game channel:', error);
         return false;
     }
 },
@@ -200,7 +204,7 @@ async handleServerRoles(message) {
 },
 
 async handleRolesList(message) {
-    if (this.isPublicChannel(message) && !(await this.isRenamedDeadChat(message))) {
+    if (this.isPublicChannel(message) && !(await this.isPrivateGameChannel(message))) {
         return message.reply('WOAH! You trying to scuff the game? Wrong channel buddy!');
     }
 
@@ -532,7 +536,7 @@ async handleRolesList(message) {
 },
 
 async handleRoleConfiguration(message) {
-    if (this.isPublicChannel(message) && !(await this.isRenamedDeadChat(message))) {
+    if (this.isPublicChannel(message) && !(await this.isPrivateGameChannel(message))) {
         return message.reply('WOAH! You trying to scuff the game? Wrong channel buddy!');
     }
 

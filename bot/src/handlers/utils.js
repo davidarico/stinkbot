@@ -153,7 +153,7 @@ async handleHelp(message) {
                     '`Wolf.server_roles` - 🎭 Create all game roles\n' +
                     '`Wolf.create` - Create a new game with signup channel\n' +
                     '`Wolf.start [dark]` - Start the game and create all channels (use `dark` to hide Townsquare, Memos, and Voting Booth from Alive role)\n' +
-                    '`Wolf.settings` - View/change game and channel settings (votes_to_hang, messages, ia_reset, active_journals)\n' +
+                    '`Wolf.settings` - View/change game and channel settings (votes_to_hang, messages, ia_reset, active_journals, mod_chat)\n' +
                     '`Wolf.channel_config` - View additional channel settings\n' +
                     '`Wolf.signups [open|close]` - Open or close signups\n' +
                     '`Wolf.remove_signup <@user or user ID>` - Remove a player from signups (suspended, left server, over capacity, etc.)\n' +
