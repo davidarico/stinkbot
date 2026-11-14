@@ -389,7 +389,7 @@ async getDeadWolfIds(guild, game, deadRoleId) {
         'SELECT user_id FROM players WHERE game_id = $1 AND is_wolf = TRUE',
         [game.id]
     );
-    await guild.members.fetch().catch(() => null);
+    await this.fetchAllMembers(guild).catch(() => null);
     return wolvesResult.rows
         .map(row => row.user_id)
         .filter(userId => guild.members.cache.get(userId)?.roles?.cache?.has(deadRoleId));

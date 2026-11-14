@@ -126,6 +126,54 @@ describe('Utility Methods', () => {
         });
     });
 
+    describe('fetchAllMembers', () => {
+        const makeGuild = () => ({
+            id: 'guild-1',
+            members: { cache: new Map([['cached', {}]]), fetch: jest.fn().mockResolvedValue(new Map([['fetched', {}]])) },
+        });
+
+        it('asks Discord once and reuses the cache for calls that follow', async () => {
+            const guild = makeGuild();
+
+            const first = await bot.fetchAllMembers(guild);
+            const second = await bot.fetchAllMembers(guild);
+
+            expect(guild.members.fetch).toHaveBeenCalledTimes(1);
+            expect(first.has('fetched')).toBe(true);
+            expect(second).toBe(guild.members.cache);
+        });
+
+        it('shares one request between simultaneous callers', async () => {
+            const guild = makeGuild();
+
+            await Promise.all([bot.fetchAllMembers(guild), bot.fetchAllMembers(guild), bot.fetchAllMembers(guild)]);
+
+            expect(guild.members.fetch).toHaveBeenCalledTimes(1);
+        });
+
+        it('tries again after a failed fetch instead of trusting the cache', async () => {
+            const guild = makeGuild();
+            guild.members.fetch = jest.fn()
+                .mockRejectedValueOnce(new Error("Members didn't arrive in time."))
+                .mockResolvedValueOnce(new Map());
+
+            await expect(bot.fetchAllMembers(guild)).rejects.toThrow();
+            await bot.fetchAllMembers(guild);
+
+            expect(guild.members.fetch).toHaveBeenCalledTimes(2);
+        });
+
+        it('fetches again once the reuse window has passed', async () => {
+            const guild = makeGuild();
+            await bot.fetchAllMembers(guild);
+            bot.memberFetches.get('guild-1').fetchedAt -= 6 * 60 * 1000;
+
+            await bot.fetchAllMembers(guild);
+
+            expect(guild.members.fetch).toHaveBeenCalledTimes(2);
+        });
+    });
+
     describe('handleIA', () => {
         beforeAll(() => { global.moment = require('moment-timezone'); });
         afterAll(() => { delete global.moment; });

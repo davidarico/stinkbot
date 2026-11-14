@@ -1233,7 +1233,7 @@ async handleStart(message, args = []) {
     );
 
     try {
-        await message.guild.members.fetch();
+        await this.fetchAllMembers(message.guild);
     } catch (error) {
         console.log('Could not fetch all guild members, falling back to individual fetches');
         // Fallback to original method if bulk fetch fails

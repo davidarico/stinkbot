@@ -82,7 +82,7 @@ async handleRecovery(message) {
             const signedUpRole = message.guild.roles.cache.find(r => r.name === 'Signed Up');
             if (signedUpRole) {
                 // Ensure we have all members cached
-                await message.guild.members.fetch();
+                await this.fetchAllMembers(message.guild);
                 players = signedUpRole.members.map(member => ({
                     user_id: member.id,
                     username: member.displayName,
@@ -91,7 +91,7 @@ async handleRecovery(message) {
             }
         } else {
             // Ensure we have all members cached before checking roles
-            await message.guild.members.fetch();
+            await this.fetchAllMembers(message.guild);
             
             const aliveRole = message.guild.roles.cache.find(r => r.name === 'Alive');
             const deadRole = message.guild.roles.cache.find(r => r.name === 'Dead');

@@ -1614,7 +1614,7 @@ async handleJournalLink(message) {
         }
 
         // Get all server members (excluding bots and already linked users)
-        const allMembers = await message.guild.members.fetch();
+        const allMembers = await this.fetchAllMembers(message.guild);
         const availableMembers = allMembers.filter(member => 
             !member.user.bot && !linkedUserIds.has(member.user.id)
         );

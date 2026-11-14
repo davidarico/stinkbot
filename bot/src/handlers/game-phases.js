@@ -608,7 +608,7 @@ async handleEnd(message) {
     try {
         if (spectatorRole) {
             // Fetch all members in the guild
-            const members = await message.guild.members.fetch();
+            const members = await this.fetchAllMembers(message.guild);
             
             for (const [memberId, member] of members) {
                 // Skip bots
@@ -788,7 +788,7 @@ async handleScuff(message) {
     let failed = 0;
 
     try {
-        await message.guild.members.fetch();
+        await this.fetchAllMembers(message.guild);
     } catch (error) {
         console.warn('[DEBUG] Could not fetch all guild members for scuff; using cached members only.');
     }
@@ -892,7 +892,7 @@ async handleRefresh(message) {
             const spectatorRole = message.guild.roles.cache.find(r => r.name === 'Spectator');
             if (spectatorRole) {
                 // Fetch all members in the guild
-                const members = await message.guild.members.fetch();
+                const members = await this.fetchAllMembers(message.guild);
                 
                 for (const [memberId, member] of members) {
                     // Skip bots

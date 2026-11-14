@@ -342,7 +342,7 @@ async handleWolvesAlive(message) {
         return message.reply('❌ Alive role not found.');
     }
     try {
-        await message.guild.members.fetch().catch(() => null);
+        await this.fetchAllMembers(message.guild).catch(() => null);
         const wolves = await this.db.query(
             `SELECT p.user_id, p.username FROM players p
              WHERE p.game_id = $1 AND p.is_wolf = TRUE`,
@@ -383,10 +383,8 @@ async handleAddIn(message, args) {
     }
     const game = gameResult.rows[0];
     const inProgress = game.status !== 'signup';
-
-    if (!inProgress && game.signups_closed) {
-        return message.reply('❌ Signups are closed - cannot add players.');
-    }
+    // Closed signups only stop players from joining on their own; this is a mod
+    // override, so it still works (feedback #106).
 
     const bannedUser = await this.db.query('SELECT * FROM banned_users WHERE user_id = $1', [targetMember.id]);
     if (bannedUser.rows.length > 0) {
@@ -452,7 +450,7 @@ async handleNotVoted(message) {
         return message.reply('❌ Alive role not found.');
     }
     try {
-        await message.guild.members.fetch().catch(() => null);
+        await this.fetchAllMembers(message.guild).catch(() => null);
         const players = await this.db.query(
             'SELECT user_id, username FROM players WHERE game_id = $1',
             [game.id]

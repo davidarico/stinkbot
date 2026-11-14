@@ -253,6 +253,33 @@ describe('Voting Handlers', () => {
         });
     });
 
+    describe('handleAddIn', () => {
+        it('adds a player even when signups are closed (feedback #106)', async () => {
+            const game = { id: 1, status: 'signup', signups_closed: true };
+            bot.db.query = jest.fn()
+                .mockResolvedValueOnce({ rows: [game] })   // current game
+                .mockResolvedValueOnce({ rows: [] })       // not banned
+                .mockResolvedValueOnce({ rows: [] })       // not already signed up
+                .mockResolvedValue({ rows: [] });
+            bot.ensureUserHasJournal = jest.fn().mockResolvedValue(undefined);
+            bot.activateJournal = jest.fn().mockResolvedValue(false);
+            bot.assignRole = jest.fn().mockResolvedValue(true);
+            bot.removeRole = jest.fn().mockResolvedValue(true);
+            bot.updateSignupMessage = jest.fn().mockResolvedValue(undefined);
+
+            const target = { id: 'late-user', displayName: 'Latecomer', user: { id: 'late-user', username: 'late' } };
+            const msg = createMockMessage();
+            msg.mentions.members.first = jest.fn().mockReturnValue(target);
+
+            await bot.handleAddIn(msg, ['<@late-user>']);
+
+            const insert = bot.db.query.mock.calls.find(([sql]) => sql.includes('INSERT INTO players'));
+            expect(insert[1]).toEqual([1, 'late-user', 'Latecomer']);
+            expect(bot.assignRole).toHaveBeenCalledWith(target, 'Signed Up');
+            expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('Added **Latecomer**'));
+        });
+    });
+
     describe('handleNotVoted', () => {
         it('lists alive players who have not voted', async () => {
             const game = { id: 1, day_phase: 'day', day_number: 2 };

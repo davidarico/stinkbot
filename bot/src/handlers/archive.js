@@ -688,7 +688,7 @@ async syncServerMembers() {
                 console.log(`📊 Processing guild: ${guild.name} (${guild.id})`);
                 
                 // Fetch all members for this guild
-                await guild.members.fetch();
+                await this.fetchAllMembers(guild);
                 
                 let membersProcessed = 0;
                 

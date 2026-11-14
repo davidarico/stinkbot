@@ -43,7 +43,7 @@ async handleAlive(message, isAddDead) {
     const alivePlayers = [];
     try {
         // Use cached members for much faster processing
-        await message.guild.members.fetch();
+        await this.fetchAllMembers(message.guild);
         for (const player of allPlayers.rows) {
             const member = message.guild.members.cache.get(player.user_id);
             if (member) {
@@ -193,7 +193,7 @@ async handleDead(message) {
     const deadPlayers = [];
     try {
         // Use cached members for much faster processing
-        await message.guild.members.fetch();
+        await this.fetchAllMembers(message.guild);
         for (const player of allPlayers.rows) {
             const member = message.guild.members.cache.get(player.user_id);
             if (member) {

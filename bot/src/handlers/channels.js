@@ -407,7 +407,7 @@ async handleWolfDead(message) {
             'SELECT user_id FROM players WHERE game_id = $1 AND is_wolf = TRUE',
             [game.id]
         );
-        await message.guild.members.fetch().catch(() => null);
+        await this.fetchAllMembers(message.guild).catch(() => null);
         let added = 0;
         for (const wolf of wolvesResult.rows) {
             const member = message.guild.members.cache.get(wolf.user_id);

@@ -31,6 +31,9 @@ function matchCase(replacement, original) {
     return replacement;
 }
 
+// How long a whole-guild member fetch is reused before asking Discord again (see fetchAllMembers)
+const MEMBER_FETCH_REUSE_MS = 5 * 60 * 1000;
+
 module.exports = {
 
 removeBannedWords(text) {
@@ -98,6 +101,41 @@ async generateFunnyResponse(command, username) {
         console.error('Error generating OpenAI response:', error);
         return null;
     }
+},
+
+// Whole-guild member fetch that is safe to call from every command.
+//
+// Discord answers one full member list request per guild every 30 seconds. A second one
+// inside that window gets no reply, and discord.js sits for 120 seconds before throwing,
+// which froze commands like Wolf.ia or Wolf.scuff when they ran soon after another one and
+// then left them working from an incomplete cache (feedback #107). After one full fetch
+// the GuildMembers intent keeps the cache current, so recent fetches are reused and
+// simultaneous callers share one request.
+async fetchAllMembers(guild) {
+    if (!this.memberFetches) {
+        this.memberFetches = new Map();
+    }
+
+    const entry = this.memberFetches.get(guild.id);
+    if (entry?.promise) {
+        return entry.promise;
+    }
+    if (entry && Date.now() - entry.fetchedAt < MEMBER_FETCH_REUSE_MS) {
+        return guild.members.cache;
+    }
+
+    const promise = Promise.resolve(guild.members.fetch()).then(
+        (members) => {
+            this.memberFetches.set(guild.id, { fetchedAt: Date.now() });
+            return members;
+        },
+        (error) => {
+            this.memberFetches.delete(guild.id);
+            throw error;
+        }
+    );
+    this.memberFetches.set(guild.id, { promise });
+    return promise;
 },
 
 async handleHelp(message) {
@@ -651,7 +689,7 @@ async handleServer(message) {
                 );
 
                 try {
-                    await message.guild.members.fetch();
+                    await this.fetchAllMembers(message.guild);
                 } catch (error) {
                     console.log('Could not fetch all guild members, falling back to individual fetches');
                     // Fallback to original method if bulk fetch fails

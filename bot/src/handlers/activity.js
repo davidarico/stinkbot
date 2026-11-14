@@ -208,7 +208,7 @@ async countMessagesByPaging(channel, since, userIds) {
 async filterAlivePlayers(guild, players, aliveRole) {
     // OPTIMIZATION: Fetch all guild members at once instead of individual calls
     try {
-        await guild.members.fetch();
+        await this.fetchAllMembers(guild);
     } catch (error) {
         console.log('Could not fetch all guild members, falling back to individual fetches');
         const alivePlayers = [];
